@@ -1,6 +1,6 @@
 use std::io;
 
-mod tokens;
+mod ast;
 
 fn _input() -> String {
     let mut input_str = String::new();
@@ -11,12 +11,11 @@ fn _input() -> String {
 }
 
 fn main() {
-    let source = "(hello123 (add 1 2))\n".to_string();
+    let source = "(add 1 (add 2 3))".to_string();
     println!("source:\n{}", source);
+    print!("\n");
 
-    let tokens = tokens::parse_tokens(source);
-
-    for token in tokens {
-        println!("{:?}: {}", token.class, token.value);
-    }
+    let root_node = ast::construct_ast(source);
+    println!("AST:");
+    println!("{:?}", root_node);
 }
