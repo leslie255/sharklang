@@ -1,4 +1,4 @@
-pub mod token;
+include!("token.rs");
 
 #[derive(Debug)]
 pub enum NodeValue {
@@ -12,7 +12,7 @@ pub struct Node {
     pub sub_nodes: Vec<Node>,
 }
 
-fn recursive_parse_node(tokens: &Vec<token::Token>, i: &mut usize, node: &mut Node) {
+fn recursive_parse_node(tokens: &Vec<Token>, i: &mut usize, node: &mut Node) {
     let mut current_token = &tokens[*i];
     macro_rules! increment {
         () => {
@@ -56,7 +56,7 @@ pub fn construct_ast(source: String) -> Node {
         sub_nodes: Vec::new(),
     };
 
-    let tokens = token::parse_tokens(source);
+    let tokens = parse_tokens(source);
     println!("tokens:");
     for token in &tokens {
         println!("{:?}: {}", token.class, token.value);
