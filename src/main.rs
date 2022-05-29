@@ -11,11 +11,15 @@ fn _input() -> String {
 }
 
 fn main() {
-    let source = "(add 1 (add 2 3))".to_string();
+    println!("{}", '\n'.is_whitespace());
+    let source = String::from(
+        "
+let a = 10;
+var b = 20;
+",
+    );
     println!("source:\n{}", source);
     print!("\n");
 
-    let root_node = ast::construct_ast(source);
-    println!("AST:");
-    println!("{:?}", root_node);
+    ast::construct_ast(source);
 }

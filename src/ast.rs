@@ -1,70 +1,108 @@
-include!("token.rs");
-
 #[derive(Debug)]
-pub enum NodeValue {
-    FuncName(String),
-    Number(isize),
+enum TokenClass {
+    RoundParen, // ()
+    RectParen,  // []
+    BigParen,   // {}
+    Equal,      // "=" not "=="
+    CompareOP,
+    ArithOP,
+    SelfArithOP, // +=, -=, ...
+    BoolOP,
+    Semicolon,
+    Comment,
+    Number,
+    Identifier,
+    Unknown,
 }
 
 #[derive(Debug)]
-pub struct Node {
-    pub value: NodeValue,
-    pub sub_nodes: Vec<Node>,
+struct Token {
+    pub class: TokenClass,
+    pub value: String,
 }
 
-fn recursive_parse_node(tokens: &Vec<Token>, i: &mut usize, node: &mut Node) {
-    let mut current_token = &tokens[*i];
-    macro_rules! increment {
-        () => {
-            *i += 1;
-            if i < &mut tokens.len() {
-                current_token = &tokens[*i];
-            } else {
-                break;
-            }
-        };
-    }
-    loop {
-        if current_token.value == "(" {
-            increment!();
-            node.value = NodeValue::FuncName(current_token.value.clone());
-            loop {
-                increment!();
-                if current_token.value == ")" {
-                    break;
-                } else if current_token.value == "(" {
-                    node.sub_nodes.push(Node {
-                        value: NodeValue::FuncName(String::new()), 
-                        sub_nodes: Vec::new(),
-                    });
-                    recursive_parse_node(tokens, i, node.sub_nodes.last_mut().unwrap());
-                } else {
-                    node.sub_nodes.push(Node {
-                        value: NodeValue::Number(current_token.value.trim().parse().unwrap()),
-                        sub_nodes: Vec::new(),
-                    });
-                }
-            }
+fn _is_paren(ch: char) -> bool {
+    ch == '(' || ch == ')' || ch == '{' || ch == '{' || ch == '[' || ch == ']'
+}
+
+impl Token {
+    fn determine_type(&mut self) {
+        if self.value.is_empty() {
+            self.class = TokenClass::Unknown;
+            return;
+        } else if self.value.chars().nth(0).unwrap().is_numeric() {
+            self.class = TokenClass::Number;
+            return;
+        } else if self.value.chars().nth(0).unwrap().is_alphanumeric() {
+            self.class = TokenClass::Identifier;
+            return;
         }
-        increment!();
+
+        self.class = match self.value.as_str() {
+            "(" | ")" => TokenClass::RoundParen,
+            "[" | "]" => TokenClass::RectParen,
+            "{" | "}" => TokenClass::BigParen,
+            "=" => TokenClass::Equal,
+            "==" | ">" | "<" | ">=" | "<=" | "!=" => TokenClass::CompareOP,
+            "+" | "-" | "*" | "/" | "%" => TokenClass::ArithOP,
+            "+=" | "-=" | "*=" | "/=" | "%=" => TokenClass::SelfArithOP,
+            "!" | "&&" | "||" | "" => TokenClass::BoolOP,
+            ";" => TokenClass::Semicolon,
+            "//" | "/*" | "*/" => TokenClass::Comment,
+            _ => TokenClass::Unknown,
+        }
     }
 }
 
-pub fn construct_ast(source: String) -> Node {
-    let mut root = Node {
-        value: NodeValue::Number(0),
-        sub_nodes: Vec::new(),
-    };
-
-    let tokens = parse_tokens(source);
-    println!("tokens:");
-    for token in &tokens {
-        println!("{:?}: {}", token.class, token.value);
+fn parse_tokens(source: String) -> Vec<Token> {
+    let mut tokens: Vec<Token> = vec![Token {
+        class: TokenClass::Unknown,
+        value: String::from(""),
+    }];
+    for i in 0..source.chars().count() - 1 {
+        let ch = source.chars().nth(i).unwrap();
+        let last_token = &mut tokens.last_mut().unwrap();
+        if !ch.is_whitespace() {
+            if last_token.value.is_empty() {
+                last_token.value.push(ch);
+            } else if last_token
+                .value
+                .chars()
+                .nth(last_token.value.len() - 1)
+                .unwrap()
+                .is_alphanumeric()
+                == ch.is_alphanumeric()
+            {
+                last_token.value.push(ch);
+            } else {
+                tokens.push(Token {
+                    class: TokenClass::Unknown,
+                    value: String::from(ch),
+                });
+            }
+        } else if !source
+            .chars()
+            .nth(i.saturating_sub(1))
+            .unwrap_or_else(|| ' ')
+            .is_whitespace()
+        {
+            tokens.push(Token {
+                class: TokenClass::Unknown,
+                value: String::from(""),
+            });
+        }
+        let last_token = &mut tokens.last_mut().unwrap();
+        if last_token.value.is_empty() {
+            last_token.value = String::from("");
+        } else {
+            last_token.determine_type();
+        }
     }
-    print!("\n");
+    tokens
+}
 
-    let mut i = 0;
-    recursive_parse_node(&tokens, &mut i, &mut root);
-
-    root
+pub fn construct_ast(source: String) {
+    // TODO
+    let tokens = parse_tokens(source);
+    println!("{:#?}", tokens);
 }
