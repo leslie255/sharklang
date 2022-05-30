@@ -12,14 +12,10 @@ fn _input() -> String {
 
 fn main() {
     println!("{}", '\n'.is_whitespace());
-    let source = String::from(
-        "
-let a = 10;
-var b = 20;
-",
-    );
+    let source = String::from("add(3, 4);\nadd(2, 3);");
     println!("source:\n{}", source);
     print!("\n");
 
-    ast::construct_ast(source);
+    let ast = ast::construct_ast(source);
+    println!("{:#?}", ast);
 }
