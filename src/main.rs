@@ -10,12 +10,14 @@ fn _input() -> String {
     input_str
 }
 
+#[allow(unused)]
 fn main() {
-    println!("{}", '\n'.is_whitespace());
     let source = String::from("
-@add 1 @minus 4 2.
-@print @str_cat \"hello \" \"world\".");
-    println!("source:\n{}", source);
+(let a = 2)
+(set a = 3)
+(add 2 (minus 2 3))
+(print \"hello world!\")");
+    println!("source:{}", source);
     print!("\n");
 
     let ast = ast::construct_ast(source);

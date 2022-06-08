@@ -9,10 +9,13 @@ macro_rules! bool_toggle {
 }
 #[derive(Debug, PartialEq, Clone)]
 enum TokenClass {
-    RoundParen, // ()
-    RectParen,  // []
-    BigParen,   // {}
-    Equal,      // "=" not "=="
+    RoundParenOpen,
+    RoundParenClose,
+    RectParenOpen,
+    RectParenClose,
+    BigParenOpen,
+    BigParenClose,
+    Equal,
     CompareOP,
     ArithOP,
     SelfArithOP, // +=, -=, ...
@@ -33,12 +36,15 @@ impl Default for TokenClass {
 
 trait CharCustomFuncs {
     fn is_alphanumeric_or_underscore(&self) -> bool;
+    fn is_paren(&self) -> bool;
 }
 impl CharCustomFuncs for char {
     fn is_alphanumeric_or_underscore(&self) -> bool {
         self.is_alphanumeric() || *self == '_'
     }
-
+    fn is_paren(&self) -> bool {
+        *self == '(' || *self == ')' || *self == '[' || *self == ']' || *self == '{' || *self == '}'
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -55,15 +61,24 @@ impl Token {
         } else if self.value.chars().nth(0).unwrap().is_numeric() {
             self.class = TokenClass::Number;
             return;
-        } else if self.value.chars().nth(0).unwrap().is_alphanumeric_or_underscore() {
+        } else if self
+            .value
+            .chars()
+            .nth(0)
+            .unwrap()
+            .is_alphanumeric_or_underscore()
+        {
             self.class = TokenClass::Identifier;
             return;
         }
 
         self.class = match self.value.as_str() {
-            "(" | ")" => TokenClass::RoundParen,
-            "[" | "]" => TokenClass::RectParen,
-            "{" | "}" => TokenClass::BigParen,
+            "(" => TokenClass::RoundParenOpen,
+            "[" => TokenClass::RectParenOpen,
+            "{" => TokenClass::BigParenOpen,
+            ")" => TokenClass::RoundParenClose,
+            "]" => TokenClass::RectParenClose,
+            "}" => TokenClass::BigParenClose,
             "=" => TokenClass::Equal,
             "==" | ">" | "<" | ">=" | "<=" | "!=" => TokenClass::CompareOP,
             "+" | "-" | "*" | "/" | "%" => TokenClass::ArithOP,
@@ -131,6 +146,9 @@ fn parse_tokens(source: String) -> Vec<Token> {
             }
             tokens_last!().value.push(ch);
         } else if ch == tokens_last!(last_char) {
+            if ch.is_paren() {
+                new_token!();
+            }
             tokens_last!().value.push(ch);
         } else {
             if !ch.is_whitespace() {
@@ -144,15 +162,16 @@ fn parse_tokens(source: String) -> Vec<Token> {
 }
 
 #[derive(Debug)]
-#[allow(unused)] // temporary
+#[allow(unused)]
 pub enum Expression {
     // Non-Recursive expression
-    Keyword(String),
     Identifier(String),
     NumberLiteral(String),
     StringLiteral(String),
     // Recursive expression
-    FuncCall(String, Vec<Expression>),
+    FuncCall(String, Vec<Expression>), // function name, arguments
+    VarInit(String, Box<Expression>),  // lhs, rhs
+    VarSet(String, Box<Expression>),   // lhs, rhs
 
     Unknown,
 }
@@ -164,12 +183,16 @@ impl Default for Expression {
 
 pub type AST = Vec<Expression>;
 
+#[allow(unused)] // remove before commit
 fn recursive_parse_token(tokens_iter: &mut std::slice::Iter<Token>) -> Option<Expression> {
     let mut token: &Token;
     macro_rules! next {
         () => {
             match tokens_iter.next() {
-                Some(x) => token = x,
+                Some(x) => {
+                    token = x;
+                    println!("next: {:?}", token.value);
+                }
                 None => {
                     return Option::None;
                 }
@@ -177,41 +200,81 @@ fn recursive_parse_token(tokens_iter: &mut std::slice::Iter<Token>) -> Option<Ex
         };
     }
     next!();
-    if token.value == "@" {
-        // function call
+
+    // recursive statements
+    if token.value.as_str() == "(" {
         next!();
-        let name = &token.value;
-        let mut args: Vec<Expression> = Vec::new();
-        loop {
-            if token.value == "." {
-                println!("yes");
-                break;
+        match token.value.as_str() {
+            "let" => {
+                // variable initialize
+                next!();
+                let lhs = &token.value;
+                next!(); // TODO: error if this is not an equal sign
+                match recursive_parse_token(tokens_iter) {
+                    Some(rhs) => {
+                        next!();
+                        return Option::Some(Expression::VarInit(lhs.clone(), Box::new(rhs)))
+                    }
+                    None => return Option::None,
+                };
             }
-            let arg = recursive_parse_token(tokens_iter);
-            match arg {
-                Some(x) => args.push(x),
-                None => break,
+            "set" => {
+                // variable initialize
+                next!();
+                let lhs = &token.value;
+                next!(); // TODO: error if this is not an equal sign
+                match recursive_parse_token(tokens_iter) {
+                    Some(rhs) => {
+                        next!();
+                        return Option::Some(Expression::VarSet(lhs.clone(), Box::new(rhs)))
+                    }
+                    None => return Option::None,
+                };
+            }
+
+            _ => {
+                // function call
+                let name = &token.value;
+                let mut args: Vec<Expression> = Vec::new();
+                loop {
+                    match recursive_parse_token(tokens_iter) {
+                        Some(x) => args.push(x),
+                        None => break,
+                    };
+                }
+                return Option::Some(Expression::FuncCall(name.clone(), args));
             }
         }
-        return Option::Some(Expression::FuncCall(name.clone(), args));
-    }
-    // non-recursive expression
-    match token.class {
-        TokenClass::Number => Option::Some(Expression::NumberLiteral(token.value.parse().unwrap())),
-        TokenClass::String => Option::Some(Expression::StringLiteral(token.value.clone())),
-        TokenClass::Identifier => Option::Some(Expression::Identifier(token.value.clone())),
-        _ => Option::None,
+    } else {
+        // non-recursive expression
+        return match token.class {
+            TokenClass::Number => {
+                Option::Some(Expression::NumberLiteral(token.value.parse().unwrap()))
+            }
+            TokenClass::String => Option::Some(Expression::StringLiteral(token.value.clone())),
+            TokenClass::Identifier => Option::Some(Expression::Identifier(token.value.clone())),
+            TokenClass::RoundParenClose => Option::None,
+            _ => panic!("unidentified symbol"),
+        };
     }
 }
 
 pub fn construct_ast(source: String) -> AST {
     let tokens = parse_tokens(source);
+    for token in &tokens {
+        println!("{:?}, {:?}", token.class, token.value);
+    }
     let mut iter = tokens.iter();
     let mut ast = AST::new();
     loop {
         match recursive_parse_token(&mut iter) {
-            Some(expression) => ast.push(expression),
-            None => break,
+            Some(expression) => {
+                println!("end of expression: {:?}", expression);
+                ast.push(expression);
+            }
+            None => {
+                break;
+            }
         }
     }
     ast
