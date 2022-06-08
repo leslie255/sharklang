@@ -1,3 +1,12 @@
+macro_rules! bool_toggle {
+    ($value: expr) => {
+        if $value {
+            $value = false
+        } else {
+            $value = true
+        }
+    };
+}
 #[derive(Debug, PartialEq, Clone)]
 enum TokenClass {
     RoundParen, // ()
@@ -9,7 +18,6 @@ enum TokenClass {
     SelfArithOP, // +=, -=, ...
     BoolOP,
     Semicolon,
-    Comment,
     Number,
     String,
     Identifier,
@@ -51,77 +59,63 @@ impl Token {
             "+=" | "-=" | "*=" | "/=" | "%=" => TokenClass::SelfArithOP,
             "!" | "&&" | "||" | "" => TokenClass::BoolOP,
             ";" => TokenClass::Semicolon,
-            "//" | "/*" | "*/" => TokenClass::Comment,
-            _ => TokenClass::Unknown,
-        }
+            _ => self.class.clone(),
+        };
     }
 }
 
 fn parse_tokens(source: String) -> Vec<Token> {
-    let mut tokens: Vec<Token> = vec![Token::default()];
-    let mut i = 0;
-    while i < source.chars().count() {
-        let mut ch = source.chars().nth(i).unwrap();
-        let current_token = tokens.last_mut().unwrap();
-        if !ch.is_whitespace() {
-            if current_token.value.is_empty() {
-                current_token.value.push(ch);
-            } else if current_token.value == "\"" {
-                current_token.class = TokenClass::String;
-                while ch != '\"' {
-                    println!("{}", ch);
-                    ch = source.chars().nth(i).unwrap();
-                    if ch == '\"' {
-                        break;
-                    }
-                    current_token.value.push(ch);
-                    i += 1;
-                }
-                continue;
-            } else if current_token
+    let mut tokens: Vec<Token> = Vec::new();
+    macro_rules! tokens_last {
+        () => {
+            tokens.last_mut().unwrap()
+        };
+        (last_char) => {
+            tokens
+                .last()
+                .unwrap()
                 .value
                 .chars()
-                .nth(current_token.value.len() - 1)
-                .unwrap()
-                .is_alphanumeric()
-                == ch.is_alphanumeric()
-            {
-                if ch == ';' {
-                    tokens.push(Token {
-                        class: TokenClass::Semicolon,
-                        value: String::from(';'),
-                    });
-                    tokens.push(Token::default());
-                    continue;
-                } else {
-                    current_token.value.push(ch);
-                }
-            } else {
-                tokens.push(Token {
-                    class: TokenClass::Unknown,
-                    value: String::from(ch),
-                });
+                .last()
+                .unwrap_or_default()
+        };
+    }
+    tokens.push(Token::default());
+    let mut is_inside_string = false;
+    for ch in source.chars() {
+        if ch == '"' {
+            bool_toggle!(is_inside_string);
+            if is_inside_string {
+                tokens.push(Token::default());
+                tokens_last!().class = TokenClass::String;
             }
-        } else if !source
-            .chars()
-            .nth(i.saturating_sub(1))
-            .unwrap_or_else(|| ' ')
-            .is_whitespace()
-        {
-            tokens.push(Token::default());
+            continue;
         }
-        let last_token = &mut tokens.last_mut().unwrap();
-        if last_token.value.is_empty() {
-            last_token.value = String::from("");
+        if is_inside_string {
+            // TODO: string escape \
+            tokens_last!().value.push(ch);
+            continue;
+        }
+        if ch.is_alphanumeric() {
+            if !tokens_last!(last_char).is_alphanumeric() {
+                tokens.push(Token::default());
+            }
+            tokens_last!().value.push(ch);
+        } else if ch == tokens_last!(last_char) {
+            tokens_last!().value.push(ch);
         } else {
-            last_token.determine_type();
+            if !ch.is_whitespace() {
+                tokens.push(Token::default());
+                tokens_last!().value.push(ch);
+            }
         }
-        i += 1;
+        tokens_last!().determine_type();
     }
     tokens
 }
 
 #[derive(Debug)]
+#[allow(unused)] // temporary
 pub enum Expression {
     // Non-Recursive expression
     Keyword(String),
@@ -141,28 +135,14 @@ impl Default for Expression {
 
 pub type AST = Vec<Expression>;
 
+#[allow(unused)] // temporary
 fn parse_non_recursive_token(tokens: Vec<Token>, i: &mut usize) -> Expression {
     macro_rules! token {
         (current) => {
             tokens.get(*i).unwrap()
         };
     }
-    if token!(current).value == "\"" {
-        let mut expr = Expression::StringLiteral(String::from(""));
-        while *i < tokens.len() {
-            if token!(current).value == "\"" {
-                break;
-            }
-            match expr {
-                Expression::StringLiteral(ref mut str) => {
-                    str.push_str(&token!(current).value.clone());
-                }
-                _ => {}
-            }
-            *i += 1;
-        }
-        expr
-    } else if token!(current).class == TokenClass::Number {
+    if token!(current).class == TokenClass::Number {
         let num = token!(current).value.parse().unwrap_or_default();
         *i += 1;
         Expression::NumberLiteral(num)
@@ -172,7 +152,7 @@ fn parse_non_recursive_token(tokens: Vec<Token>, i: &mut usize) -> Expression {
     }
 }
 
-fn recursive_parse_expr(ast: &mut AST, tokens: Vec<Token>, i: &mut usize) {
+fn _recursive_parse_expr(ast: &mut AST, tokens: Vec<Token>, i: &mut usize) {
     let default_token = Token::default();
     macro_rules! token {
         (current) => {
@@ -208,8 +188,11 @@ fn recursive_parse_expr(ast: &mut AST, tokens: Vec<Token>, i: &mut usize) {
 
 pub fn construct_ast(source: String) -> AST {
     let tokens = parse_tokens(source);
-    let mut ast: AST = Vec::new();
-    let mut i = 0;
-    recursive_parse_expr(&mut ast, tokens, &mut i);
-    ast
+    for token in tokens {
+        println!("{:?}\n{:?}", token.value, token.class);
+    }
+    //    let mut ast = AST::new();
+    //    let mut i = 0;
+    //    recursive_parse_expr(&mut ast, tokens, &mut i);
+    return AST::new();
 }
