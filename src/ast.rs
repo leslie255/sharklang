@@ -31,6 +31,16 @@ impl Default for TokenClass {
     }
 }
 
+trait CharCustomFuncs {
+    fn is_alphanumeric_or_underscore(&self) -> bool;
+}
+impl CharCustomFuncs for char {
+    fn is_alphanumeric_or_underscore(&self) -> bool {
+        self.is_alphanumeric() || *self == '_'
+    }
+
+}
+
 #[derive(Debug, Default, Clone)]
 struct Token {
     pub class: TokenClass,
@@ -45,7 +55,7 @@ impl Token {
         } else if self.value.chars().nth(0).unwrap().is_numeric() {
             self.class = TokenClass::Number;
             return;
-        } else if self.value.chars().nth(0).unwrap().is_alphanumeric() {
+        } else if self.value.chars().nth(0).unwrap().is_alphanumeric_or_underscore() {
             self.class = TokenClass::Identifier;
             return;
         }
@@ -115,8 +125,8 @@ fn parse_tokens(source: String) -> Vec<Token> {
         }
         if ch.is_whitespace() {
             new_token!();
-        } else if ch.is_alphanumeric() {
-            if !tokens_last!(last_char).is_alphanumeric() {
+        } else if ch.is_alphanumeric_or_underscore() {
+            if !tokens_last!(last_char).is_alphanumeric_or_underscore() {
                 new_token!();
             }
             tokens_last!().value.push(ch);
@@ -154,52 +164,55 @@ impl Default for Expression {
 
 pub type AST = Vec<Expression>;
 
-fn parse_single_expression(token: &Token) -> Expression {
-    match token.class {
-        TokenClass::Number => Expression::NumberLiteral(token.value.parse().unwrap()),
-        TokenClass::String => Expression::StringLiteral(token.value.clone()),
-        TokenClass::Identifier => Expression::Identifier(token.value.clone()),
-        _ => Expression::Unknown,
-    }
-}
-
-fn recursive_parse_token(ast: &mut AST, tokens: Vec<Token>, i: &mut usize) {
-    let mut tokens_iter = tokens.iter().skip(*i);
+fn recursive_parse_token(tokens_iter: &mut std::slice::Iter<Token>) -> Option<Expression> {
     let mut token: &Token;
     macro_rules! next {
         () => {
-            token = match tokens_iter.next() {
-                Some(x) => x,
-                None => break,
+            match tokens_iter.next() {
+                Some(x) => token = x,
+                None => {
+                    return Option::None;
+                }
             }
         };
     }
-    loop {
+    next!();
+    if token.value == "@" {
+        // function call
         next!();
-        if token.value == "@" {
-            // function call
-            next!();
-            let name = &token.value;
-            let mut args: Vec<Expression> = Vec::new();
-            loop {
-                next!();
-                if token.class == TokenClass::Period {
-                    break;
-                }
-                args.push(parse_single_expression(token));
+        let name = &token.value;
+        let mut args: Vec<Expression> = Vec::new();
+        loop {
+            if token.value == "." {
+                println!("yes");
+                break;
             }
-            ast.push(Expression::FuncCall(name.clone(), args));
+            let arg = recursive_parse_token(tokens_iter);
+            match arg {
+                Some(x) => args.push(x),
+                None => break,
+            }
         }
+        return Option::Some(Expression::FuncCall(name.clone(), args));
+    }
+    // non-recursive expression
+    match token.class {
+        TokenClass::Number => Option::Some(Expression::NumberLiteral(token.value.parse().unwrap())),
+        TokenClass::String => Option::Some(Expression::StringLiteral(token.value.clone())),
+        TokenClass::Identifier => Option::Some(Expression::Identifier(token.value.clone())),
+        _ => Option::None,
     }
 }
 
 pub fn construct_ast(source: String) -> AST {
     let tokens = parse_tokens(source);
-    for token in &tokens {
-        println!("{:?}", token.value);
-    }
+    let mut iter = tokens.iter();
     let mut ast = AST::new();
-    let mut i = 0;
-    recursive_parse_token(&mut ast, tokens, &mut i);
-    return ast;
+    loop {
+        match recursive_parse_token(&mut iter) {
+            Some(expression) => ast.push(expression),
+            None => break,
+        }
+    }
+    ast
 }

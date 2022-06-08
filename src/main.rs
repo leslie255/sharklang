@@ -13,8 +13,8 @@ fn _input() -> String {
 fn main() {
     println!("{}", '\n'.is_whitespace());
     let source = String::from("
-@print \"hello world!\".
-@add 1 2.");
+@add 1 @minus 4 2.
+@print @str_cat \"hello \" \"world\".");
     println!("source:\n{}", source);
     print!("\n");
 
