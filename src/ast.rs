@@ -18,6 +18,7 @@ enum TokenClass {
     SelfArithOP, // +=, -=, ...
     BoolOP,
     Semicolon,
+    Period, // .
     Number,
     String,
     Identifier,
@@ -59,12 +60,14 @@ impl Token {
             "+=" | "-=" | "*=" | "/=" | "%=" => TokenClass::SelfArithOP,
             "!" | "&&" | "||" | "" => TokenClass::BoolOP,
             ";" => TokenClass::Semicolon,
+            "." => TokenClass::Period,
             _ => self.class.clone(),
         };
     }
 }
 
 fn parse_tokens(source: String) -> Vec<Token> {
+    // TODO: add line & column number for each token
     let mut tokens: Vec<Token> = Vec::new();
     macro_rules! tokens_last {
         () => {
@@ -80,13 +83,27 @@ fn parse_tokens(source: String) -> Vec<Token> {
                 .unwrap_or_default()
         };
     }
-    tokens.push(Token::default());
+    macro_rules! new_token {
+        // create a new token is the last one is empty
+        () => {
+            match tokens.last() {
+                Some(last_token) => {
+                    if !last_token.value.is_empty() {
+                        tokens.push(Token::default());
+                    }
+                }
+                None => {
+                    tokens.push(Token::default());
+                }
+            }
+        };
+    }
     let mut is_inside_string = false;
     for ch in source.chars() {
         if ch == '"' {
             bool_toggle!(is_inside_string);
             if is_inside_string {
-                tokens.push(Token::default());
+                new_token!();
                 tokens_last!().class = TokenClass::String;
             }
             continue;
@@ -96,16 +113,18 @@ fn parse_tokens(source: String) -> Vec<Token> {
             tokens_last!().value.push(ch);
             continue;
         }
-        if ch.is_alphanumeric() {
+        if ch.is_whitespace() {
+            new_token!();
+        } else if ch.is_alphanumeric() {
             if !tokens_last!(last_char).is_alphanumeric() {
-                tokens.push(Token::default());
+                new_token!();
             }
             tokens_last!().value.push(ch);
         } else if ch == tokens_last!(last_char) {
             tokens_last!().value.push(ch);
         } else {
             if !ch.is_whitespace() {
-                tokens.push(Token::default());
+                new_token!();
                 tokens_last!().value.push(ch);
             }
         }
@@ -135,64 +154,52 @@ impl Default for Expression {
 
 pub type AST = Vec<Expression>;
 
-#[allow(unused)] // temporary
-fn parse_non_recursive_token(tokens: Vec<Token>, i: &mut usize) -> Expression {
-    macro_rules! token {
-        (current) => {
-            tokens.get(*i).unwrap()
-        };
-    }
-    if token!(current).class == TokenClass::Number {
-        let num = token!(current).value.parse().unwrap_or_default();
-        *i += 1;
-        Expression::NumberLiteral(num)
-    } else {
-        *i += 1;
-        Expression::Unknown
+fn parse_single_expression(token: &Token) -> Expression {
+    match token.class {
+        TokenClass::Number => Expression::NumberLiteral(token.value.parse().unwrap()),
+        TokenClass::String => Expression::StringLiteral(token.value.clone()),
+        TokenClass::Identifier => Expression::Identifier(token.value.clone()),
+        _ => Expression::Unknown,
     }
 }
 
-fn _recursive_parse_expr(ast: &mut AST, tokens: Vec<Token>, i: &mut usize) {
-    let default_token = Token::default();
-    macro_rules! token {
-        (current) => {
-            tokens.get(*i).unwrap()
-        };
-        ($i: expr) => {
-            tokens.get($i).unwrap_or(&default_token)
+fn recursive_parse_token(ast: &mut AST, tokens: Vec<Token>, i: &mut usize) {
+    let mut tokens_iter = tokens.iter().skip(*i);
+    let mut token: &Token;
+    macro_rules! next {
+        () => {
+            token = match tokens_iter.next() {
+                Some(x) => x,
+                None => break,
+            }
         };
     }
-    while *i < tokens.len() {
-        if token!(*i + 1).value == String::from("(")
-            && token!(current).class == TokenClass::Identifier
-        {
-            let expr = Expression::FuncCall(token!(current).value.clone(), {
-                *i += 2;
-                let mut args: Vec<Expression> = Vec::new();
-                while *i < tokens.len() {
-                    if token!(current).value == String::from(")") {
-                        break;
-                    } else if token!(current).value == String::from(",") {
-                        *i += 1;
-                        continue;
-                    }
-                    args.push(parse_non_recursive_token(tokens.clone(), i));
+    loop {
+        next!();
+        if token.value == "@" {
+            // function call
+            next!();
+            let name = &token.value;
+            let mut args: Vec<Expression> = Vec::new();
+            loop {
+                next!();
+                if token.class == TokenClass::Period {
+                    break;
                 }
-                args
-            });
-            ast.push(expr);
+                args.push(parse_single_expression(token));
+            }
+            ast.push(Expression::FuncCall(name.clone(), args));
         }
-        *i += 1;
     }
 }
 
 pub fn construct_ast(source: String) -> AST {
     let tokens = parse_tokens(source);
-    for token in tokens {
-        println!("{:?}\n{:?}", token.value, token.class);
+    for token in &tokens {
+        println!("{:?}", token.value);
     }
-    //    let mut ast = AST::new();
-    //    let mut i = 0;
-    //    recursive_parse_expr(&mut ast, tokens, &mut i);
-    return AST::new();
+    let mut ast = AST::new();
+    let mut i = 0;
+    recursive_parse_token(&mut ast, tokens, &mut i);
+    return ast;
 }

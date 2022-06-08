@@ -13,11 +13,11 @@ fn _input() -> String {
 fn main() {
     println!("{}", '\n'.is_whitespace());
     let source = String::from("
-(print) \"hello world!\";
-(add) 1 2;");
+@print \"hello world!\".
+@add 1 2.");
     println!("source:\n{}", source);
     print!("\n");
 
     let ast = ast::construct_ast(source);
-    //println!("{:#?}", ast);
+    println!("{:#?}", ast);
 }
