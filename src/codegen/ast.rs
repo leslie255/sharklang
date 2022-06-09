@@ -152,7 +152,13 @@ fn parse_tokens(source: String) -> Vec<Token> {
         }
         tokens_last!().determine_type();
     }
-    tokens
+    let mut filtered: Vec<Token> = Vec::new();
+    tokens.iter().for_each(|token| {
+        if !token.value.is_empty() {
+            filtered.push(token.clone());
+        }
+    });
+    filtered
 }
 
 #[derive(Debug)]
@@ -246,7 +252,7 @@ fn recursive_parse_token(tokens_iter: &mut std::slice::Iter<Token>) -> Option<Ex
             TokenClass::String => Option::Some(Expression::StringLiteral(token.value.clone())),
             TokenClass::Identifier => Option::Some(Expression::Identifier(token.value.clone())),
             TokenClass::RoundParenClose => Option::None,
-            _ => panic!("unidentified symbol"),
+            _ => panic!("unidentified symbol {:?}", token.value),
         };
     }
 }

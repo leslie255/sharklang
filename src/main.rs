@@ -1,3 +1,5 @@
+use std::env;
+use std::fs;
 use std::io;
 
 mod codegen;
@@ -11,9 +13,12 @@ fn _input() -> String {
 }
 
 fn main() {
-    let source = String::from("(print \"hello\")
-(add 1 2)
-(print \"world\")");
+    let args: Vec<String> = env::args().collect();
+    let src_file = args
+        .get(1)
+        .expect("no source code supplied");
+    let source = fs::read_to_string(src_file)
+        .expect("cannot read file");
 
-    println!("{}", codegen::codegen(source));
+    println!("{}", codegen::codegen(source.to_string()));
 }
