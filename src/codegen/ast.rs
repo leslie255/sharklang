@@ -99,13 +99,10 @@ fn parse_tokens(source: String) -> Vec<Token> {
             tokens.last_mut().unwrap()
         };
         (last_char) => {
-            tokens
-                .last()
-                .unwrap()
-                .value
-                .chars()
-                .last()
-                .unwrap_or_default()
+            match tokens.last() {
+                Some(token) => token.value.chars().last().unwrap_or_default(),
+                None => '\0',
+            }
         };
     }
     macro_rules! new_token {
@@ -145,10 +142,7 @@ fn parse_tokens(source: String) -> Vec<Token> {
                 new_token!();
             }
             tokens_last!().value.push(ch);
-        } else if ch == tokens_last!(last_char) {
-            if ch.is_paren() {
-                new_token!();
-            }
+        } else if ch == tokens_last!(last_char) && !ch.is_paren() {
             tokens_last!().value.push(ch);
         } else {
             if !ch.is_whitespace() {
@@ -162,11 +156,10 @@ fn parse_tokens(source: String) -> Vec<Token> {
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub enum Expression {
     // Non-Recursive expression
     Identifier(String),
-    NumberLiteral(String),
+    NumberLiteral(u64),
     StringLiteral(String),
     // Recursive expression
     FuncCall(String, Vec<Expression>), // function name, arguments
@@ -183,7 +176,7 @@ impl Default for Expression {
 
 pub type AST = Vec<Expression>;
 
-#[allow(unused)] // remove before commit
+#[allow(unused)] // rustc wtf?
 fn recursive_parse_token(tokens_iter: &mut std::slice::Iter<Token>) -> Option<Expression> {
     let mut token: &Token;
     macro_rules! next {
@@ -191,7 +184,6 @@ fn recursive_parse_token(tokens_iter: &mut std::slice::Iter<Token>) -> Option<Ex
             match tokens_iter.next() {
                 Some(x) => {
                     token = x;
-                    println!("next: {:?}", token.value);
                 }
                 None => {
                     return Option::None;
@@ -213,7 +205,7 @@ fn recursive_parse_token(tokens_iter: &mut std::slice::Iter<Token>) -> Option<Ex
                 match recursive_parse_token(tokens_iter) {
                     Some(rhs) => {
                         next!();
-                        return Option::Some(Expression::VarInit(lhs.clone(), Box::new(rhs)))
+                        return Option::Some(Expression::VarInit(lhs.clone(), Box::new(rhs)));
                     }
                     None => return Option::None,
                 };
@@ -226,7 +218,7 @@ fn recursive_parse_token(tokens_iter: &mut std::slice::Iter<Token>) -> Option<Ex
                 match recursive_parse_token(tokens_iter) {
                     Some(rhs) => {
                         next!();
-                        return Option::Some(Expression::VarSet(lhs.clone(), Box::new(rhs)))
+                        return Option::Some(Expression::VarSet(lhs.clone(), Box::new(rhs)));
                     }
                     None => return Option::None,
                 };
@@ -261,15 +253,11 @@ fn recursive_parse_token(tokens_iter: &mut std::slice::Iter<Token>) -> Option<Ex
 
 pub fn construct_ast(source: String) -> AST {
     let tokens = parse_tokens(source);
-    for token in &tokens {
-        println!("{:?}, {:?}", token.class, token.value);
-    }
     let mut iter = tokens.iter();
     let mut ast = AST::new();
     loop {
         match recursive_parse_token(&mut iter) {
             Some(expression) => {
-                println!("end of expression: {:?}", expression);
                 ast.push(expression);
             }
             None => {

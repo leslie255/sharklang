@@ -1,6 +1,6 @@
 use std::io;
 
-mod ast;
+mod codegen;
 
 fn _input() -> String {
     let mut input_str = String::new();
@@ -10,16 +10,10 @@ fn _input() -> String {
     input_str
 }
 
-#[allow(unused)]
 fn main() {
-    let source = String::from("
-(let a = 2)
-(set a = 3)
-(add 2 (minus 2 3))
-(print \"hello world!\")");
-    println!("source:{}", source);
-    print!("\n");
+    let source = String::from("(print \"hello\")
+(add 1 2)
+(print \"world\")");
 
-    let ast = ast::construct_ast(source);
-    println!("{:#?}", ast);
+    println!("{}", codegen::codegen(source));
 }
