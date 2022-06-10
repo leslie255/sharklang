@@ -1,5 +1,4 @@
-#![allow(unused)] // temporary
-mod ast;
+pub mod ast;
 use std::collections::HashMap;
 
 static mut LAST_RAND: u64 = 0;
@@ -15,21 +14,58 @@ fn quick_rand(str: &str) -> u64 {
     hash
 }
 
+pub fn flatten_ast(old: &ast::AST, new: &mut ast::AST) {
+    for node in old.iter() {
+        if !node.is_recursive(old) {
+            new.push(node.clone());
+            continue;
+        }
+        match &node.expr {
+            ast::Expression::FuncCall(name, args) => {
+                let mut new_args: Vec<usize> = Vec::new();
+                for arg in args {
+                    if !old.get(*arg).unwrap().is_recursive_type() {
+                        new_args.push(*arg);
+                        continue;
+                    }
+                    // add a new VarInit(name_1385545, FuncCall(...)) before this FuncCall
+                    // statement
+                    let lhs = format!("temp_{}", quick_rand(name.as_str()));
+                    new.push(ast::ASTNode {
+                        expr: ast::Expression::VarInit(lhs, *arg),
+                        parent: node.parent,
+                    });
+                    new_args.push(new.len() - 1);
+                }
+                new.push(ast::ASTNode {
+                    expr: ast::Expression::FuncCall(name.clone(), new_args),
+                    parent: node.parent,
+                });
+            }
+            _ => {
+                todo!()
+            }
+        }
+    }
+}
+
 static FUNCTION_PROLOG: &str = "\tpush\trbp\n\n";
+#[allow(dead_code)]
 static FUNCTION_EPILOG: &str = "\n\tpop\trbp\n\tret\n";
 fn func_epilog_ret(ret_value: u64) -> String {
     format!("\n\tpop\trbp\n\tmov\trax, {}\n\tret\n", ret_value)
 }
 pub fn codegen(source: String) -> String {
-    let ast = ast::construct_ast(source);
+    let raw_ast = ast::construct_ast(source);
+    let mut ast = ast::AST::new();
+    flatten_ast(&raw_ast, &mut ast);
 
     let mut code_externs = String::new();
     let mut existing_externs: HashMap<&str, bool> = HashMap::new();
     let mut code_data_sect = String::from("\tsection .data\n");
     let mut code_text_sect = String::from("\tsection .text\n");
-    ast.iter()
-        .enumerate()
-        .for_each(|(i, node)| match &node.expr {
+    for (i, node) in ast.iter().enumerate() {
+        match &node.expr {
             ast::Expression::NumberLiteral(num) => {
                 code_data_sect.push_str(format!("numliteral_{}:\t{}\n", i, num).as_str());
             }
@@ -43,7 +79,9 @@ pub fn codegen(source: String) -> String {
                 }
             }
             _ => {}
-        });
+        }
+    }
+
     // right now there's only one function main
     code_text_sect.push_str("\tglobal _main\n_main:\n");
     code_text_sect.push_str(FUNCTION_PROLOG);
@@ -68,8 +106,5 @@ pub fn codegen(source: String) -> String {
 
     code_text_sect.push_str(func_epilog_ret(0).as_str());
 
-    format!(
-        "\n{}\n{}\n{}",
-        code_externs, code_data_sect, code_text_sect
-    )
+    format!("\n{}\n{}\n{}", code_externs, code_data_sect, code_text_sect)
 }

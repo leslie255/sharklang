@@ -167,7 +167,7 @@ fn parse_tokens(source: String) -> Vec<Token> {
     filtered
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression {
     // Non-Recursive expression
     Identifier(String),
@@ -185,13 +185,37 @@ impl Default for Expression {
         return Expression::Unknown;
     }
 }
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ASTNode {
     pub expr: Expression,
-    parent: usize, // using u64_max!() as the parent means it's a root node
+    pub parent: usize, // using u64_max!() as the parent means it's a root node
 }
-
 pub type AST = Vec<ASTNode>;
+impl ASTNode {
+    pub fn is_recursive_type(&self) -> bool {
+        match self.expr {
+            Expression::VarInit(_, _) => true,
+            Expression::VarSet(_, _) => true,
+            Expression::FuncCall(_, _) => true,
+            _ => false,
+        }
+    }
+    pub fn is_recursive(&self, tree: &AST) -> bool {
+        match &self.expr {
+            Expression::VarInit(_, rhs) => tree.get(*rhs).unwrap().is_recursive(tree),
+            Expression::VarSet(_, rhs) => tree.get(*rhs).unwrap().is_recursive(tree),
+            Expression::FuncCall(_, args) => {
+                for arg in args.iter() {
+                    if tree.get(*arg).unwrap().is_recursive_type() {
+                        return true;
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+}
 
 impl std::fmt::Debug for ASTNode {
     fn fmt(&self, format: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -199,6 +223,7 @@ impl std::fmt::Debug for ASTNode {
     }
 }
 
+#[allow(unused_assignments)] // rustc wtf??
 fn recursive_parse_token(
     tree: &mut AST,
     current: usize,
@@ -300,7 +325,7 @@ pub fn construct_ast(source: String) -> AST {
     loop {
         match recursive_parse_token(&mut ast, u64_max!(), &mut iter) {
             None => break,
-            _ => {},
+            _ => {}
         }
     }
     ast

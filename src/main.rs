@@ -14,11 +14,7 @@ fn _input() -> String {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let src_file = args
-        .get(1)
-        .expect("no source code supplied");
-    let source = fs::read_to_string(src_file)
-        .expect("cannot read file");
-
+    let src_file = args.get(1).expect("expects at least 1 arguments");
+    let source = fs::read_to_string(src_file).expect("cannot read file");
     println!("{}", codegen::codegen(source.to_string()));
 }
