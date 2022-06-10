@@ -1,3 +1,4 @@
+#![allow(unused)] // temporary
 macro_rules! bool_toggle {
     ($value: expr) => {
         if $value {
@@ -5,6 +6,12 @@ macro_rules! bool_toggle {
         } else {
             $value = true
         }
+    };
+}
+
+macro_rules! u64_max {
+    () => {
+        9223372036854775807
     };
 }
 #[derive(Debug, PartialEq, Clone)]
@@ -168,9 +175,9 @@ pub enum Expression {
     NumberLiteral(u64),
     StringLiteral(String),
     // Recursive expression
-    FuncCall(String, Vec<Expression>), // function name, arguments
-    VarInit(String, Box<Expression>),  // lhs, rhs
-    VarSet(String, Box<Expression>),   // lhs, rhs
+    FuncCall(String, Vec<usize>), // function name, arguments
+    VarInit(String, usize),       // lhs, rhs
+    VarSet(String, usize),        // lhs, rhs
 
     Unknown,
 }
@@ -179,81 +186,112 @@ impl Default for Expression {
         return Expression::Unknown;
     }
 }
+#[derive(Default)]
+pub struct ASTNode {
+    pub expr: Expression,
+    parent: usize, // using u64_max!() as the parent means it's a root node
+}
 
-pub type AST = Vec<Expression>;
+pub type AST = Vec<ASTNode>;
 
-#[allow(unused)] // rustc wtf?
-fn recursive_parse_token(tokens_iter: &mut std::slice::Iter<Token>) -> Option<Expression> {
+impl std::fmt::Debug for ASTNode {
+    fn fmt(&self, format: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        self.expr.fmt(format)
+    }
+}
+
+fn recursive_parse_token(
+    tree: &mut AST,
+    current: usize,
+    tokens_iter: &mut std::slice::Iter<Token>,
+) -> Option<usize> {
     let mut token: &Token;
     macro_rules! next {
         () => {
             match tokens_iter.next() {
                 Some(x) => {
                     token = x;
+                    println!("next: {:?}", token)
                 }
-                None => {
-                    return Option::None;
-                }
+                None => return None,
             }
+        };
+    }
+    macro_rules! new_node {
+        ($node: expr) => {
+            tree.push($node)
+        };
+    }
+    macro_rules! new_node_from_expr {
+        ($expression: expr) => {
+            tree.push(ASTNode {
+                expr: $expression,
+                parent: current,
+            })
         };
     }
     next!();
 
-    // recursive statements
+    // recursive statement
     if token.value.as_str() == "(" {
         next!();
         match token.value.as_str() {
             "let" => {
-                // variable initialize
+                // variable initilize
                 next!();
                 let lhs = &token.value;
                 next!(); // TODO: error if this is not an equal sign
-                match recursive_parse_token(tokens_iter) {
+                match recursive_parse_token(tree, current, tokens_iter) {
                     Some(rhs) => {
                         next!();
-                        return Option::Some(Expression::VarInit(lhs.clone(), Box::new(rhs)));
+                        new_node_from_expr!(Expression::VarInit(lhs.clone(), rhs));
+                        Some(tree.len() - 1)
                     }
-                    None => return Option::None,
-                };
+                    None => panic!("unexpected token: {:?}", &token.value),
+                }
             }
             "set" => {
-                // variable initialize
+                // variable set
                 next!();
                 let lhs = &token.value;
                 next!(); // TODO: error if this is not an equal sign
-                match recursive_parse_token(tokens_iter) {
+                match recursive_parse_token(tree, current, tokens_iter) {
                     Some(rhs) => {
                         next!();
-                        return Option::Some(Expression::VarSet(lhs.clone(), Box::new(rhs)));
+                        new_node_from_expr!(Expression::VarSet(lhs.clone(), rhs));
+                        Some(tree.len() - 1)
                     }
-                    None => return Option::None,
-                };
+                    None => panic!("unexpected token: {:?}", &token.value),
+                }
             }
-
             _ => {
                 // function call
                 let name = &token.value;
-                let mut args: Vec<Expression> = Vec::new();
+                let mut args: Vec<usize> = Vec::new();
                 loop {
-                    match recursive_parse_token(tokens_iter) {
-                        Some(x) => args.push(x),
+                    match recursive_parse_token(tree, current, tokens_iter) {
+                        Some(arg) => args.push(arg),
                         None => break,
-                    };
+                    }
                 }
-                return Option::Some(Expression::FuncCall(name.clone(), args));
+                new_node_from_expr!(Expression::FuncCall(name.clone(), args));
+                Some(tree.len() - 1)
             }
         }
     } else {
-        // non-recursive expression
-        return match token.class {
-            TokenClass::Number => {
-                Option::Some(Expression::NumberLiteral(token.value.parse().unwrap()))
-            }
-            TokenClass::String => Option::Some(Expression::StringLiteral(token.value.clone())),
-            TokenClass::Identifier => Option::Some(Expression::Identifier(token.value.clone())),
-            TokenClass::RoundParenClose => Option::None,
-            _ => panic!("unidentified symbol {:?}", token.value),
-        };
+        if token.value == ")" {
+            return None;
+        }
+        new_node!(ASTNode {
+            expr: match token.class {
+                TokenClass::Number => Expression::NumberLiteral(token.value.parse().unwrap()),
+                TokenClass::String => Expression::StringLiteral(token.value.clone()),
+                TokenClass::Identifier => Expression::Identifier(token.value.clone()),
+                _ => panic!("unexpected token: {:?}", token.value),
+            },
+            parent: current,
+        });
+        Some(tree.len() - 1)
     }
 }
 
@@ -262,13 +300,9 @@ pub fn construct_ast(source: String) -> AST {
     let mut iter = tokens.iter();
     let mut ast = AST::new();
     loop {
-        match recursive_parse_token(&mut iter) {
-            Some(expression) => {
-                ast.push(expression);
-            }
-            None => {
-                break;
-            }
+        match recursive_parse_token(&mut ast, u64_max!(), &mut iter) {
+            None => break,
+            _ => {},
         }
     }
     ast
