@@ -1,6 +1,15 @@
 pub mod ast;
 use std::collections::HashMap;
 
+#[allow(unused_macros)]
+macro_rules! print_ast {
+    ($ast: expr) => {
+        for (i, node) in $ast.iter().enumerate() {
+            println!("{}: {:?}", i, node);
+        }
+    };
+}
+
 static mut LAST_RAND: u64 = 0;
 fn quick_rand(str: &str) -> u64 {
     let mut hash: u64 = 0;
@@ -14,8 +23,18 @@ fn quick_rand(str: &str) -> u64 {
     hash
 }
 
-pub fn flatten_ast(old: &ast::AST, new: &mut ast::AST) {
-    for node in old.iter() {
+pub fn flatten_ast(old: &ast::AST, iter: &mut std::slice::Iter<ast::ASTNode>, new: &mut ast::AST) {
+    let mut node: &ast::ASTNode;
+    macro_rules! next {
+        () => {
+            match iter.next() {
+                Some(x) => {node = x},
+                None => return,
+            }
+        };
+    }
+    loop {
+        next!();
         if !node.is_recursive(old) {
             new.push(node.clone());
             continue;
@@ -28,14 +47,21 @@ pub fn flatten_ast(old: &ast::AST, new: &mut ast::AST) {
                         new_args.push(*arg);
                         continue;
                     }
+                    if old.get(*arg).unwrap().is_recursive(old) {
+                        flatten_ast(old, iter, new);
+                    }
                     // add a new VarInit(name_1385545, FuncCall(...)) before this FuncCall
                     // statement
-                    let lhs = format!("temp_{}", quick_rand(name.as_str()));
+                    let var_name = format!("temp_{}", quick_rand(name.as_str()));
+                    new_args.push(new.len());
                     new.push(ast::ASTNode {
-                        expr: ast::Expression::VarInit(lhs, *arg),
-                        parent: node.parent,
+                        expr: ast::Expression::Identifier(var_name.clone()),
+                        parent: node.parent.clone(),
                     });
-                    new_args.push(new.len() - 1);
+                    new.push(ast::ASTNode {
+                        expr: ast::Expression::VarInit(var_name.clone(), *arg),
+                        parent: node.parent.clone(),
+                    });
                 }
                 new.push(ast::ASTNode {
                     expr: ast::Expression::FuncCall(name.clone(), new_args),
@@ -58,7 +84,7 @@ fn func_epilog_ret(ret_value: u64) -> String {
 pub fn codegen(source: String) -> String {
     let raw_ast = ast::construct_ast(source);
     let mut ast = ast::AST::new();
-    flatten_ast(&raw_ast, &mut ast);
+    flatten_ast(&raw_ast, &mut raw_ast.iter(), &mut ast);
 
     let mut code_externs = String::new();
     let mut existing_externs: HashMap<&str, bool> = HashMap::new();
@@ -105,6 +131,7 @@ pub fn codegen(source: String) -> String {
     });
 
     code_text_sect.push_str(func_epilog_ret(0).as_str());
+    //print_ast!(ast);
 
     format!("\n{}\n{}\n{}", code_externs, code_data_sect, code_text_sect)
 }
