@@ -1,4 +1,3 @@
-#![allow(unused)] // temporary
 macro_rules! bool_toggle {
     ($value: expr) => {
         if $value {
@@ -211,7 +210,6 @@ fn recursive_parse_token(
             match tokens_iter.next() {
                 Some(x) => {
                     token = x;
-                    println!("next: {:?}", token)
                 }
                 None => return None,
             }
