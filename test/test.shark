@@ -1,2 +1,5 @@
-(print_int 10)
+(let a = 42)
+(let b = a)
+(print_int a)
+(print_int b)
 

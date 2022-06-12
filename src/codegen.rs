@@ -132,7 +132,9 @@ pub fn codegen(source: String) -> String {
                 code_data_sect.push_str(format!("strliteral_{}:\tdb \"{}\", 0\n", i, str).as_str());
             }
             ast::Expression::FuncCall(name, _) => {
-                if name == "print" || name == "print_int" && !existing_externs.contains_key("_printf") {
+                if name == "print"
+                    || name == "print_int" && !existing_externs.contains_key("_printf")
+                {
                     code_externs.push_str("\textern\t_printf\n");
                     code_data_sect.push_str("printint_fmt:\tdb \"%d\", 0x0a\n");
                     existing_externs.insert("_printf", true);
@@ -161,12 +163,21 @@ pub fn codegen(source: String) -> String {
                 );
                 return;
             } else if name == "print_int" {
+                let arg = args.first().unwrap_or_else(|| {
+                    panic!("expected one int as argument of print_int function")
+                });
                 code_text_sect.push_str(
                     format!(
-                        "\tmov\trdi, printint_fmt\n\tmov\trsi, numliteral_{}\n\tcall\t_printf\n",
-                        args.first().unwrap_or_else(|| {
-                            panic!("expected one string as argument of print function")
-                        })
+                        "\tmov\trdi, printint_fmt\n\tmov\trsi, {}\n\tcall\t_printf\n",
+                        match &ast.get(*arg).unwrap().expr {
+                            ast::Expression::NumberLiteral(num) => {
+                                format!("numliteral_{}", num)
+                            }
+                            ast::Expression::Identifier(name) => {
+                                format!("{}", name)
+                            }
+                            _ => panic!("expected one int as argument of print_int function"),
+                        }
                     )
                     .as_str(),
                 );
@@ -174,16 +185,15 @@ pub fn codegen(source: String) -> String {
             }
             code_text_sect.push_str(code_call_func!(name));
         }
-        ast::Expression::VarInit(name, rhs) => {
-            code_data_sect.push_str(
-                format!(
-                    "{}:\t equ {}\n",
-                    name,
-                    rhs,
-                )
-                .as_str(),
-            );
-        }
+        ast::Expression::VarInit(name, rhs) => match &ast.get(*rhs).unwrap().expr {
+            ast::Expression::NumberLiteral(_) => {
+                code_data_sect.push_str(format!("{}:\t equ numliteral_{}\n", name, rhs).as_str())
+            }
+            ast::Expression::Identifier(id) => {
+                code_data_sect.push_str(format!("{}:\t equ {}\n", name, id).as_str())
+            }
+            _ => panic!("unexpected expression as the rhs of `let`"),
+        },
         ast::Expression::VarInitFunc(_, func_name, _) => {
             code_text_sect.push_str(code_call_func!(func_name));
         }
