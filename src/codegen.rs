@@ -28,7 +28,7 @@ pub fn flatten_ast(old: &ast::AST, iter: &mut std::slice::Iter<ast::ASTNode>, ne
     macro_rules! next {
         () => {
             match iter.next() {
-                Some(x) => {node = x},
+                Some(x) => node = x,
                 None => return,
             }
         };
@@ -43,24 +43,34 @@ pub fn flatten_ast(old: &ast::AST, iter: &mut std::slice::Iter<ast::ASTNode>, ne
             ast::Expression::FuncCall(name, args) => {
                 let mut new_args: Vec<usize> = Vec::new();
                 for arg in args {
+                    if old.get(*arg).unwrap().is_recursive(old) {
+                        flatten_ast(old, iter, new);
+                    }
                     if !old.get(*arg).unwrap().is_recursive_type() {
                         new_args.push(*arg);
                         continue;
                     }
-                    if old.get(*arg).unwrap().is_recursive(old) {
-                        flatten_ast(old, iter, new);
-                    }
-                    // add a new VarInit(name_1385545, FuncCall(...)) before this FuncCall
-                    // statement
+                    // the last added FuncCall statement won't be needed
+                    new.pop();
+                    // add a new VarInitFunc(...) before this FuncCall
                     let var_name = format!("temp_{}", quick_rand(name.as_str()));
                     new_args.push(new.len());
+                    let func_name;
+                    let func_args: &Vec<usize>;
+                    match &old.get(*arg).unwrap().expr {
+                        ast::Expression::FuncCall(name, args) => {
+                            func_name = name;
+                            func_args = args;
+                        }
+                        _ => panic!("unexpected variable initialization syntax"),
+                    }
                     new.push(ast::ASTNode {
-                        expr: ast::Expression::Identifier(var_name.clone()),
-                        parent: node.parent.clone(),
-                    });
-                    new.push(ast::ASTNode {
-                        expr: ast::Expression::VarInit(var_name.clone(), *arg),
-                        parent: node.parent.clone(),
+                        expr: ast::Expression::VarInitFunc(
+                            var_name.clone(),
+                            func_name.clone(),
+                            func_args.clone(),
+                        ),
+                        parent: node.parent,
                     });
                 }
                 new.push(ast::ASTNode {
@@ -68,9 +78,27 @@ pub fn flatten_ast(old: &ast::AST, iter: &mut std::slice::Iter<ast::ASTNode>, ne
                     parent: node.parent,
                 });
             }
-            _ => {
-                todo!()
+            ast::Expression::VarInit(lhs, rhs) => {
+                // should be a VarInitFunc
+                let func_name;
+                let func_args: &Vec<usize>;
+                match &old.get(*rhs).unwrap().expr {
+                    ast::Expression::FuncCall(name, args) => {
+                        func_name = name;
+                        func_args = args;
+                    }
+                    _ => panic!("unexpected variable initialization syntax"),
+                }
+                new.push(ast::ASTNode {
+                    expr: ast::Expression::VarInitFunc(
+                        lhs.clone(),
+                        func_name.clone(),
+                        func_args.clone(),
+                    ),
+                    parent: node.parent,
+                });
             }
+            _ => {}
         }
     }
 }
@@ -80,6 +108,11 @@ static FUNCTION_PROLOG: &str = "\tpush\trbp\n\n";
 static FUNCTION_EPILOG: &str = "\n\tpop\trbp\n\tret\n";
 fn func_epilog_ret(ret_value: u64) -> String {
     format!("\n\tpop\trbp\n\tmov\trax, {}\n\tret\n", ret_value)
+}
+macro_rules! code_call_func {
+    ($name: expr) => {
+        format!("\tcall\t_{}\n", $name).as_str()
+    }
 }
 pub fn codegen(source: String) -> String {
     let raw_ast = ast::construct_ast(source);
@@ -125,13 +158,18 @@ pub fn codegen(source: String) -> String {
                     )
                     .as_str(),
                 );
+                return;
             }
+            code_text_sect.push_str(code_call_func!(name));
+        }
+        ast::Expression::VarInitFunc(_, func_name, _) => {
+            code_text_sect.push_str(code_call_func!(func_name));
         }
         _ => {}
     });
 
-    code_text_sect.push_str(func_epilog_ret(0).as_str());
     //print_ast!(ast);
+    code_text_sect.push_str(func_epilog_ret(0).as_str());
 
     format!("\n{}\n{}\n{}", code_externs, code_data_sect, code_text_sect)
 }

@@ -174,9 +174,10 @@ pub enum Expression {
     NumberLiteral(u64),
     StringLiteral(String),
     // Recursive expression
-    FuncCall(String, Vec<usize>), // function name, arguments
-    VarInit(String, usize),       // lhs, rhs
-    VarSet(String, usize),        // lhs, rhs
+    FuncCall(String, Vec<usize>),            // function name, arguments
+    VarInit(String, usize),                  // lhs, rhs
+    VarSet(String, usize),                   // lhs, rhs
+    VarInitFunc(String, String, Vec<usize>), // init a var from the result of a function call (lhs, function name, arguments) (won't be used until ast is flattened)
 
     Unknown,
 }
@@ -202,8 +203,8 @@ impl ASTNode {
     }
     pub fn is_recursive(&self, tree: &AST) -> bool {
         match &self.expr {
-            Expression::VarInit(_, rhs) => tree.get(*rhs).unwrap().is_recursive(tree),
-            Expression::VarSet(_, rhs) => tree.get(*rhs).unwrap().is_recursive(tree),
+            Expression::VarInit(_, rhs) => tree.get(*rhs).unwrap().is_recursive_type(),
+            Expression::VarSet(_, rhs) => tree.get(*rhs).unwrap().is_recursive_type(),
             Expression::FuncCall(_, args) => {
                 for arg in args.iter() {
                     if tree.get(*arg).unwrap().is_recursive_type() {
