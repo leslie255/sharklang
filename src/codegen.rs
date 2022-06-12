@@ -112,7 +112,7 @@ fn func_epilog_ret(ret_value: u64) -> String {
 macro_rules! code_call_func {
     ($name: expr) => {
         format!("\tcall\t_{}\n", $name).as_str()
-    }
+    };
 }
 pub fn codegen(source: String) -> String {
     let raw_ast = ast::construct_ast(source);
@@ -126,14 +126,15 @@ pub fn codegen(source: String) -> String {
     for (i, node) in ast.iter().enumerate() {
         match &node.expr {
             ast::Expression::NumberLiteral(num) => {
-                code_data_sect.push_str(format!("numliteral_{}:\t{}\n", i, num).as_str());
+                code_data_sect.push_str(format!("numliteral_{}:\tequ {}\n", i, num).as_str());
             }
             ast::Expression::StringLiteral(str) => {
                 code_data_sect.push_str(format!("strliteral_{}:\tdb \"{}\", 0\n", i, str).as_str());
             }
             ast::Expression::FuncCall(name, _) => {
-                if name == "print" && !existing_externs.contains_key("_printf") {
+                if name == "print" || name == "print_int" && !existing_externs.contains_key("_printf") {
                     code_externs.push_str("\textern\t_printf\n");
+                    code_data_sect.push_str("printint_fmt:\tdb \"%d\", 0x0a\n");
                     existing_externs.insert("_printf", true);
                 }
             }
@@ -151,7 +152,18 @@ pub fn codegen(source: String) -> String {
             if name == "print" {
                 code_text_sect.push_str(
                     format!(
-                        "\tmov\trdi, strliteral_{}\n\tmov\trax, 0\n\tcall\t_printf\n",
+                        "\tmov\trdi, strliteral_{}\n\tcall\t_printf\n",
+                        args.first().unwrap_or_else(|| {
+                            panic!("expected one string as argument of print function")
+                        })
+                    )
+                    .as_str(),
+                );
+                return;
+            } else if name == "print_int" {
+                code_text_sect.push_str(
+                    format!(
+                        "\tmov\trdi, printint_fmt\n\tmov\trsi, numliteral_{}\n\tcall\t_printf\n",
                         args.first().unwrap_or_else(|| {
                             panic!("expected one string as argument of print function")
                         })
@@ -161,6 +173,16 @@ pub fn codegen(source: String) -> String {
                 return;
             }
             code_text_sect.push_str(code_call_func!(name));
+        }
+        ast::Expression::VarInit(name, rhs) => {
+            code_data_sect.push_str(
+                format!(
+                    "{}:\t equ {}\n",
+                    name,
+                    rhs,
+                )
+                .as_str(),
+            );
         }
         ast::Expression::VarInitFunc(_, func_name, _) => {
             code_text_sect.push_str(code_call_func!(func_name));
