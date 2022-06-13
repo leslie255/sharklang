@@ -1,4 +1,4 @@
-(let a = 42)
+(let a = 6)
 (let b = a)
 (print_int a)
 (print_int b)

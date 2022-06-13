@@ -1,3 +1,4 @@
+#![allow(unused)]
 pub mod ast;
 use std::collections::HashMap;
 
@@ -8,6 +9,98 @@ macro_rules! print_ast {
             println!("{}: {:?}", i, node);
         }
     };
+}
+
+#[allow(unused)]
+#[derive(Clone)]
+enum ASMStatement {
+    SectionHead(String),
+
+    Extern(String),
+    VarInt(String, u64),
+    VarStr(String, String),
+    VarFromVar(String, String),
+
+    FuncCall(String, Vec<String>),
+    VarSetFromFunc(String, String),
+
+    FuncDef(String),
+    FuncRetVoid,
+    FuncRet(u64),
+}
+struct ASMFuncCallConstructor {
+    asm: ASMStatement,
+}
+impl ASMFuncCallConstructor {
+    // pass argument by pointer
+    fn arg_ptr(&mut self, arg: &ast::Expression) -> &mut ASMFuncCallConstructor {
+        match &mut self.asm {
+            ASMStatement::FuncCall(_, args) => args.push(match arg {
+                ast::Expression::Identifier(name) => format!("_{}", name),
+                ast::Expression::NumberLiteral(num) => format!("{}", num),
+                _ => panic!("unexpected expression as an argument"),
+            }),
+            _ => panic!("what the fuck"),
+        }
+        self
+    }
+    // pass argument by value
+    fn arg_val(&mut self, arg: &ast::Expression) -> &mut ASMFuncCallConstructor {
+        match &mut self.asm {
+            ASMStatement::FuncCall(_, args) => args.push(match arg {
+                ast::Expression::Identifier(name) => format!("[rel _{}]", name),
+                ast::Expression::NumberLiteral(num) => format!("{}", num),
+                _ => panic!("unexpected expression as an argument"),
+            }),
+            _ => panic!("what the fuck"),
+        }
+        self
+    }
+}
+macro_rules! asm {
+    (sect, $sect_name: expr) => {
+        ASMStatement::SectionHead(String::from($sect_name))
+    };
+    (var_int, $name: expr, $value: expr) => {
+        ASMStatement::VarInt($name.to_string(), $value)
+    };
+    (var_equ, $name: expr, $rhs: expr) => {
+        ASMStatement::VarFromVar($name.to_string(), $rhs.to_string())
+    };
+    (func_call, $name: expr) => {
+        ASMFuncCallConstructor {
+            asm: ASMStatement::FuncCall($name.to_string(), Vec::new()),
+        }
+    };
+}
+// names of the register to pass function calling arguments to
+static ARG_REG_NAMES: [&'static str; 3] = ["rdi", "rsi", "rbp"];
+impl ASMStatement {
+    fn gen_code(&self) -> String {
+        let mut code = match self {
+            Self::SectionHead(name) => format!("\tsection .{}", name),
+            Self::Extern(name) => format!("\textern _{}", name),
+            Self::VarInt(name, value) => format!("_{}:\tdq {}", name, value),
+            Self::VarStr(name, value) => format!("_{}:\tdb \"{}\", 0", name, value),
+            Self::VarFromVar(name, rhs) => format!("_{}:\tequ _{}", name, rhs),
+            Self::FuncCall(name, args) => {
+                let mut result = String::new();
+                args.iter().enumerate().for_each(|(i, arg)| {
+                    result.push_str(format!("\tmov\t{}, {}\n", ARG_REG_NAMES[i], arg).as_str());
+                });
+                result.push_str(format!("\tcall\t_{}", name).as_str());
+                result
+            }
+            Self::VarSetFromFunc(func_name, var_name) => {
+                format!("\tcall _{}\n\tmov\t[rel _{}], rax", func_name, var_name)
+            }
+            Self::FuncDef(name) => format!("\tglobal _{}\n_{}:\n\tpush\trbp", name, name),
+            Self::FuncRetVoid => format!("\tpop\trbp\n\tret"),
+            Self::FuncRet(value) => format!("\tpop\trbp\n\tmov\trax, {}\n\tret", value),
+        };
+        code.push_str("\n\n");
+        code
+    }
 }
 
 static mut LAST_RAND: u64 = 0;
@@ -51,7 +144,7 @@ pub fn flatten_ast(old: &ast::AST, iter: &mut std::slice::Iter<ast::ASTNode>, ne
                         continue;
                     }
                     // the last added FuncCall statement won't be needed
-                    new.pop();
+                    new.last_mut().unwrap().expr = ast::Expression::Null;
                     // add a new VarInitFunc(...) before this FuncCall
                     let var_name = format!("temp_{}", quick_rand(name.as_str()));
                     new_args.push(new.len());
@@ -79,6 +172,7 @@ pub fn flatten_ast(old: &ast::AST, iter: &mut std::slice::Iter<ast::ASTNode>, ne
                 });
             }
             ast::Expression::VarInit(lhs, rhs) => {
+                new.last_mut().unwrap().expr = ast::Expression::Null;
                 // should be a VarInitFunc
                 let func_name;
                 let func_args: &Vec<usize>;
@@ -103,105 +197,80 @@ pub fn flatten_ast(old: &ast::AST, iter: &mut std::slice::Iter<ast::ASTNode>, ne
     }
 }
 
-static FUNCTION_PROLOG: &str = "\tpush\trbp\n\n";
-#[allow(dead_code)]
-static FUNCTION_EPILOG: &str = "\n\tpop\trbp\n\tret\n";
-fn func_epilog_ret(ret_value: u64) -> String {
-    format!("\n\tpop\trbp\n\tmov\trax, {}\n\tret\n", ret_value)
-}
-macro_rules! code_call_func {
-    ($name: expr) => {
-        format!("\tcall\t_{}\n", $name).as_str()
-    };
-}
 pub fn codegen(source: String) -> String {
     let raw_ast = ast::construct_ast(source);
     let mut ast = ast::AST::new();
     flatten_ast(&raw_ast, &mut raw_ast.iter(), &mut ast);
 
-    let mut code_externs = String::new();
-    let mut existing_externs: HashMap<&str, bool> = HashMap::new();
-    let mut code_data_sect = String::from("\tsection .data\n");
-    let mut code_text_sect = String::from("\tsection .text\n");
-    for (i, node) in ast.iter().enumerate() {
+    let mut existing_builtin_funcs: HashMap<&str, bool> = HashMap::new();
+
+    // first generate data sections and needed externs
+    let mut target_externs: Vec<ASMStatement> = Vec::new();
+    let mut target_data_sect: Vec<ASMStatement> = vec![asm!(sect, "data")];
+    for node in &ast {
         match &node.expr {
-            ast::Expression::NumberLiteral(num) => {
-                code_data_sect.push_str(format!("numliteral_{}:\tequ {}\n", i, num).as_str());
-            }
-            ast::Expression::StringLiteral(str) => {
-                code_data_sect.push_str(format!("strliteral_{}:\tdb \"{}\", 0\n", i, str).as_str());
-            }
-            ast::Expression::FuncCall(name, _) => {
-                if name == "print"
-                    || name == "print_int" && !existing_externs.contains_key("_printf")
-                {
-                    code_externs.push_str("\textern\t_printf\n");
-                    code_data_sect.push_str("printint_fmt:\tdb \"%d\", 0x0a\n");
-                    existing_externs.insert("_printf", true);
+            ast::Expression::FuncCall(name, _) | ast::Expression::VarInitFunc(_, name, _) => {
+                match name.as_str() {
+                    "print" | "print_int" => {
+                        if existing_builtin_funcs.contains_key("print") {
+                            continue;
+                        }
+                        target_externs.push(ASMStatement::Extern("printf".to_string()));
+                        target_data_sect.push(ASMStatement::VarStr(
+                            "printint_fmt".to_string(),
+                            "%d".to_string(),
+                        ));
+                        existing_builtin_funcs.insert("print", true);
+                    }
+                    _ => {}
                 }
+            }
+            ast::Expression::VarInit(name, rhs) => {
+                let asm = match &ast.get(*rhs).unwrap().expr {
+                    ast::Expression::NumberLiteral(num) => asm!(var_int, name, *num),
+                    ast::Expression::Identifier(name_2) => asm!(var_equ, name, name_2),
+                    _ => panic!("Invalid rhs for `let`"),
+                };
+                target_data_sect.push(asm);
             }
             _ => {}
         }
     }
-
-    // right now there's only one function main
-    code_text_sect.push_str("\tglobal _main\n_main:\n");
-    code_text_sect.push_str(FUNCTION_PROLOG);
-
-    ast.iter().for_each(|node| match &node.expr {
-        ast::Expression::FuncCall(name, args) => {
-            // right now there's only one callable function print
-            if name == "print" {
-                code_text_sect.push_str(
-                    format!(
-                        "\tmov\trdi, strliteral_{}\n\tcall\t_printf\n",
-                        args.first().unwrap_or_else(|| {
-                            panic!("expected one string as argument of print function")
-                        })
-                    )
-                    .as_str(),
-                );
-                return;
-            } else if name == "print_int" {
-                let arg = args.first().unwrap_or_else(|| {
-                    panic!("expected one int as argument of print_int function")
+    // then generate text section
+    let mut target_text_sect: Vec<ASMStatement> = vec![asm!(sect, "text")];
+    target_text_sect.push(ASMStatement::FuncDef("main".to_string()));
+    for node in &ast {
+        match &node.expr {
+            ast::Expression::FuncCall(name, args) => {
+                let mut func_call: ASMFuncCallConstructor =
+                    if name == "print" || name == "print_int" {
+                        asm!(func_call, &"printf")
+                    } else {
+                        asm!(func_call, &"printf")
+                    };
+                if name == "print_int" {
+                    func_call.arg_ptr(&ast::Expression::Identifier("printint_fmt".to_string()));
+                }
+                args.iter().for_each(|arg_i| {
+                    let arg = &ast.get(*arg_i).unwrap().expr;
+                    func_call.arg_val(arg);
                 });
-                code_text_sect.push_str(
-                    format!(
-                        "\tmov\trdi, printint_fmt\n\tmov\trsi, {}\n\tcall\t_printf\n",
-                        match &ast.get(*arg).unwrap().expr {
-                            ast::Expression::NumberLiteral(num) => {
-                                format!("numliteral_{}", num)
-                            }
-                            ast::Expression::Identifier(name) => {
-                                format!("{}", name)
-                            }
-                            _ => panic!("expected one int as argument of print_int function"),
-                        }
-                    )
-                    .as_str(),
-                );
-                return;
+                target_text_sect.push(func_call.asm);
             }
-            code_text_sect.push_str(code_call_func!(name));
+            _ => {}
         }
-        ast::Expression::VarInit(name, rhs) => match &ast.get(*rhs).unwrap().expr {
-            ast::Expression::NumberLiteral(_) => {
-                code_data_sect.push_str(format!("{}:\t equ numliteral_{}\n", name, rhs).as_str())
-            }
-            ast::Expression::Identifier(id) => {
-                code_data_sect.push_str(format!("{}:\t equ {}\n", name, id).as_str())
-            }
-            _ => panic!("unexpected expression as the rhs of `let`"),
-        },
-        ast::Expression::VarInitFunc(_, func_name, _) => {
-            code_text_sect.push_str(code_call_func!(func_name));
-        }
-        _ => {}
-    });
+    }
+    target_text_sect.push(ASMStatement::FuncRet(0));
 
-    //print_ast!(ast);
-    code_text_sect.push_str(func_epilog_ret(0).as_str());
-
-    format!("\n{}\n{}\n{}", code_externs, code_data_sect, code_text_sect)
+    let mut full_generated_code = String::new();
+    for statement in &target_externs {
+        full_generated_code.push_str(statement.gen_code().as_str());
+    }
+    for statement in &target_data_sect {
+        full_generated_code.push_str(statement.gen_code().as_str());
+    }
+    for statement in &target_text_sect {
+        full_generated_code.push_str(statement.gen_code().as_str());
+    }
+    full_generated_code
 }

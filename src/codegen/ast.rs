@@ -167,7 +167,7 @@ fn parse_tokens(source: String) -> Vec<Token> {
     filtered
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     // Non-Recursive expression
     Identifier(String),
@@ -180,6 +180,7 @@ pub enum Expression {
     VarInitFunc(String, String, Vec<usize>), // init a var from the result of a function call (lhs, function name, arguments) (won't be used until ast is flattened)
 
     Unknown,
+    Null, // during flattening the AST some expressions will be removed from the stack
 }
 impl Default for Expression {
     fn default() -> Self {
