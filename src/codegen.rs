@@ -21,7 +21,7 @@ enum ASMStatement {
     VarStr(String, String),
     VarFromVar(String, String),
 
-    FuncCall(String, Vec<String>),
+    FuncCall(String, Vec<String>), // function name, should pass as value/reference, argument
     VarSetFromFunc(String, String),
 
     FuncDef(String),
@@ -38,7 +38,8 @@ impl ASMFuncCallConstructor {
             ASMStatement::FuncCall(_, args) => args.push(match arg {
                 ast::Expression::Identifier(name) => format!("_{}", name),
                 ast::Expression::NumberLiteral(num) => format!("{}", num),
-                _ => panic!("unexpected expression as an argument"),
+                ast::Expression::StringLiteral(str) => format!("{}", str),
+                _ => panic!("unable to pass argument `{:?}` by reference", arg),
             }),
             _ => panic!("what the fuck"),
         }
@@ -50,7 +51,7 @@ impl ASMFuncCallConstructor {
             ASMStatement::FuncCall(_, args) => args.push(match arg {
                 ast::Expression::Identifier(name) => format!("[rel _{}]", name),
                 ast::Expression::NumberLiteral(num) => format!("{}", num),
-                _ => panic!("unexpected expression as an argument"),
+                _ => panic!("unable to pass argument `{:?}` by value", arg),
             }),
             _ => panic!("what the fuck"),
         }
@@ -73,6 +74,30 @@ macro_rules! asm {
         }
     };
 }
+macro_rules! asm_fmt_str {
+    // converts '\n' into 0x0A, etc.
+    ($string: expr) => {{
+        let mut result = String::from("\"");
+        let mut is_outside_quote = false;
+        for ch in $string.chars() {
+            if ch == '\n' {
+                result.push_str("\", 0x0A");
+                is_outside_quote = true;
+                continue;
+            }
+            if is_outside_quote {
+                result.push_str("\", ");
+                is_outside_quote = false;
+            }
+            result.push(ch);
+        }
+        if !is_outside_quote {
+            result.push('\"');
+        }
+        result.push_str(", 0");
+        result
+    }};
+}
 // names of the register to pass function calling arguments to
 static ARG_REG_NAMES: [&'static str; 3] = ["rdi", "rsi", "rbp"];
 impl ASMStatement {
@@ -81,7 +106,7 @@ impl ASMStatement {
             Self::SectionHead(name) => format!("\tsection .{}", name),
             Self::Extern(name) => format!("\textern _{}", name),
             Self::VarInt(name, value) => format!("_{}:\tdq {}", name, value),
-            Self::VarStr(name, value) => format!("_{}:\tdb \"{}\", 0", name, value),
+            Self::VarStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
             Self::VarFromVar(name, rhs) => format!("_{}:\tequ _{}", name, rhs),
             Self::FuncCall(name, args) => {
                 let mut result = String::new();
@@ -218,7 +243,7 @@ pub fn codegen(source: String) -> String {
                         target_externs.push(ASMStatement::Extern("printf".to_string()));
                         target_data_sect.push(ASMStatement::VarStr(
                             "printint_fmt".to_string(),
-                            "%d".to_string(),
+                            "%d\n".to_string(),
                         ));
                         existing_builtin_funcs.insert("print", true);
                     }
