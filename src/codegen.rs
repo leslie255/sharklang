@@ -11,8 +11,51 @@ macro_rules! print_ast {
     };
 }
 
-#[allow(unused)]
-#[derive(Clone)]
+#[allow(unused, non_camel_case_types)]
+#[derive(Clone, Debug)]
+enum Register {
+    rax,
+    rbx,
+    rcx,
+    rdx,
+    rsi,
+    rdi,
+    rsp,
+    rbp,
+    r8,
+    r9,
+    r10,
+    r11,
+    r12,
+    r13,
+    r14,
+    r15,
+}
+impl Register {
+    fn name(&self) -> String {
+        match &self {
+            Self::rax => String::from("rax"),
+            Self::rbx => String::from("rbx"),
+            Self::rcx => String::from("rcx"),
+            Self::rdx => String::from("rdx"),
+            Self::rsi => String::from("rsi"),
+            Self::rdi => String::from("rdi"),
+            Self::rsp => String::from("rsp"),
+            Self::rbp => String::from("rbp"),
+            Self::r8 => String::from("r8"),
+            Self::r9 => String::from("r9"),
+            Self::r10 => String::from("r10"),
+            Self::r11 => String::from("r11"),
+            Self::r12 => String::from("r12"),
+            Self::r13 => String::from("r13"),
+            Self::r14 => String::from("r14"),
+            Self::r15 => String::from("r15"),
+        }
+    }
+}
+#[allow(non_camel_case_types)]
+type reg = Register;
+#[derive(Debug)]
 enum ASMStatement {
     SectionHead(String),
 
@@ -20,6 +63,7 @@ enum ASMStatement {
     VarInt(String, u64),
     VarStr(String, String),
     VarFromVar(String, String),
+    VarSetFromReg(String, Register),
 
     FuncCall(String, Vec<String>), // function name, should pass as value/reference, argument
     VarSetFromFunc(String, String),
@@ -27,7 +71,69 @@ enum ASMStatement {
     FuncDef(String),
     FuncRetVoid,
     FuncRet(u64),
+
+    MovRegReg(Register, Register),
+    Add(Register, Register),
 }
+macro_rules! asm_fmt_str {
+    // converts '\n' into 0x0A, etc.
+    ($string: expr) => {{
+        let mut result = String::from("\"");
+        let mut is_outside_quote = false;
+        for ch in $string.chars() {
+            if ch == '\n' {
+                result.push_str("\", 0x0A");
+                is_outside_quote = true;
+                continue;
+            }
+            if is_outside_quote {
+                result.push_str("\", ");
+                is_outside_quote = false;
+            }
+            result.push(ch);
+        }
+        if !is_outside_quote {
+            result.push('\"');
+        }
+        result.push_str(", 0");
+        result
+    }};
+}
+// names of the register to pass function calling arguments to
+static ARG_REG_NAMES: [&'static str; 3] = ["rdi", "rsi", "rbp"];
+impl ASMStatement {
+    fn gen_code(&self) -> String {
+        let mut code = match self {
+            Self::SectionHead(name) => format!("\n\tsection .{}", name),
+            Self::Extern(name) => format!("\textern _{}", name),
+            Self::VarInt(name, value) => format!("_{}:\tdq {}", name, value),
+            Self::VarStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
+            Self::VarFromVar(name, rhs) => format!("_{}:\tequ _{}", name, rhs),
+            Self::FuncCall(name, args) => {
+                let mut result = String::new();
+                args.iter().enumerate().for_each(|(i, arg)| {
+                    result.push_str(format!("\tmov\t{}, {}\n", ARG_REG_NAMES[i], arg).as_str());
+                });
+                result.push_str(format!("\tcall\t_{}\n", name).as_str());
+                result
+            }
+            Self::VarSetFromFunc(func_name, var_name) => {
+                format!("\tcall _{}\n\tmov\t[rel _{}], rax\n", func_name, var_name)
+            }
+            ASMStatement::VarSetFromReg(name, reg) => {
+                format!("\tmov\t[rel _{}], {}", name, reg.name())
+            }
+            Self::FuncDef(name) => format!("\n\tglobal _{}\n_{}:\n\tpush\trbp\n", name, name),
+            Self::FuncRetVoid => format!("\tpop\trbp\n\tret\n"),
+            Self::FuncRet(value) => format!("\tpop\trbp\n\tmov\trax, {}\n\tret\n", value),
+            Self::MovRegReg(reg0, reg1) => format!("\tmov\t{}, {}", reg0.name(), reg1.name()),
+            Self::Add(reg0, reg1) => format!("\tadd\t{}, {}", reg0.name(), reg1.name()),
+        };
+        code.push_str("\n");
+        code
+    }
+}
+
 struct ASMFuncCallConstructor {
     asm: ASMStatement,
 }
@@ -65,67 +171,38 @@ macro_rules! asm {
     (var_int, $name: expr, $value: expr) => {
         ASMStatement::VarInt($name.to_string(), $value)
     };
+    (var_str, $name: expr, $value: expr) => {
+        ASMStatement::VarStr($name.to_string(), $value.to_string())
+    };
     (var_equ, $name: expr, $rhs: expr) => {
         ASMStatement::VarFromVar($name.to_string(), $rhs.to_string())
+    };
+    (var_set_reg, $var_name: expr, $reg: expr) => {
+        ASMStatement::VarSetFromReg($var_name.to_string(), $reg)
+    };
+    (extern, $name: expr) => {
+        ASMStatement::Extern($name.to_string())
     };
     (func_call, $name: expr) => {
         ASMFuncCallConstructor {
             asm: ASMStatement::FuncCall($name.to_string(), Vec::new()),
         }
     };
-}
-macro_rules! asm_fmt_str {
-    // converts '\n' into 0x0A, etc.
-    ($string: expr) => {{
-        let mut result = String::from("\"");
-        let mut is_outside_quote = false;
-        for ch in $string.chars() {
-            if ch == '\n' {
-                result.push_str("\", 0x0A");
-                is_outside_quote = true;
-                continue;
-            }
-            if is_outside_quote {
-                result.push_str("\", ");
-                is_outside_quote = false;
-            }
-            result.push(ch);
-        }
-        if !is_outside_quote {
-            result.push('\"');
-        }
-        result.push_str(", 0");
-        result
-    }};
-}
-// names of the register to pass function calling arguments to
-static ARG_REG_NAMES: [&'static str; 3] = ["rdi", "rsi", "rbp"];
-impl ASMStatement {
-    fn gen_code(&self) -> String {
-        let mut code = match self {
-            Self::SectionHead(name) => format!("\tsection .{}", name),
-            Self::Extern(name) => format!("\textern _{}", name),
-            Self::VarInt(name, value) => format!("_{}:\tdq {}", name, value),
-            Self::VarStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
-            Self::VarFromVar(name, rhs) => format!("_{}:\tequ _{}", name, rhs),
-            Self::FuncCall(name, args) => {
-                let mut result = String::new();
-                args.iter().enumerate().for_each(|(i, arg)| {
-                    result.push_str(format!("\tmov\t{}, {}\n", ARG_REG_NAMES[i], arg).as_str());
-                });
-                result.push_str(format!("\tcall\t_{}", name).as_str());
-                result
-            }
-            Self::VarSetFromFunc(func_name, var_name) => {
-                format!("\tcall _{}\n\tmov\t[rel _{}], rax", func_name, var_name)
-            }
-            Self::FuncDef(name) => format!("\tglobal _{}\n_{}:\n\tpush\trbp", name, name),
-            Self::FuncRetVoid => format!("\tpop\trbp\n\tret"),
-            Self::FuncRet(value) => format!("\tpop\trbp\n\tmov\trax, {}\n\tret", value),
-        };
-        code.push_str("\n\n");
-        code
-    }
+    (func_ret) => {
+        ASMStatement::FuncRetVoid
+    };
+    (func_ret, $value: expr) => {
+        ASMStatement::FuncRet($value)
+    };
+    (func_def, $name: expr) => {
+        ASMStatement::FuncDef($name.to_string())
+    };
+    (mov, $reg0: expr, $reg1: expr) => {
+        ASMStatement::MovRegReg($reg0, $reg1)
+    };
+    (add, $reg0: expr, $reg1: expr) => {
+        ASMStatement::Add($reg0, $reg1)
+    };
 }
 
 static mut LAST_RAND: u64 = 0;
@@ -232,19 +309,20 @@ pub fn codegen(source: String) -> String {
     // first generate data sections and needed externs
     let mut target_externs: Vec<ASMStatement> = Vec::new();
     let mut target_data_sect: Vec<ASMStatement> = vec![asm!(sect, "data")];
-    for node in &ast {
+    for (i, node) in ast.iter().enumerate() {
         match &node.expr {
+            ast::Expression::VarInitFunc(var_name, _, _) => {
+                let asm = ASMStatement::VarInt(var_name.to_string(), 0);
+                target_data_sect.push(asm);
+            }
             ast::Expression::FuncCall(name, _) | ast::Expression::VarInitFunc(_, name, _) => {
                 match name.as_str() {
                     "print" | "print_int" => {
                         if existing_builtin_funcs.contains_key("print") {
                             continue;
                         }
-                        target_externs.push(ASMStatement::Extern("printf".to_string()));
-                        target_data_sect.push(ASMStatement::VarStr(
-                            "printint_fmt".to_string(),
-                            "%d\n".to_string(),
-                        ));
+                        target_externs.push(asm!(extern, "printf"));
+                        target_data_sect.push(asm!(var_str, "printint_fmt", "%d\n"));
                         existing_builtin_funcs.insert("print", true);
                     }
                     _ => {}
@@ -261,9 +339,14 @@ pub fn codegen(source: String) -> String {
             _ => {}
         }
     }
+
     // then generate text section
     let mut target_text_sect: Vec<ASMStatement> = vec![asm!(sect, "text")];
-    target_text_sect.push(ASMStatement::FuncDef("main".to_string()));
+    target_text_sect.push(asm!(func_def, "add"));
+    target_text_sect.push(asm!(mov, reg::rax, reg::rdi));
+    target_text_sect.push(asm!(add, reg::rax, reg::rsi));
+    target_text_sect.push(asm!(func_ret));
+    target_text_sect.push(asm!(func_def, "main"));
     for node in &ast {
         match &node.expr {
             ast::Expression::FuncCall(name, args) => {
@@ -282,10 +365,20 @@ pub fn codegen(source: String) -> String {
                 });
                 target_text_sect.push(func_call.asm);
             }
+            ast::Expression::VarInitFunc(var_name, func_name, args) => {
+                let mut func_call = asm!(func_call, func_name);
+                args.iter().for_each(|arg_i| {
+                    let arg = &ast.get(*arg_i).unwrap().expr;
+                    func_call.arg_val(arg);
+                });
+                target_text_sect.push(func_call.asm);
+                let mut var_set = asm!(var_set_reg, var_name, reg::rax);
+                target_text_sect.push(var_set);
+            }
             _ => {}
         }
     }
-    target_text_sect.push(ASMStatement::FuncRet(0));
+    target_text_sect.push(asm!(func_ret, 0));
 
     let mut full_generated_code = String::new();
     for statement in &target_externs {
