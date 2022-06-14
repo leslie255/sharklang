@@ -1,170 +1,22 @@
-macro_rules! bool_toggle {
-    ($value: expr) => {
-        if $value {
-            $value = false
-        } else {
-            $value = true
-        }
-    };
+use super::tokens::*;
+
+static mut LAST_RAND: u64 = 0;
+pub fn quick_rand(str: &str) -> u64 {
+    let mut hash: u64 = 0;
+    for ch in str.chars() {
+        hash += (ch as u64) * (ch as u64);
+    }
+    unsafe {
+        hash = hash.overflowing_add(LAST_RAND).0;
+        LAST_RAND = hash;
+    }
+    hash
 }
 
 macro_rules! u64_max {
     () => {
         9223372036854775807
     };
-}
-#[derive(Debug, PartialEq, Clone)]
-enum TokenClass {
-    RoundParenOpen,
-    RoundParenClose,
-    RectParenOpen,
-    RectParenClose,
-    BigParenOpen,
-    BigParenClose,
-    Equal,
-    CompareOP,
-    ArithOP,
-    SelfArithOP, // +=, -=, ...
-    BoolOP,
-    Semicolon,
-    Period, // .
-    Number,
-    String,
-    Identifier,
-
-    Unknown,
-}
-impl Default for TokenClass {
-    fn default() -> Self {
-        return TokenClass::Unknown;
-    }
-}
-
-trait CharCustomFuncs {
-    fn is_alphanumeric_or_underscore(&self) -> bool;
-    fn is_paren(&self) -> bool;
-}
-impl CharCustomFuncs for char {
-    fn is_alphanumeric_or_underscore(&self) -> bool {
-        self.is_alphanumeric() || *self == '_'
-    }
-    fn is_paren(&self) -> bool {
-        *self == '(' || *self == ')' || *self == '[' || *self == ']' || *self == '{' || *self == '}'
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-struct Token {
-    pub class: TokenClass,
-    pub value: String,
-}
-
-impl Token {
-    fn determine_type(&mut self) {
-        if self.value.is_empty() {
-            self.class = TokenClass::Unknown;
-            return;
-        } else if self.value.chars().nth(0).unwrap().is_numeric() {
-            self.class = TokenClass::Number;
-            return;
-        } else if self
-            .value
-            .chars()
-            .nth(0)
-            .unwrap()
-            .is_alphanumeric_or_underscore()
-        {
-            self.class = TokenClass::Identifier;
-            return;
-        }
-
-        self.class = match self.value.as_str() {
-            "(" => TokenClass::RoundParenOpen,
-            "[" => TokenClass::RectParenOpen,
-            "{" => TokenClass::BigParenOpen,
-            ")" => TokenClass::RoundParenClose,
-            "]" => TokenClass::RectParenClose,
-            "}" => TokenClass::BigParenClose,
-            "=" => TokenClass::Equal,
-            "==" | ">" | "<" | ">=" | "<=" | "!=" => TokenClass::CompareOP,
-            "+" | "-" | "*" | "/" | "%" => TokenClass::ArithOP,
-            "+=" | "-=" | "*=" | "/=" | "%=" => TokenClass::SelfArithOP,
-            "!" | "&&" | "||" | "" => TokenClass::BoolOP,
-            ";" => TokenClass::Semicolon,
-            "." => TokenClass::Period,
-            _ => self.class.clone(),
-        };
-    }
-}
-
-fn parse_tokens(source: String) -> Vec<Token> {
-    // TODO: add line & column number for each token
-    let mut tokens: Vec<Token> = Vec::new();
-    macro_rules! tokens_last {
-        () => {
-            tokens.last_mut().unwrap()
-        };
-        (last_char) => {
-            match tokens.last() {
-                Some(token) => token.value.chars().last().unwrap_or_default(),
-                None => '\0',
-            }
-        };
-    }
-    macro_rules! new_token {
-        // create a new token is the last one is empty
-        () => {
-            match tokens.last() {
-                Some(last_token) => {
-                    if !last_token.value.is_empty() {
-                        tokens.push(Token::default());
-                    }
-                }
-                None => {
-                    tokens.push(Token::default());
-                }
-            }
-        };
-    }
-    let mut is_inside_string = false;
-    for ch in source.chars() {
-        if ch == '"' {
-            bool_toggle!(is_inside_string);
-            if is_inside_string {
-                new_token!();
-                tokens_last!().class = TokenClass::String;
-            }
-            continue;
-        }
-        if is_inside_string {
-            // TODO: string escape \
-            tokens_last!().value.push(ch);
-            continue;
-        }
-        if ch.is_whitespace() {
-            new_token!();
-        } else if ch.is_alphanumeric_or_underscore() {
-            if !tokens_last!(last_char).is_alphanumeric_or_underscore() {
-                new_token!();
-            }
-            tokens_last!().value.push(ch);
-        } else if ch == tokens_last!(last_char) && !ch.is_paren() {
-            tokens_last!().value.push(ch);
-        } else {
-            if !ch.is_whitespace() {
-                new_token!();
-                tokens_last!().value.push(ch);
-            }
-        }
-        tokens_last!().determine_type();
-    }
-    let mut filtered: Vec<Token> = Vec::new();
-    tokens.iter().for_each(|token| {
-        if !token.value.is_empty() {
-            filtered.push(token.clone());
-        }
-    });
-    filtered
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -317,6 +169,87 @@ fn recursive_construct_ast(
             parent: current,
         });
         Some(tree.len() - 1)
+    }
+}
+
+pub fn flatten_ast(old: &AST, iter: &mut std::slice::Iter<ASTNode>, new: &mut AST) {
+    let mut node: &ASTNode;
+    macro_rules! next {
+        () => {
+            match iter.next() {
+                Some(x) => node = x,
+                None => return,
+            }
+        };
+    }
+    loop {
+        next!();
+        if !node.is_recursive(old) {
+            new.push(node.clone());
+            continue;
+        }
+        match &node.expr {
+            Expression::FuncCall(name, args) => {
+                let mut new_args: Vec<usize> = Vec::new();
+                for arg in args {
+                    if old.get(*arg).unwrap().is_recursive(old) {
+                        flatten_ast(old, iter, new);
+                    }
+                    if !old.get(*arg).unwrap().is_recursive_type() {
+                        new_args.push(*arg);
+                        continue;
+                    }
+                    // the last added FuncCall statement won't be needed
+                    new.last_mut().unwrap().expr = Expression::Null;
+                    // add a new VarInitFunc(...) before this FuncCall
+                    let var_name = format!("temp_{}", quick_rand(name.as_str()));
+                    new_args.push(new.len());
+                    let func_name;
+                    let func_args: &Vec<usize>;
+                    match &old.get(*arg).unwrap().expr {
+                        Expression::FuncCall(name, args) => {
+                            func_name = name;
+                            func_args = args;
+                        }
+                        _ => panic!("unexpected variable initialization syntax"),
+                    }
+                    new.push(ASTNode {
+                        expr: Expression::VarInitFunc(
+                            var_name.clone(),
+                            func_name.clone(),
+                            func_args.clone(),
+                        ),
+                        parent: node.parent,
+                    });
+                }
+                new.push(ASTNode {
+                    expr: Expression::FuncCall(name.clone(), new_args),
+                    parent: node.parent,
+                });
+            }
+            Expression::VarInit(lhs, rhs) => {
+                new.last_mut().unwrap().expr = Expression::Null;
+                // should be a VarInitFunc
+                let func_name;
+                let func_args: &Vec<usize>;
+                match &old.get(*rhs).unwrap().expr {
+                    Expression::FuncCall(name, args) => {
+                        func_name = name;
+                        func_args = args;
+                    }
+                    _ => panic!("unexpected variable initialization syntax"),
+                }
+                new.push(ASTNode {
+                    expr: Expression::VarInitFunc(
+                        lhs.clone(),
+                        func_name.clone(),
+                        func_args.clone(),
+                    ),
+                    parent: node.parent,
+                });
+            }
+            _ => {}
+        }
     }
 }
 

@@ -1,20 +1,7 @@
-use crate::codegen::ast::{construct_ast, ASTNode, AST, Expression};
-use crate::codegen::ir::{ASMFuncCallConstructor, ASMStatement, Register};
+use crate::codegen::ast::*;
+use crate::codegen::ir::*;
 
 use std::collections::HashMap;
-
-static mut LAST_RAND: u64 = 0;
-pub fn quick_rand(str: &str) -> u64 {
-    let mut hash: u64 = 0;
-    for ch in str.chars() {
-        hash += (ch as u64) * (ch as u64);
-    }
-    unsafe {
-        hash = hash.overflowing_add(LAST_RAND).0;
-        LAST_RAND = hash;
-    }
-    hash
-}
 
 #[allow(unused_macros)]
 macro_rules! print_ast {
@@ -25,86 +12,6 @@ macro_rules! print_ast {
     };
 }
 
-pub fn flatten_ast(old: &AST, iter: &mut std::slice::Iter<ASTNode>, new: &mut AST) {
-    let mut node: &ASTNode;
-    macro_rules! next {
-        () => {
-            match iter.next() {
-                Some(x) => node = x,
-                None => return,
-            }
-        };
-    }
-    loop {
-        next!();
-        if !node.is_recursive(old) {
-            new.push(node.clone());
-            continue;
-        }
-        match &node.expr {
-            Expression::FuncCall(name, args) => {
-                let mut new_args: Vec<usize> = Vec::new();
-                for arg in args {
-                    if old.get(*arg).unwrap().is_recursive(old) {
-                        flatten_ast(old, iter, new);
-                    }
-                    if !old.get(*arg).unwrap().is_recursive_type() {
-                        new_args.push(*arg);
-                        continue;
-                    }
-                    // the last added FuncCall statement won't be needed
-                    new.last_mut().unwrap().expr = Expression::Null;
-                    // add a new VarInitFunc(...) before this FuncCall
-                    let var_name = format!("temp_{}", quick_rand(name.as_str()));
-                    new_args.push(new.len());
-                    let func_name;
-                    let func_args: &Vec<usize>;
-                    match &old.get(*arg).unwrap().expr {
-                        Expression::FuncCall(name, args) => {
-                            func_name = name;
-                            func_args = args;
-                        }
-                        _ => panic!("unexpected variable initialization syntax"),
-                    }
-                    new.push(ASTNode {
-                        expr: Expression::VarInitFunc(
-                            var_name.clone(),
-                            func_name.clone(),
-                            func_args.clone(),
-                        ),
-                        parent: node.parent,
-                    });
-                }
-                new.push(ASTNode {
-                    expr: Expression::FuncCall(name.clone(), new_args),
-                    parent: node.parent,
-                });
-            }
-            Expression::VarInit(lhs, rhs) => {
-                new.last_mut().unwrap().expr = Expression::Null;
-                // should be a VarInitFunc
-                let func_name;
-                let func_args: &Vec<usize>;
-                match &old.get(*rhs).unwrap().expr {
-                    Expression::FuncCall(name, args) => {
-                        func_name = name;
-                        func_args = args;
-                    }
-                    _ => panic!("unexpected variable initialization syntax"),
-                }
-                new.push(ASTNode {
-                    expr: Expression::VarInitFunc(
-                        lhs.clone(),
-                        func_name.clone(),
-                        func_args.clone(),
-                    ),
-                    parent: node.parent,
-                });
-            }
-            _ => {}
-        }
-    }
-}
 fn add_builtin_fn_if_needed(
     name: &str,
     externs: &mut Vec<ASMStatement>,
