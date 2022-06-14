@@ -2,6 +2,7 @@
 (let b = (sub a 1))
 (let c = (mul 3 b))
 (let d = (div c b))
+
 (print_int a)
 (print_int b)
 (print_int c)

@@ -226,7 +226,7 @@ impl std::fmt::Debug for ASTNode {
 }
 
 #[allow(unused_assignments)] // rustc wtf??
-fn recursive_parse_token(
+fn recursive_construct_ast(
     tree: &mut AST,
     current: usize,
     tokens_iter: &mut std::slice::Iter<Token>,
@@ -266,7 +266,7 @@ fn recursive_parse_token(
                 next!();
                 let lhs = &token.value;
                 next!(); // TODO: error if this is not an equal sign
-                match recursive_parse_token(tree, current, tokens_iter) {
+                match recursive_construct_ast(tree, current, tokens_iter) {
                     Some(rhs) => {
                         next!();
                         new_node_from_expr!(Expression::VarInit(lhs.clone(), rhs));
@@ -280,7 +280,7 @@ fn recursive_parse_token(
                 next!();
                 let lhs = &token.value;
                 next!(); // TODO: error if this is not an equal sign
-                match recursive_parse_token(tree, current, tokens_iter) {
+                match recursive_construct_ast(tree, current, tokens_iter) {
                     Some(rhs) => {
                         next!();
                         new_node_from_expr!(Expression::VarSet(lhs.clone(), rhs));
@@ -294,7 +294,7 @@ fn recursive_parse_token(
                 let name = &token.value;
                 let mut args: Vec<usize> = Vec::new();
                 loop {
-                    match recursive_parse_token(tree, current, tokens_iter) {
+                    match recursive_construct_ast(tree, current, tokens_iter) {
                         Some(arg) => args.push(arg),
                         None => break,
                     }
@@ -325,7 +325,7 @@ pub fn construct_ast(source: String) -> AST {
     let mut iter = tokens.iter();
     let mut ast = AST::new();
     loop {
-        match recursive_parse_token(&mut ast, u64_max!(), &mut iter) {
+        match recursive_construct_ast(&mut ast, u64_max!(), &mut iter) {
             None => break,
             _ => {}
         }

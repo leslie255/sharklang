@@ -1,3 +1,5 @@
+use crate::codegen::codegen::codegen;
+
 use std::env;
 use std::fs;
 use std::io;
@@ -16,5 +18,5 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let src_file = args.get(1).expect("expects at least 1 arguments");
     let source = fs::read_to_string(src_file).expect("cannot read file");
-    println!("{}", codegen::codegen(source.to_string()));
+    println!("{}", codegen(source.to_string()));
 }
