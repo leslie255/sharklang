@@ -1,8 +1,9 @@
-(let a = 30)
-(let b = 24)
-
-(let c = (add a b))
-(let d = (add c a))
+(let a = (add 2 3))
+(let b = (sub a 1))
+(let c = (mul 3 b))
+(let d = (div c b))
+(print_int a)
+(print_int b)
 (print_int c)
 (print_int d)
 

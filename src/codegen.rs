@@ -1,4 +1,3 @@
-#![allow(unused)]
 pub mod ast;
 use std::collections::HashMap;
 
@@ -66,7 +65,6 @@ enum ASMStatement {
     VarSetFromReg(String, Register),
 
     FuncCall(String, Vec<String>), // function name, should pass as value/reference, argument
-    VarSetFromFunc(String, String),
 
     FuncDef(String),
     FuncRetVoid,
@@ -74,6 +72,9 @@ enum ASMStatement {
 
     MovRegReg(Register, Register),
     Add(Register, Register),
+    Sub(Register, Register),
+    Mul(Register),
+    Div(Register),
 }
 macro_rules! asm_fmt_str {
     // converts '\n' into 0x0A, etc.
@@ -117,9 +118,6 @@ impl ASMStatement {
                 result.push_str(format!("\tcall\t_{}\n", name).as_str());
                 result
             }
-            Self::VarSetFromFunc(func_name, var_name) => {
-                format!("\tcall _{}\n\tmov\t[rel _{}], rax\n", func_name, var_name)
-            }
             ASMStatement::VarSetFromReg(name, reg) => {
                 format!("\tmov\t[rel _{}], {}", name, reg.name())
             }
@@ -128,6 +126,9 @@ impl ASMStatement {
             Self::FuncRet(value) => format!("\tpop\trbp\n\tmov\trax, {}\n\tret\n", value),
             Self::MovRegReg(reg0, reg1) => format!("\tmov\t{}, {}", reg0.name(), reg1.name()),
             Self::Add(reg0, reg1) => format!("\tadd\t{}, {}", reg0.name(), reg1.name()),
+            Self::Sub(reg0, reg1) => format!("\tsub\t{}, {}", reg0.name(), reg1.name()),
+            Self::Mul(reg0) => format!("\tmul\t{}", reg0.name()),
+            Self::Div(reg0) => format!("\tdiv\t{}", reg0.name()),
         };
         code.push_str("\n");
         code
@@ -202,6 +203,15 @@ macro_rules! asm {
     };
     (add, $reg0: expr, $reg1: expr) => {
         ASMStatement::Add($reg0, $reg1)
+    };
+    (sub, $reg0: expr, $reg1: expr) => {
+        ASMStatement::Sub($reg0, $reg1)
+    };
+    (mul, $reg: expr) => {
+        ASMStatement::Mul($reg)
+    };
+    (div, $reg: expr) => {
+        ASMStatement::Div($reg)
     };
 }
 
@@ -298,6 +308,69 @@ pub fn flatten_ast(old: &ast::AST, iter: &mut std::slice::Iter<ast::ASTNode>, ne
         }
     }
 }
+fn add_builtin_fn_if_needed(
+    name: &str,
+    externs: &mut Vec<ASMStatement>,
+    data_sect: &mut Vec<ASMStatement>,
+    text_sect: &mut Vec<ASMStatement>,
+    existed: &mut HashMap<&str, bool>,
+) {
+    match name {
+        "print" | "print_int" => {
+            if existed.contains_key("print") {
+                return;
+            }
+            externs.push(asm!(extern, "printf"));
+            data_sect.push(asm!(var_str, "printint_fmt", "%d\n"));
+            existed.insert("print", true);
+        }
+        "add" => {
+            if existed.contains_key("add") {
+                return;
+            }
+            existed.insert("add", true);
+
+            text_sect.push(asm!(func_def, "add"));
+            text_sect.push(asm!(mov, reg::rax, reg::rdi));
+            text_sect.push(asm!(add, reg::rax, reg::rsi));
+            text_sect.push(asm!(func_ret));
+        }
+        "sub" => {
+            if existed.contains_key("sub") {
+                return;
+            }
+            existed.insert("sub", true);
+
+            text_sect.push(asm!(func_def, "sub"));
+            text_sect.push(asm!(mov, reg::rax, reg::rdi));
+            text_sect.push(asm!(sub, reg::rax, reg::rsi));
+            text_sect.push(asm!(func_ret));
+        }
+        "mul" => {
+            if existed.contains_key("mul") {
+                return;
+            }
+            existed.insert("mul", true);
+
+            text_sect.push(asm!(func_def, "mul"));
+            text_sect.push(asm!(mov, reg::rax, reg::rdi));
+            text_sect.push(asm!(mul, reg::rsi));
+            text_sect.push(asm!(func_ret));
+        }
+        "div" => {
+            if existed.contains_key("div") {
+                return;
+            }
+            existed.insert("div", true);
+
+            text_sect.push(asm!(func_def, "div"));
+            text_sect.push(asm!(mov, reg::rax, reg::rdi));
+            text_sect.push(asm!(div, reg::rsi));
+            text_sect.push(asm!(func_ret));
+        }
+        _ => {}
+    }
+}
 
 pub fn codegen(source: String) -> String {
     let raw_ast = ast::construct_ast(source);
@@ -306,28 +379,31 @@ pub fn codegen(source: String) -> String {
 
     let mut existing_builtin_funcs: HashMap<&str, bool> = HashMap::new();
 
-    // first generate data sections and needed externs
+    // first generate data sections, add needed externs, and generate builtin functions in text
+    // section
     let mut target_externs: Vec<ASMStatement> = Vec::new();
     let mut target_data_sect: Vec<ASMStatement> = vec![asm!(sect, "data")];
-    for (i, node) in ast.iter().enumerate() {
+    let mut target_text_sect: Vec<ASMStatement> = vec![asm!(sect, "text")];
+    for node in &ast {
         match &node.expr {
-            ast::Expression::VarInitFunc(var_name, _, _) => {
+            ast::Expression::VarInitFunc(var_name, func_name, _) => {
                 let asm = ASMStatement::VarInt(var_name.to_string(), 0);
                 target_data_sect.push(asm);
+                add_builtin_fn_if_needed(
+                    func_name.as_str(),
+                    &mut target_externs,
+                    &mut target_data_sect,
+                    &mut target_text_sect,
+                    &mut existing_builtin_funcs,
+                );
             }
-            ast::Expression::FuncCall(name, _) | ast::Expression::VarInitFunc(_, name, _) => {
-                match name.as_str() {
-                    "print" | "print_int" => {
-                        if existing_builtin_funcs.contains_key("print") {
-                            continue;
-                        }
-                        target_externs.push(asm!(extern, "printf"));
-                        target_data_sect.push(asm!(var_str, "printint_fmt", "%d\n"));
-                        existing_builtin_funcs.insert("print", true);
-                    }
-                    _ => {}
-                }
-            }
+            ast::Expression::FuncCall(name, _) => add_builtin_fn_if_needed(
+                name.as_str(),
+                &mut target_externs,
+                &mut target_data_sect,
+                &mut target_text_sect,
+                &mut existing_builtin_funcs,
+            ),
             ast::Expression::VarInit(name, rhs) => {
                 let asm = match &ast.get(*rhs).unwrap().expr {
                     ast::Expression::NumberLiteral(num) => asm!(var_int, name, *num),
@@ -341,11 +417,6 @@ pub fn codegen(source: String) -> String {
     }
 
     // then generate text section
-    let mut target_text_sect: Vec<ASMStatement> = vec![asm!(sect, "text")];
-    target_text_sect.push(asm!(func_def, "add"));
-    target_text_sect.push(asm!(mov, reg::rax, reg::rdi));
-    target_text_sect.push(asm!(add, reg::rax, reg::rsi));
-    target_text_sect.push(asm!(func_ret));
     target_text_sect.push(asm!(func_def, "main"));
     for node in &ast {
         match &node.expr {
@@ -372,7 +443,7 @@ pub fn codegen(source: String) -> String {
                     func_call.arg_val(arg);
                 });
                 target_text_sect.push(func_call.asm);
-                let mut var_set = asm!(var_set_reg, var_name, reg::rax);
+                let var_set = asm!(var_set_reg, var_name, reg::rax);
                 target_text_sect.push(var_set);
             }
             _ => {}
