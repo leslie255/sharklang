@@ -4,6 +4,7 @@ use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
+use std::path::Path;
 
 mod codegen;
 
@@ -18,6 +19,11 @@ fn _input() -> String {
 fn compile(src_file: String, output_path: String) {
     let source = fs::read_to_string(src_file).expect("cannot read file");
     let output = codegen(source);
+
+    if Path::new(&output_path).exists() {
+        fs::remove_file(output_path.clone())
+            .unwrap_or_else(|_| panic!("Output file {} already exists and cannot be deleted", output_path));
+    }
 
     let mut output_file = fs::File::create(output_path.clone())
         .unwrap_or_else(|_| panic!("cannot write to file (0) {}", output_path));
