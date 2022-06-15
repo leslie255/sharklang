@@ -25,7 +25,7 @@ fn add_builtin_fn_if_needed(
                 return;
             }
             externs.push(asm!(extern, "printf"));
-            data_sect.push(asm!(var_str, "printint_fmt", "%d\n"));
+            data_sect.push(asm!(data_str, "printint_fmt", "%d\n"));
             existed.insert("print", true);
         }
         "add" => {
@@ -94,10 +94,10 @@ pub fn codegen(source: String) -> String {
             Expression::StringLiteral(str) => {
                 let id = format!("strliteral{}", quick_rand(str));
                 str_literals.insert(str.clone(), id.clone());
-                target_data_sect.push(asm!(var_str, id.clone(), str));
+                target_data_sect.push(asm!(data_str, id.clone(), str));
             }
             Expression::VarInitFunc(var_name, func_name, _) => {
-                let asm = asm!(var_int, var_name, 0);
+                let asm = asm!(data_int, var_name, 0);
                 target_data_sect.push(asm);
                 add_builtin_fn_if_needed(
                     func_name.as_str(),
@@ -116,11 +116,8 @@ pub fn codegen(source: String) -> String {
             ),
             Expression::VarInit(name, rhs) => {
                 let asm = match &ast.get(*rhs).unwrap().expr {
-                    Expression::NumberLiteral(num) => asm!(var_int, name, *num),
-                    Expression::StringLiteral(str) => {
-                        asm!(var_equ, name, str_literals.get(str).unwrap())
-                    }
-                    Expression::Identifier(name_2) => asm!(var_equ, name, name_2),
+                    Expression::NumberLiteral(num) => asm!(data_int, name, *num),
+                    Expression::Identifier(_) => asm!(data_int, name, 0),
                     _ => panic!("Invalid rhs for `let`"),
                 };
                 target_data_sect.push(asm);
@@ -156,22 +153,37 @@ pub fn codegen(source: String) -> String {
                     func_call.arg_val(arg);
                 });
                 target_text_sect.push(func_call.asm);
-                let var_set = asm!(var_set_reg, var_name, rax!());
+                let var_set = asm!(mov, Operand::Var(var_name.clone()), rax!());
                 target_text_sect.push(var_set);
             }
             Expression::VarSet(lhs, rhs) => match &ast.get(*rhs).unwrap().expr {
                 Expression::NumberLiteral(num) => {
-                    target_text_sect.push(asm!(var_set_int, lhs, *num));
+                    target_text_sect.push(asm!(mov, Operand::Var(lhs.clone()), Operand::Int(*num)));
                 }
                 _ => panic!(
                     "unexpected expression {:?} as the rhs of `set`",
                     ast.get(*rhs).unwrap().expr
                 ),
             },
+            Expression::VarInit(lhs, rhs) => match &ast.get(*rhs).unwrap().expr {
+                Expression::Identifier(val) => {
+                    target_text_sect.push(asm!(
+                        mov,
+                        rax!(),
+                        Operand::Var(val.clone())
+                    ));
+                    target_text_sect.push(asm!(
+                        mov,
+                        Operand::Var(lhs.clone()),
+                        rax!()
+                    ));
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
-    target_text_sect.push(asm!(func_ret, 0));
+    target_text_sect.push(asm!(func_ret, Operand::Int(0)));
 
     let mut full_generated_code = String::new();
     for statement in &target_externs {

@@ -1,10 +1,6 @@
 (let a = (add 2 3))
-(let b = (sub a 1))
-(let c = (mul 3 b))
-(let d = (div c b))
+(let b = a)
 
 (print_int a)
-(print_int b)
-(print_int c)
-(print_int d)
+(print_int (add a b))
 

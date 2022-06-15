@@ -2,7 +2,7 @@
 use super::ast::Expression;
 
 #[allow(unused, non_camel_case_types)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum Register {
     rax,
     rbx,
@@ -20,6 +20,50 @@ pub enum Register {
     r13,
     r14,
     r15,
+}
+#[allow(unused)]
+#[derive(Clone, Debug)]
+pub enum Operand {
+    Reg(Register), // rax, rbx, ...
+    Var(String),   // [rel _label]
+    Addr(String),  // _label
+    Int(u64),      // just data
+}
+impl Operand {
+    pub fn text(&self) -> String {
+        match self {
+            Self::Reg(reg) => reg.name(),
+            Self::Var(name) => format!("[rel _{}]", name),
+            Self::Addr(addr) => format!("_{}", addr),
+            Self::Int(int) => format!("{}", int),
+        }
+    }
+}
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum ASMStatement {
+    SectionHead(String),
+
+    Extern(String),
+
+    DataInt(String, u64),
+    DataStr(String, String),
+
+    Mov(Operand, Operand),
+
+    FuncCall(String, Vec<String>),
+
+    FuncDef(String),
+    FuncRetVoid,
+    FuncRet(Operand),
+
+    Add(Operand, Operand),
+    Sub(Operand, Operand),
+    Mul(Operand),
+    Div(Operand),
+}
+pub struct ASMFuncCallConstructor {
+    pub asm: ASMStatement,
 }
 impl Register {
     pub fn name(&self) -> String {
@@ -42,31 +86,6 @@ impl Register {
             Self::r15 => String::from("r15"),
         }
     }
-}
-#[derive(Debug)]
-#[allow(dead_code)]
-pub enum ASMStatement {
-    SectionHead(String),
-
-    Extern(String),
-    VarInt(String, u64),
-    VarStr(String, String),
-    VarFromVar(String, String),
-    VarSetFromReg(String, Register),
-    VarSetInt(String, u64),
-    VarSetStr(String, String),
-
-    FuncCall(String, Vec<String>), // function name, should pass as value/reference, argument
-
-    FuncDef(String),
-    FuncRetVoid,
-    FuncRet(u64),
-
-    MovRegReg(Register, Register),
-    Add(Register, Register),
-    Sub(Register, Register),
-    Mul(Register),
-    Div(Register),
 }
 macro_rules! asm_fmt_str {
     // converts '\n' into 0x0A, etc.
@@ -93,17 +112,15 @@ macro_rules! asm_fmt_str {
     }};
 }
 // names of the register to pass function calling arguments to
-static ARG_REG_NAMES: [&'static str; 3] = ["rdi", "rsi", "rbp"];
+static ARG_REG_NAMES: [&'static str; 2] = ["rdi", "rsi"];
 impl ASMStatement {
     pub fn gen_code(&self) -> String {
         let mut code = match self {
             Self::SectionHead(name) => format!("\n\tsection .{}", name),
             Self::Extern(name) => format!("\textern _{}", name),
-            Self::VarInt(name, value) => format!("_{}:\tdq {}", name, value),
-            Self::VarStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
-            Self::VarFromVar(name, rhs) => format!("_{}:\tequ _{}", name, rhs),
-            Self::VarSetInt(name, rhs) => format!("\tmov\t[rel _{}], {}", name, rhs),
-            Self::VarSetStr(name, rhs) => format!("\tmov\t_{}, _{}", name, rhs),
+            Self::DataInt(name, value) => format!("_{}:\tdq {}", name, value),
+            Self::DataStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
+            Self::Mov(oper0, oper1) => format!("\tmov\t{}, {}", oper0.text(), oper1.text()),
             Self::FuncCall(name, args) => {
                 let mut result = String::new();
                 args.iter().enumerate().for_each(|(i, arg)| {
@@ -112,26 +129,19 @@ impl ASMStatement {
                 result.push_str(format!("\tcall\t_{}\n", name).as_str());
                 result
             }
-            ASMStatement::VarSetFromReg(name, reg) => {
-                format!("\tmov\t[rel _{}], {}", name, reg.name())
-            }
             Self::FuncDef(name) => format!("\n\tglobal _{}\n_{}:\n\tpush\trbp\n", name, name),
             Self::FuncRetVoid => format!("\tpop\trbp\n\tret"),
-            Self::FuncRet(value) => format!("\tpop\trbp\n\tmov\trax, {}\n\tret", value),
-            Self::MovRegReg(reg0, reg1) => format!("\tmov\t{}, {}", reg0.name(), reg1.name()),
-            Self::Add(reg0, reg1) => format!("\tadd\t{}, {}", reg0.name(), reg1.name()),
-            Self::Sub(reg0, reg1) => format!("\tsub\t{}, {}", reg0.name(), reg1.name()),
-            Self::Mul(reg0) => format!("\tmul\t{}", reg0.name()),
-            Self::Div(reg0) => format!("\tdiv\t{}", reg0.name()),
+            Self::FuncRet(oper) => format!("\tpop\trbp\n\tmov\trax, {}\n\tret", oper.text()),
+            Self::Add(oper0, oper1) => format!("\tadd\t{}, {}", oper0.text(), oper1.text()),
+            Self::Sub(oper0, oper1) => format!("\tsub\t{}, {}", oper0.text(), oper1.text()),
+            Self::Mul(oper) => format!("\tmul\t{}", oper.text()),
+            Self::Div(oper) => format!("\tdiv\t{}", oper.text()),
         };
         code.push_str("\n");
         code
     }
 }
 
-pub struct ASMFuncCallConstructor {
-    pub asm: ASMStatement,
-}
 impl ASMFuncCallConstructor {
     // pass argument by pointer
     pub fn arg_ptr(&mut self, arg: &Expression) -> &mut ASMFuncCallConstructor {
@@ -152,6 +162,8 @@ impl ASMFuncCallConstructor {
             ASMStatement::FuncCall(_, args) => args.push(match arg {
                 Expression::Identifier(name) => format!("[rel _{}]", name),
                 Expression::NumberLiteral(num) => format!("{}", num),
+                Expression::VarInitFunc(var_name, _, _) => format!("[rel _{}]", var_name),
+                Expression::VarInit(name, _) => format!("[rel _{}]", name),
                 _ => panic!("unable to pass argument `{:?}` by value", arg),
             }),
             _ => panic!("what the fuck"),
@@ -164,26 +176,17 @@ macro_rules! asm {
     (sect, $sect_name: expr) => {
         ASMStatement::SectionHead(String::from($sect_name))
     };
-    (var_int, $name: expr, $value: expr) => {
-        ASMStatement::VarInt($name.to_string(), $value)
-    };
-    (var_str, $name: expr, $value: expr) => {
-        ASMStatement::VarStr($name.to_string(), $value.to_string())
-    };
-    (var_equ, $name: expr, $rhs: expr) => {
-        ASMStatement::VarFromVar($name.to_string(), $rhs.to_string())
-    };
-    (var_set_reg, $var_name: expr, $reg: expr) => {
-        ASMStatement::VarSetFromReg($var_name.to_string(), $reg)
-    };
-    (var_set_str, $var_name: expr, $str: expr) => {
-        ASMStatement::VarSetStr($var_name.to_string(), $str.to_string())
-    };
-    (var_set_int, $var_name: expr, $num: expr) => {
-        ASMStatement::VarSetInt($var_name.to_string(), $num)
-    };
     (extern, $name: expr) => {
         ASMStatement::Extern($name.to_string())
+    };
+    (data_int, $name: expr, $data: expr) => {
+        ASMStatement::DataInt($name.to_string(), $data)
+    };
+    (data_str, $name: expr, $data: expr) => {
+        ASMStatement::DataStr($name.to_string(), $data.to_string())
+    };
+    (mov, $oper0: expr, $oper1: expr) => {
+        ASMStatement::Mov($oper0, $oper1)
     };
     (func_call, $name: expr) => {
         ASMFuncCallConstructor {
@@ -199,124 +202,121 @@ macro_rules! asm {
     (func_def, $name: expr) => {
         ASMStatement::FuncDef($name.to_string())
     };
-    (mov, $reg0: expr, $reg1: expr) => {
-        ASMStatement::MovRegReg($reg0, $reg1)
+    (add, $reg: expr, $oper: expr) => {
+        ASMStatement::Add($reg, $oper)
     };
-    (add, $reg0: expr, $reg1: expr) => {
-        ASMStatement::Add($reg0, $reg1)
+    (sub, $reg: expr, $oper: expr) => {
+        ASMStatement::Sub($reg, $oper)
     };
-    (sub, $reg0: expr, $reg1: expr) => {
-        ASMStatement::Sub($reg0, $reg1)
+    (mul, $oper: expr) => {
+        ASMStatement::Mul($oper)
     };
-    (mul, $reg: expr) => {
-        ASMStatement::Mul($reg)
-    };
-    (div, $reg: expr) => {
-        ASMStatement::Div($reg)
+    (div, $oper: expr) => {
+        ASMStatement::Div($oper)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! rax {
     () => {
-        Register::rax
+        Operand::Reg(Register::rax)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! rbx {
     () => {
-        Register::rbx
+        Operand::Reg(Register::rbx)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! rcx {
     () => {
-        Register::rcx
+        Operand::Reg(Register::rcx)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! rsi {
     () => {
-        Register::rsi
+        Operand::Reg(Register::rsi)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! rdi {
     () => {
-        Register::rdi
+        Operand::Reg(Register::rdi)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! rsp {
     () => {
-        Register::rsp
+        Operand::Reg(Register::rsp)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! rbp {
     () => {
-        Register::rbp
+        Operand::Reg(Register::rbp)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! r8 {
     () => {
-        Register::r8
+        Operand::Reg(Register::r8)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! r9 {
     () => {
-        Register::r9
+        Operand::Reg(Register::r9)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! r10 {
     () => {
-        Register::r10
+        Operand::Reg(Register::r10)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! r11 {
     () => {
-        Register::r11
+        Operand::Reg(Register::r11)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! r12 {
     () => {
-        Register::r12
+        Operand::Reg(Register::r12)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! r13 {
     () => {
-        Register::r13
+        Operand::Reg(Register::r13)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! r14 {
     () => {
-        Register::r14
+        Operand::Reg(Register::r14)
     };
 }
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! r15 {
     () => {
-        Register::r15
+        Operand::Reg(Register::r15)
     };
 }
