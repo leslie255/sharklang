@@ -1,5 +1,15 @@
 use super::tokens::*;
 
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! print_ast {
+    ($ast: expr) => {
+        for (i, node) in $ast.iter().enumerate() {
+            println!("{}: {:?}", i, node);
+        }
+    };
+}
+
 static mut LAST_RAND: u64 = 0;
 pub fn quick_rand(str: &str) -> u64 {
     let mut hash: u64 = 0;

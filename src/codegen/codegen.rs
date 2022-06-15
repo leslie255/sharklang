@@ -3,15 +3,6 @@ use crate::codegen::ir::*;
 
 use std::collections::HashMap;
 
-#[allow(unused_macros)]
-macro_rules! print_ast {
-    ($ast: expr) => {
-        for (i, node) in $ast.iter().enumerate() {
-            println!("{}: {:?}", i, node);
-        }
-    };
-}
-
 fn add_builtin_fn_if_needed(
     name: &str,
     externs: &mut Vec<ASMStatement>,
@@ -118,6 +109,7 @@ pub fn codegen(source: String) -> String {
                 let asm = match &ast.get(*rhs).unwrap().expr {
                     Expression::NumberLiteral(num) => asm!(data_int, name, *num),
                     Expression::Identifier(_) => asm!(data_int, name, 0),
+                    Expression::VarInitFunc(_, _, _) => asm!(data_int, name, 0),
                     _ => panic!("Invalid rhs for `let`"),
                 };
                 target_data_sect.push(asm);
@@ -167,16 +159,8 @@ pub fn codegen(source: String) -> String {
             },
             Expression::VarInit(lhs, rhs) => match &ast.get(*rhs).unwrap().expr {
                 Expression::Identifier(val) => {
-                    target_text_sect.push(asm!(
-                        mov,
-                        rax!(),
-                        Operand::Var(val.clone())
-                    ));
-                    target_text_sect.push(asm!(
-                        mov,
-                        Operand::Var(lhs.clone()),
-                        rax!()
-                    ));
+                    target_text_sect.push(asm!(mov, rax!(), Operand::Var(val.clone())));
+                    target_text_sect.push(asm!(mov, Operand::Var(lhs.clone()), rax!()));
                 }
                 _ => {}
             },
