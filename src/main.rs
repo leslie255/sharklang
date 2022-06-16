@@ -5,7 +5,6 @@ use std::fs;
 use std::io;
 use std::io::Write;
 use std::path::Path;
-use std::collections::HashMap;
 
 mod codegen;
 
@@ -37,11 +36,6 @@ fn print_tree(src_path: String) {
     let ast = codegen::ast::construct_ast(source);
     println!("--- AST:");
     print_ast!(ast);
-    let mut flattened = codegen::ast::AST::new();
-    let mut index_changes: HashMap<usize, usize> = HashMap::new();
-    codegen::ast::flatten_ast(&ast, &mut ast.iter(), &mut flattened, &mut index_changes);
-    println!("\n--- Flattened AST:");
-    print_ast!(flattened);
 }
 
 fn print_tokens(src_path: String) {

@@ -68,10 +68,7 @@ fn add_builtin_fn_if_needed(
 }
 
 pub fn codegen(source: String) -> String {
-    let raw_ast = construct_ast(source);
-    let mut ast = AST::new();
-    let mut index_changes: HashMap<usize, usize> = HashMap::new();
-    flatten_ast(&raw_ast, &mut raw_ast.iter(), &mut ast, &mut index_changes);
+    let ast = construct_ast(source);
 
     let mut existing_builtin_funcs: HashMap<&str, bool> = HashMap::new();
     let mut str_literals: HashMap<String, String> = HashMap::new();

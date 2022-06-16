@@ -54,7 +54,6 @@ impl Default for Expression {
 #[derive(Default, Clone)]
 pub struct ASTNode {
     pub expr: Expression,
-    pub parent: usize, // using u64_max!() as the parent means it's a root node
 }
 pub type AST = Vec<ASTNode>;
 impl ASTNode {
@@ -108,10 +107,7 @@ fn recursive_construct_ast(
     }
     macro_rules! new_node_from_expr {
         ($expression: expr) => {
-            tree.push(ASTNode {
-                expr: $expression,
-                parent: current,
-            })
+            tree.push(ASTNode { expr: $expression })
         };
     }
 
@@ -229,14 +225,6 @@ fn recursive_construct_ast(
     };
 
     (0, true)
-}
-
-pub fn flatten_ast(
-    old: &AST,
-    iter: &mut std::slice::Iter<ASTNode>,
-    new: &mut AST,
-    index_changes: &mut HashMap<usize, usize>,
-) {
 }
 
 pub fn construct_ast(source: String) -> AST {
