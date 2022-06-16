@@ -1,6 +1,6 @@
 #[derive(Debug, PartialEq, Clone)]
 #[allow(unused)]
-pub enum TokenClass {
+pub enum TokenContent {
     RoundParenOpen,
     RoundParenClose,
     RectParenOpen,
@@ -12,6 +12,7 @@ pub enum TokenClass {
     False,
     Semicolon,
     Period,
+    Comma,
     UInt(u64),
     Float(f64),
     String(String),
@@ -21,9 +22,9 @@ pub enum TokenClass {
 
     Unknown,
 }
-impl Default for TokenClass {
+impl Default for TokenContent {
     fn default() -> Self {
-        return TokenClass::Unknown;
+        return TokenContent::Unknown;
     }
 }
 
@@ -42,7 +43,7 @@ impl CharCustomFuncs for char {
 
 #[derive(Debug, Default, Clone)]
 pub struct Token {
-    pub class: TokenClass,
+    pub content: TokenContent,
     pub line: u64,
     pub column: u64,
 }
@@ -50,20 +51,21 @@ pub struct Token {
 impl Token {
     fn from(str: &String, line: u64, column: u64) -> Token {
         Token {
-            class: match str.as_str() {
-                "(" => TokenClass::RoundParenOpen,
-                ")" => TokenClass::RoundParenClose,
-                "[" => TokenClass::RectParenOpen,
-                "]" => TokenClass::RectParenClose,
-                "{" => TokenClass::BigParenOpen,
-                "}" => TokenClass::BigParenClose,
-                "=" => TokenClass::Equal,
-                "true" => TokenClass::True,
-                "false" => TokenClass::False,
-                "let" => TokenClass::Let,
-                "set" => TokenClass::Set,
-                ";" => TokenClass::Semicolon,
-                "." => TokenClass::Period,
+            content: match str.as_str() {
+                "(" => TokenContent::RoundParenOpen,
+                ")" => TokenContent::RoundParenClose,
+                "[" => TokenContent::RectParenOpen,
+                "]" => TokenContent::RectParenClose,
+                "{" => TokenContent::BigParenOpen,
+                "}" => TokenContent::BigParenClose,
+                "=" => TokenContent::Equal,
+                "true" => TokenContent::True,
+                "false" => TokenContent::False,
+                "let" => TokenContent::Let,
+                "set" => TokenContent::Set,
+                ";" => TokenContent::Semicolon,
+                "." => TokenContent::Period,
+                "," => TokenContent::Comma,
                 _ => {
                     if str
                         .chars()
@@ -71,12 +73,12 @@ impl Token {
                         .expect("trying to parse a token from empty string")
                         .is_numeric()
                     {
-                        TokenClass::UInt(
+                        TokenContent::UInt(
                             str.parse()
                                 .unwrap_or_else(|_| panic!("`{}` is not an unsigned integar", str)),
                         )
                     } else {
-                        TokenClass::Identifier(str.clone())
+                        TokenContent::Identifier(str.clone())
                     }
                 }
             },
@@ -100,6 +102,12 @@ pub fn parse_tokens(source: String) -> Vec<Token> {
             '\n' => {
                 line += 1;
                 column = 0;
+                if !last_word.is_empty() {
+                    tokens.push(Token::from(&last_word, line, column));
+                    last_word = String::new();
+                }
+                ch = iter.next();
+                continue;
             }
             '\"' => {
                 // string
@@ -112,9 +120,9 @@ pub fn parse_tokens(source: String) -> Vec<Token> {
                     }
                 }
                 tokens.push(Token {
-                    class: TokenClass::String(last_word),
+                    content: TokenContent::String(last_word),
                     line: line.clone(),
-                    column: column,
+                    column: column.clone(),
                 });
                 last_word = String::new();
             }
@@ -141,6 +149,8 @@ pub fn parse_tokens(source: String) -> Vec<Token> {
         }
         ch = iter.next();
     }
-    tokens.push(Token::from(&last_word, line, column));
+    if !last_word.is_empty() {
+        tokens.push(Token::from(&last_word, line, column));
+    }
     tokens
 }

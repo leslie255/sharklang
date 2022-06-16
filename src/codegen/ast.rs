@@ -39,10 +39,9 @@ pub enum Expression {
     NumberLiteral(u64),
     StringLiteral(String),
     // Recursive expression
-    FuncCall(String, Vec<usize>),            // function name, arguments
-    VarInit(String, usize),                  // lhs, rhs
-    VarSet(String, usize),                   // lhs, rhs
-    VarInitFunc(String, String, Vec<usize>), // init a var from the result of a function call (lhs, function name, arguments) (won't be used until ast is flattened)
+    FuncCall(String, Vec<usize>), // function name, arguments
+    VarInit(String, usize),       // lhs, rhs
+    VarSet(String, usize),        // lhs, rhs
 
     Unknown,
     Null, // during flattening the AST some expressions will be removed from the stack
@@ -90,100 +89,146 @@ impl std::fmt::Debug for ASTNode {
     }
 }
 
-#[allow(unused_assignments)] // rustc wtf??
 fn recursive_construct_ast(
     tree: &mut AST,
     current: usize,
     tokens_iter: &mut std::slice::Iter<Token>,
-) -> Option<usize> {
-    None
-//    let mut token: &Token;
-//    macro_rules! next {
-//        () => {
-//            match tokens_iter.next() {
-//                Some(x) => {
-//                    token = x;
-//                }
-//                None => return None,
-//            }
-//        };
-//    }
-//    macro_rules! new_node {
-//        ($node: expr) => {
-//            tree.push($node)
-//        };
-//    }
-//    macro_rules! new_node_from_expr {
-//        ($expression: expr) => {
-//            tree.push(ASTNode {
-//                expr: $expression,
-//                parent: current,
-//            })
-//        };
-//    }
-//    next!();
-//
-//    // recursive statement
-//    if token.value.as_str() == "(" {
-//        next!();
-//        match token.value.as_str() {
-//            "let" => {
-//                // variable initilize
-//                next!();
-//                let lhs = &token.value;
-//                next!(); // TODO: error if this is not an equal sign
-//                match recursive_construct_ast(tree, current, tokens_iter) {
-//                    Some(rhs) => {
-//                        next!();
-//                        new_node_from_expr!(Expression::VarInit(lhs.clone(), rhs));
-//                        Some(tree.len() - 1)
-//                    }
-//                    None => panic!("unexpected token: {:?}", &token.value),
-//                }
-//            }
-//            "set" => {
-//                // variable set
-//                next!();
-//                let lhs = &token.value;
-//                next!(); // TODO: error if this is not an equal sign
-//                match recursive_construct_ast(tree, current, tokens_iter) {
-//                    Some(rhs) => {
-//                        next!();
-//                        new_node_from_expr!(Expression::VarSet(lhs.clone(), rhs));
-//                        Some(tree.len() - 1)
-//                    }
-//                    None => panic!("unexpected token: {:?}", &token.value),
-//                }
-//            }
-//            _ => {
-//                // function call
-//                let name = &token.value;
-//                let mut args: Vec<usize> = Vec::new();
-//                loop {
-//                    match recursive_construct_ast(tree, current, tokens_iter) {
-//                        Some(arg) => args.push(arg),
-//                        None => break,
-//                    }
-//                }
-//                new_node_from_expr!(Expression::FuncCall(name.clone(), args));
-//                Some(tree.len() - 1)
-//            }
-//        }
-//    } else {
-//        if token.value == ")" {
-//            return None;
-//        }
-//        new_node!(ASTNode {
-//            expr: match token.class {
-//                TokenClass::Number => Expression::NumberLiteral(token.value.parse().unwrap()),
-//                TokenClass::String => Expression::StringLiteral(token.value.clone()),
-//                TokenClass::Identifier => Expression::Identifier(token.value.clone()),
-//                _ => panic!("unexpected token: {:?}", token.value),
-//            },
-//            parent: current,
-//        });
-//        Some(tree.len() - 1)
-//    }
+) -> (usize, bool) {
+    // return value 0: index of newly added expression, 1: should continue recursion
+    let mut token: &Token;
+    macro_rules! next {
+        () => {
+            match tokens_iter.next() {
+                Some(x) => {
+                    token = x;
+                }
+                None => return (0, false),
+            }
+        };
+    }
+    macro_rules! new_node_from_expr {
+        ($expression: expr) => {
+            tree.push(ASTNode {
+                expr: $expression,
+                parent: current,
+            })
+        };
+    }
+
+    next!();
+
+    match &token.content {
+        TokenContent::Let => {
+            next!();
+            if let TokenContent::Identifier(var_name) = &token.content {
+                next!();
+                if TokenContent::Equal != token.content {
+                    panic!(
+                        "{}:{} expecting `=` after variable name, found {:?}",
+                        token.line, token.column, token.content
+                    );
+                }
+                let (rhs, should_continue) = recursive_construct_ast(tree, current, tokens_iter);
+                match tree.get(rhs).unwrap().expr {
+                    Expression::NumberLiteral(_) | Expression::StringLiteral(_) => {
+                        next!();
+                        if TokenContent::Semicolon != token.content {
+                            panic!(
+                                "{}:{} expecting `;` in the end of `let` statement",
+                                token.line, token.column
+                            );
+                        }
+                    }
+                    Expression::FuncCall(_, _) | Expression::Identifier(_) => {}
+                    _ => panic!("{}:{} invalid rhs for `let`", token.line, token.column),
+                }
+                new_node_from_expr!(Expression::VarInit(var_name.clone(), rhs));
+                return (tree.len() - 1, should_continue);
+            } else {
+                panic!(
+                    "{}:{} expecting an identifier following `let`, found {:?}",
+                    token.line, token.column, token.content
+                );
+            }
+        }
+        TokenContent::UInt(uint) => {
+            new_node_from_expr!(Expression::NumberLiteral(*uint));
+            return (tree.len() - 1, true);
+        }
+        TokenContent::String(str) => {
+            new_node_from_expr!(Expression::StringLiteral(str.clone()));
+            return (tree.len() - 1, true);
+        }
+        TokenContent::Identifier(id) => {
+            next!();
+            match token.content {
+                TokenContent::Equal => {
+                    // variable set
+                    let (rhs, should_continue) =
+                        recursive_construct_ast(tree, current, tokens_iter);
+                    match tree.get(rhs).unwrap().expr {
+                        Expression::NumberLiteral(_) | Expression::StringLiteral(_) => {
+                            next!();
+                            if TokenContent::Semicolon != token.content {
+                                panic!(
+                                    "{}:{} expecting `;` in the end of `let` statement",
+                                    token.line, token.column
+                                );
+                            }
+                        }
+                        Expression::FuncCall(_, _) | Expression::Identifier(_) => {}
+                        _ => panic!("{}:{} invalid rhs for `let`", token.line, token.column),
+                    }
+                    new_node_from_expr!(Expression::VarSet(id.clone(), rhs));
+                    return (tree.len() - 1, should_continue);
+                }
+                TokenContent::Semicolon => {
+                    new_node_from_expr!(Expression::Identifier(id.clone()));
+                    return (tree.len() - 1, true);
+                }
+                TokenContent::RoundParenOpen => {
+                    // function call
+                    let mut args: Vec<usize> = Vec::new();
+                    loop {
+                        let (arg, should_continue) =
+                            recursive_construct_ast(tree, current, tokens_iter);
+                        if !should_continue {
+                            panic!(
+                                "{}:{} expecting a function argument, found EOF",
+                                token.line, token.column
+                            );
+                        }
+                        args.push(arg);
+                        next!();
+                        if TokenContent::Comma == token.content {
+                        } else if TokenContent::RoundParenClose == token.content {
+                            break;
+                        } else {
+                            panic!(
+                                "{}:{} expecting an function argument, found `(`",
+                                token.line, token.column
+                            );
+                        }
+                    }
+                    new_node_from_expr!(Expression::FuncCall(id.clone(), args));
+                    return (tree.len() - 1, true);
+                }
+                _ => panic!(
+                    "{}:{} expecting `(`, `;` or `=` after {}",
+                    token.line, token.column, id
+                ),
+            }
+        }
+        TokenContent::Semicolon => {}
+        _ => {
+            panic!(
+                "{}:{} unidentified token `{:?}`",
+                token.line, token.column, token.content
+            );
+        }
+    };
+
+    (0, true)
 }
 
 pub fn flatten_ast(
@@ -192,107 +237,6 @@ pub fn flatten_ast(
     new: &mut AST,
     index_changes: &mut HashMap<usize, usize>,
 ) {
-    let mut node: &ASTNode;
-    macro_rules! next {
-        () => {
-            match iter.next() {
-                Some(x) => node = x,
-                None => return,
-            }
-        };
-    }
-    loop {
-        next!();
-        if !node.is_recursive(old) {
-            new.push(node.clone());
-            continue;
-        }
-        println!("{:?}", new.last());
-        match &node.expr {
-            Expression::FuncCall(name, args) => {
-                let mut new_args: Vec<usize> = Vec::new();
-                for arg in args {
-                    if old.get(*arg).unwrap().is_recursive(old) {
-                        flatten_ast(old, iter, new, index_changes);
-                    }
-                    if !old.get(*arg).unwrap().is_recursive_type() {
-                        new_args.push(*arg);
-                        continue;
-                    }
-                    // the last added FuncCall statement won't be needed
-                    new.last_mut().unwrap().expr = Expression::Null;
-                    index_changes.insert(new.len() - 1, new.len());
-                    // add a new VarInitFunc(...) before this FuncCall
-                    let var_name = format!("temp_{}", quick_rand(name.as_str()));
-                    new_args.push(new.len());
-                    let func_name;
-                    let func_args: &Vec<usize>;
-                    match &old.get(*arg).unwrap().expr {
-                        Expression::FuncCall(name, args) => {
-                            func_name = name;
-                            func_args = args;
-                        }
-                        _ => panic!("unexpected variable initialization syntax"),
-                    }
-                    new.push(ASTNode {
-                        expr: Expression::VarInitFunc(
-                            var_name.clone(),
-                            func_name.clone(),
-                            func_args.clone(),
-                        ),
-                        parent: node.parent,
-                    });
-                }
-                new.push(ASTNode {
-                    expr: Expression::FuncCall(name.clone(), new_args),
-                    parent: node.parent,
-                });
-            }
-            Expression::VarInit(lhs, rhs) => {
-                new.last_mut().unwrap().expr = Expression::Null;
-                index_changes.insert(new.len() - 1, new.len());
-                // should be a VarInitFunc
-                let func_name;
-                let func_args: &Vec<usize>;
-                match &old.get(*rhs).unwrap().expr {
-                    Expression::FuncCall(name, args) => {
-                        func_name = name;
-                        func_args = args;
-                    }
-                    _ => panic!("unexpected variable initialization syntax"),
-                }
-                new.push(ASTNode {
-                    expr: Expression::VarInitFunc(
-                        lhs.clone(),
-                        func_name.clone(),
-                        func_args.clone(),
-                    ),
-                    parent: node.parent,
-                });
-            }
-            _ => {}
-        }
-    }
-}
-
-pub fn check_ast_refs(ast: &mut AST, index_changes: &HashMap<usize, usize>) {
-    for node in ast.iter_mut() {
-        match &mut node.expr {
-            Expression::VarInit(_, rhs) => {
-                *rhs = *index_changes.get(rhs).unwrap_or(rhs)
-            }
-            Expression::VarSet(_, rhs) => {
-                *rhs = *index_changes.get(rhs).unwrap_or(rhs)
-            }
-            Expression::FuncCall(_, args) => args.iter_mut().for_each(|arg| {
-                *arg = *index_changes.get(arg).unwrap_or(arg);
-            }),
-            Expression::VarInitFunc(_, _, args) => args.iter_mut().for_each(|arg| {
-                *arg = *index_changes.get(arg).unwrap_or(arg);
-            }),
-            _ => {}
-        }
-    }
 }
 
 pub fn construct_ast(source: String) -> AST {
@@ -300,9 +244,8 @@ pub fn construct_ast(source: String) -> AST {
     let mut iter = tokens.iter();
     let mut ast = AST::new();
     loop {
-        match recursive_construct_ast(&mut ast, u64_max!(), &mut iter) {
-            None => break,
-            _ => {}
+        if !recursive_construct_ast(&mut ast, u64_max!(), &mut iter).1 {
+            break;
         }
     }
     ast

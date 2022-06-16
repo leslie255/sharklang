@@ -40,7 +40,6 @@ fn print_tree(src_path: String) {
     let mut flattened = codegen::ast::AST::new();
     let mut index_changes: HashMap<usize, usize> = HashMap::new();
     codegen::ast::flatten_ast(&ast, &mut ast.iter(), &mut flattened, &mut index_changes);
-    codegen::ast::check_ast_refs(&mut flattened, &index_changes);
     println!("\n--- Flattened AST:");
     print_ast!(flattened);
 }
@@ -49,7 +48,7 @@ fn print_tokens(src_path: String) {
     let source = fs::read_to_string(src_path).expect("cannot read file");
     let tokens = codegen::tokens::parse_tokens(source);
     for token in tokens {
-        println!("({},{}): {:?}", token.line, token.column, token.class);
+        println!("({},{}): {:?}", token.line, token.column, token.content);
     }
 }
 

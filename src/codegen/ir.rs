@@ -162,7 +162,6 @@ impl ASMFuncCallConstructor {
             ASMStatement::FuncCall(_, args) => args.push(match arg {
                 Expression::Identifier(name) => format!("[rel _{}]", name),
                 Expression::NumberLiteral(num) => format!("{}", num),
-                Expression::VarInitFunc(var_name, _, _) => format!("[rel _{}]", var_name),
                 Expression::VarInit(name, _) => format!("[rel _{}]", name),
                 _ => panic!("unable to pass argument `{:?}` by value", arg),
             }),

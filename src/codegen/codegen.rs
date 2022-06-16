@@ -72,7 +72,6 @@ pub fn codegen(source: String) -> String {
     let mut ast = AST::new();
     let mut index_changes: HashMap<usize, usize> = HashMap::new();
     flatten_ast(&raw_ast, &mut raw_ast.iter(), &mut ast, &mut index_changes);
-    check_ast_refs(&mut ast, &index_changes);
 
     let mut existing_builtin_funcs: HashMap<&str, bool> = HashMap::new();
     let mut str_literals: HashMap<String, String> = HashMap::new();
@@ -89,16 +88,6 @@ pub fn codegen(source: String) -> String {
                 str_literals.insert(str.clone(), id.clone());
                 target_data_sect.push(asm!(data_str, id.clone(), str));
             }
-            Expression::VarInitFunc(var_name, func_name, _) => {
-                target_data_sect.push(asm!(data_int, var_name, 0));
-                add_builtin_fn_if_needed(
-                    func_name.as_str(),
-                    &mut target_externs,
-                    &mut target_data_sect,
-                    &mut target_text_sect,
-                    &mut existing_builtin_funcs,
-                );
-            }
             Expression::FuncCall(name, _) => add_builtin_fn_if_needed(
                 name.as_str(),
                 &mut target_externs,
@@ -110,7 +99,6 @@ pub fn codegen(source: String) -> String {
                 let asm = match &ast.get(*rhs).unwrap().expr {
                     Expression::NumberLiteral(num) => asm!(data_int, name, *num),
                     Expression::Identifier(_) => asm!(data_int, name, 0),
-                    Expression::VarInitFunc(_, _, _) => asm!(data_int, name, 0),
                     _ => panic!("Invalid rhs for `let`"),
                 };
                 target_data_sect.push(asm);
@@ -140,16 +128,6 @@ pub fn codegen(source: String) -> String {
                     func_call.arg_val(arg);
                 });
                 target_text_sect.push(func_call.asm);
-            }
-            Expression::VarInitFunc(var_name, func_name, args) => {
-                let mut func_call = asm!(func_call, func_name);
-                args.iter().for_each(|arg_i| {
-                    let arg = &ast.get(*arg_i).unwrap().expr;
-                    func_call.arg_val(arg);
-                });
-                target_text_sect.push(func_call.asm);
-                let var_set = asm!(mov, Operand::Var(var_name.clone()), rax!());
-                target_text_sect.push(var_set);
             }
             Expression::VarSet(lhs, rhs) => match &ast.get(*rhs).unwrap().expr {
                 Expression::NumberLiteral(num) => {
