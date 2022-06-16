@@ -1,6 +1,6 @@
-(let a = (add 2 4))
-(let b = a)
+let a = 2;
+let b = 3;
+let c = add(a, b);
 
-(print_int a)
-(print_int (add a b))
+print_int(c);
 

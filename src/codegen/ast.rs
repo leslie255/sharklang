@@ -1,4 +1,7 @@
+#![allow(unused)] // temporary
 use super::tokens::*;
+
+use std::collections::HashMap;
 
 #[allow(unused_macros)]
 #[macro_export]
@@ -93,96 +96,102 @@ fn recursive_construct_ast(
     current: usize,
     tokens_iter: &mut std::slice::Iter<Token>,
 ) -> Option<usize> {
-    let mut token: &Token;
-    macro_rules! next {
-        () => {
-            match tokens_iter.next() {
-                Some(x) => {
-                    token = x;
-                }
-                None => return None,
-            }
-        };
-    }
-    macro_rules! new_node {
-        ($node: expr) => {
-            tree.push($node)
-        };
-    }
-    macro_rules! new_node_from_expr {
-        ($expression: expr) => {
-            tree.push(ASTNode {
-                expr: $expression,
-                parent: current,
-            })
-        };
-    }
-    next!();
-
-    // recursive statement
-    if token.value.as_str() == "(" {
-        next!();
-        match token.value.as_str() {
-            "let" => {
-                // variable initilize
-                next!();
-                let lhs = &token.value;
-                next!(); // TODO: error if this is not an equal sign
-                match recursive_construct_ast(tree, current, tokens_iter) {
-                    Some(rhs) => {
-                        next!();
-                        new_node_from_expr!(Expression::VarInit(lhs.clone(), rhs));
-                        Some(tree.len() - 1)
-                    }
-                    None => panic!("unexpected token: {:?}", &token.value),
-                }
-            }
-            "set" => {
-                // variable set
-                next!();
-                let lhs = &token.value;
-                next!(); // TODO: error if this is not an equal sign
-                match recursive_construct_ast(tree, current, tokens_iter) {
-                    Some(rhs) => {
-                        next!();
-                        new_node_from_expr!(Expression::VarSet(lhs.clone(), rhs));
-                        Some(tree.len() - 1)
-                    }
-                    None => panic!("unexpected token: {:?}", &token.value),
-                }
-            }
-            _ => {
-                // function call
-                let name = &token.value;
-                let mut args: Vec<usize> = Vec::new();
-                loop {
-                    match recursive_construct_ast(tree, current, tokens_iter) {
-                        Some(arg) => args.push(arg),
-                        None => break,
-                    }
-                }
-                new_node_from_expr!(Expression::FuncCall(name.clone(), args));
-                Some(tree.len() - 1)
-            }
-        }
-    } else {
-        if token.value == ")" {
-            return None;
-        }
-        new_node!(ASTNode {
-            expr: match token.class {
-                TokenClass::Number => Expression::NumberLiteral(token.value.parse().unwrap()),
-                TokenClass::String => Expression::StringLiteral(token.value.clone()),
-                TokenClass::Identifier => Expression::Identifier(token.value.clone()),
-                _ => panic!("unexpected token: {:?}", token.value),
-            },
-            parent: current,
-        });
-        Some(tree.len() - 1)
-    }
+    None
+//    let mut token: &Token;
+//    macro_rules! next {
+//        () => {
+//            match tokens_iter.next() {
+//                Some(x) => {
+//                    token = x;
+//                }
+//                None => return None,
+//            }
+//        };
+//    }
+//    macro_rules! new_node {
+//        ($node: expr) => {
+//            tree.push($node)
+//        };
+//    }
+//    macro_rules! new_node_from_expr {
+//        ($expression: expr) => {
+//            tree.push(ASTNode {
+//                expr: $expression,
+//                parent: current,
+//            })
+//        };
+//    }
+//    next!();
+//
+//    // recursive statement
+//    if token.value.as_str() == "(" {
+//        next!();
+//        match token.value.as_str() {
+//            "let" => {
+//                // variable initilize
+//                next!();
+//                let lhs = &token.value;
+//                next!(); // TODO: error if this is not an equal sign
+//                match recursive_construct_ast(tree, current, tokens_iter) {
+//                    Some(rhs) => {
+//                        next!();
+//                        new_node_from_expr!(Expression::VarInit(lhs.clone(), rhs));
+//                        Some(tree.len() - 1)
+//                    }
+//                    None => panic!("unexpected token: {:?}", &token.value),
+//                }
+//            }
+//            "set" => {
+//                // variable set
+//                next!();
+//                let lhs = &token.value;
+//                next!(); // TODO: error if this is not an equal sign
+//                match recursive_construct_ast(tree, current, tokens_iter) {
+//                    Some(rhs) => {
+//                        next!();
+//                        new_node_from_expr!(Expression::VarSet(lhs.clone(), rhs));
+//                        Some(tree.len() - 1)
+//                    }
+//                    None => panic!("unexpected token: {:?}", &token.value),
+//                }
+//            }
+//            _ => {
+//                // function call
+//                let name = &token.value;
+//                let mut args: Vec<usize> = Vec::new();
+//                loop {
+//                    match recursive_construct_ast(tree, current, tokens_iter) {
+//                        Some(arg) => args.push(arg),
+//                        None => break,
+//                    }
+//                }
+//                new_node_from_expr!(Expression::FuncCall(name.clone(), args));
+//                Some(tree.len() - 1)
+//            }
+//        }
+//    } else {
+//        if token.value == ")" {
+//            return None;
+//        }
+//        new_node!(ASTNode {
+//            expr: match token.class {
+//                TokenClass::Number => Expression::NumberLiteral(token.value.parse().unwrap()),
+//                TokenClass::String => Expression::StringLiteral(token.value.clone()),
+//                TokenClass::Identifier => Expression::Identifier(token.value.clone()),
+//                _ => panic!("unexpected token: {:?}", token.value),
+//            },
+//            parent: current,
+//        });
+//        Some(tree.len() - 1)
+//    }
 }
 
-pub fn flatten_ast(old: &AST, iter: &mut std::slice::Iter<ASTNode>, new: &mut AST) {
+pub fn flatten_ast(
+    old: &AST,
+    iter: &mut std::slice::Iter<ASTNode>,
+    new: &mut AST,
+    index_changes: &mut HashMap<usize, usize>,
+) {
     let mut node: &ASTNode;
     macro_rules! next {
         () => {
@@ -198,12 +207,13 @@ pub fn flatten_ast(old: &AST, iter: &mut std::slice::Iter<ASTNode>, new: &mut AS
             new.push(node.clone());
             continue;
         }
+        println!("{:?}", new.last());
         match &node.expr {
             Expression::FuncCall(name, args) => {
                 let mut new_args: Vec<usize> = Vec::new();
                 for arg in args {
                     if old.get(*arg).unwrap().is_recursive(old) {
-                        flatten_ast(old, iter, new);
+                        flatten_ast(old, iter, new, index_changes);
                     }
                     if !old.get(*arg).unwrap().is_recursive_type() {
                         new_args.push(*arg);
@@ -211,6 +221,7 @@ pub fn flatten_ast(old: &AST, iter: &mut std::slice::Iter<ASTNode>, new: &mut AS
                     }
                     // the last added FuncCall statement won't be needed
                     new.last_mut().unwrap().expr = Expression::Null;
+                    index_changes.insert(new.len() - 1, new.len());
                     // add a new VarInitFunc(...) before this FuncCall
                     let var_name = format!("temp_{}", quick_rand(name.as_str()));
                     new_args.push(new.len());
@@ -239,6 +250,7 @@ pub fn flatten_ast(old: &AST, iter: &mut std::slice::Iter<ASTNode>, new: &mut AS
             }
             Expression::VarInit(lhs, rhs) => {
                 new.last_mut().unwrap().expr = Expression::Null;
+                index_changes.insert(new.len() - 1, new.len());
                 // should be a VarInitFunc
                 let func_name;
                 let func_args: &Vec<usize>;
@@ -258,6 +270,26 @@ pub fn flatten_ast(old: &AST, iter: &mut std::slice::Iter<ASTNode>, new: &mut AS
                     parent: node.parent,
                 });
             }
+            _ => {}
+        }
+    }
+}
+
+pub fn check_ast_refs(ast: &mut AST, index_changes: &HashMap<usize, usize>) {
+    for node in ast.iter_mut() {
+        match &mut node.expr {
+            Expression::VarInit(_, rhs) => {
+                *rhs = *index_changes.get(rhs).unwrap_or(rhs)
+            }
+            Expression::VarSet(_, rhs) => {
+                *rhs = *index_changes.get(rhs).unwrap_or(rhs)
+            }
+            Expression::FuncCall(_, args) => args.iter_mut().for_each(|arg| {
+                *arg = *index_changes.get(arg).unwrap_or(arg);
+            }),
+            Expression::VarInitFunc(_, _, args) => args.iter_mut().for_each(|arg| {
+                *arg = *index_changes.get(arg).unwrap_or(arg);
+            }),
             _ => {}
         }
     }

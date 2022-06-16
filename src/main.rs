@@ -5,6 +5,7 @@ use std::fs;
 use std::io;
 use std::io::Write;
 use std::path::Path;
+use std::collections::HashMap;
 
 mod codegen;
 
@@ -37,9 +38,19 @@ fn print_tree(src_path: String) {
     println!("--- AST:");
     print_ast!(ast);
     let mut flattened = codegen::ast::AST::new();
-    codegen::ast::flatten_ast(&ast, &mut ast.iter(), &mut flattened);
+    let mut index_changes: HashMap<usize, usize> = HashMap::new();
+    codegen::ast::flatten_ast(&ast, &mut ast.iter(), &mut flattened, &mut index_changes);
+    codegen::ast::check_ast_refs(&mut flattened, &index_changes);
     println!("\n--- Flattened AST:");
     print_ast!(flattened);
+}
+
+fn print_tokens(src_path: String) {
+    let source = fs::read_to_string(src_path).expect("cannot read file");
+    let tokens = codegen::tokens::parse_tokens(source);
+    for token in tokens {
+        println!("({},{}): {:?}", token.line, token.column, token.class);
+    }
 }
 
 fn print_help(arg0: String) {
@@ -82,6 +93,17 @@ fn main() {
             "-t" | "--ast" => {
                 if !src_path.is_empty() {
                     print_tree(src_path);
+                    return;
+                } else {
+                    print_help(arg0);
+                    println!();
+                    println!("expects a source file");
+                    panic!();
+                }
+            }
+            "-s" | "--tokens" => {
+                if !src_path.is_empty() {
+                    print_tokens(src_path);
                     return;
                 } else {
                     print_help(arg0);

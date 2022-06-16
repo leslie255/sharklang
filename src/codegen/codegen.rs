@@ -70,7 +70,9 @@ fn add_builtin_fn_if_needed(
 pub fn codegen(source: String) -> String {
     let raw_ast = construct_ast(source);
     let mut ast = AST::new();
-    flatten_ast(&raw_ast, &mut raw_ast.iter(), &mut ast);
+    let mut index_changes: HashMap<usize, usize> = HashMap::new();
+    flatten_ast(&raw_ast, &mut raw_ast.iter(), &mut ast, &mut index_changes);
+    check_ast_refs(&mut ast, &index_changes);
 
     let mut existing_builtin_funcs: HashMap<&str, bool> = HashMap::new();
     let mut str_literals: HashMap<String, String> = HashMap::new();
@@ -88,8 +90,7 @@ pub fn codegen(source: String) -> String {
                 target_data_sect.push(asm!(data_str, id.clone(), str));
             }
             Expression::VarInitFunc(var_name, func_name, _) => {
-                let asm = asm!(data_int, var_name, 0);
-                target_data_sect.push(asm);
+                target_data_sect.push(asm!(data_int, var_name, 0));
                 add_builtin_fn_if_needed(
                     func_name.as_str(),
                     &mut target_externs,
@@ -125,9 +126,11 @@ pub fn codegen(source: String) -> String {
             Expression::FuncCall(name, args) => {
                 let mut func_call: ASMFuncCallConstructor =
                     if name == "print" || name == "print_int" {
+                        println!("calling print");
                         asm!(func_call, &"printf")
                     } else {
-                        asm!(func_call, &"printf")
+                        println!("calling {}", name);
+                        asm!(func_call, name)
                     };
                 if name == "print_int" {
                     func_call.arg_ptr(&Expression::Identifier("printint_fmt".to_string()));
