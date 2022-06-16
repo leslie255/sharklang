@@ -2,7 +2,7 @@
 
 **A Lisp-style toy programming language (WIP)**
 
-#### How to use:
+### How to use:
 **right now Shark lacks a lot of the essential features of a programming language,**
 
 **here's how to use this current (extremely primitive) version of Shark:**
