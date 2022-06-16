@@ -1,7 +1,4 @@
-#![allow(unused)] // temporary
 use super::tokens::*;
-
-use std::collections::HashMap;
 
 #[allow(unused_macros)]
 #[macro_export]
@@ -11,19 +8,6 @@ macro_rules! print_ast {
             println!("{}: {:?}", i, node);
         }
     };
-}
-
-static mut LAST_RAND: u64 = 0;
-pub fn quick_rand(str: &str) -> u64 {
-    let mut hash: u64 = 0;
-    for ch in str.chars() {
-        hash += (ch as u64) * (ch as u64);
-    }
-    unsafe {
-        hash = hash.overflowing_add(LAST_RAND).0;
-        LAST_RAND = hash;
-    }
-    hash
 }
 
 macro_rules! u64_max {
@@ -44,7 +28,6 @@ pub enum Expression {
     VarSet(String, usize),        // lhs, rhs
 
     Unknown,
-    Null, // during flattening the AST some expressions will be removed from the stack
 }
 impl Default for Expression {
     fn default() -> Self {
@@ -55,30 +38,19 @@ impl Default for Expression {
 pub struct ASTNode {
     pub expr: Expression,
 }
-pub type AST = Vec<ASTNode>;
-impl ASTNode {
-    pub fn is_recursive_type(&self) -> bool {
-        match self.expr {
-            Expression::VarInit(_, _) => true,
-            Expression::VarSet(_, _) => true,
-            Expression::FuncCall(_, _) => true,
-            _ => false,
-        }
+#[derive(Default)]
+pub struct AST {
+    pub nodes: Vec<ASTNode>,
+    pub root_nodes: Vec<usize>,
+}
+
+impl AST {
+    #[allow(dead_code)]
+    pub fn node(&self, i: usize) -> &ASTNode {
+        unsafe { self.nodes.get_unchecked(i) }
     }
-    pub fn is_recursive(&self, tree: &AST) -> bool {
-        match &self.expr {
-            Expression::VarInit(_, rhs) => tree.get(*rhs).unwrap().is_recursive_type(),
-            Expression::VarSet(_, rhs) => tree.get(*rhs).unwrap().is_recursive_type(),
-            Expression::FuncCall(_, args) => {
-                for arg in args.iter() {
-                    if tree.get(*arg).unwrap().is_recursive_type() {
-                        return true;
-                    }
-                }
-                false
-            }
-            _ => false,
-        }
+    pub fn expr(&self, i: usize) -> &Expression {
+        unsafe { &self.nodes.get_unchecked(i).expr }
     }
 }
 
@@ -89,7 +61,7 @@ impl std::fmt::Debug for ASTNode {
 }
 
 fn recursive_construct_ast(
-    tree: &mut AST,
+    tree: &mut Vec<ASTNode>,
     current: usize,
     tokens_iter: &mut std::slice::Iter<Token>,
 ) -> (usize, bool) {
@@ -227,14 +199,15 @@ fn recursive_construct_ast(
     (0, true)
 }
 
-pub fn construct_ast(source: String) -> AST {
-    let tokens = parse_tokens(source);
+pub fn construct_ast(tokens: &Vec<Token>) -> AST {
     let mut iter = tokens.iter();
-    let mut ast = AST::new();
+    let mut ast = AST::default();
     loop {
-        if !recursive_construct_ast(&mut ast, u64_max!(), &mut iter).1 {
+        let (rhs, should_continue) = recursive_construct_ast(&mut ast.nodes, u64_max!(), &mut iter);
+        if !should_continue {
             break;
         }
+        ast.root_nodes.push(rhs);
     }
     ast
 }

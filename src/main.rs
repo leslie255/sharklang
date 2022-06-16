@@ -33,9 +33,10 @@ fn compile(src_file: String, output_path: String) {
 
 fn print_tree(src_path: String) {
     let source = fs::read_to_string(src_path).expect("cannot read file");
-    let ast = codegen::ast::construct_ast(source);
+    let tokens = codegen::tokens::parse_tokens(source);
+    let ast = codegen::ast::construct_ast(&tokens);
     println!("--- AST:");
-    print_ast!(ast);
+    print_ast!(ast.nodes);
 }
 
 fn print_tokens(src_path: String) {
@@ -52,7 +53,8 @@ fn print_help(arg0: String) {
     println!("{} source_file.shark", arg0);
     println!("{} source_file.shark -o output.asm", arg0);
     println!("\nDebug:");
-    println!("-t / --ast: print generated AST (including raw and flattened)");
+    println!("-t / --tokens: print tokens");
+    println!("-a / --ast: print AST");
     println!("\n-h / --help: print this message");
 }
 
