@@ -1,5 +1,8 @@
 use super::tokens::*;
 
+use std::iter::Enumerate;
+use std::slice::Iter;
+
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! print_ast {
@@ -7,12 +10,6 @@ macro_rules! print_ast {
         for (i, node) in $ast.iter().enumerate() {
             println!("{}: {:?}", i, node);
         }
-    };
-}
-
-macro_rules! u64_max {
-    () => {
-        9223372036854775807
     };
 }
 
@@ -25,7 +22,7 @@ pub enum Expression {
     // Recursive expression
     FuncCall(String, Vec<usize>), // function name, arguments
     VarInit(String, usize),       // lhs, rhs
-    VarSet(String, usize),        // lhs, rhs
+    VarAssign(String, usize),     // lhs, rhs
 
     Unknown,
 }
@@ -60,18 +57,122 @@ impl std::fmt::Debug for ASTNode {
     }
 }
 
-fn recursive_construct_ast(
+#[allow(unused_assignments)]
+fn parse_func_args(
+    tokens: &Vec<Token>,
+    iter: &mut Enumerate<Iter<Token>>,
     tree: &mut Vec<ASTNode>,
-    current: usize,
-    tokens_iter: &mut std::slice::Iter<Token>,
-) -> (usize, bool) {
-    // return value 0: index of newly added expression, 1: should continue recursion
+) -> Vec<usize> {
+    let mut i: usize;
     let mut token: &Token;
     macro_rules! next {
         () => {
-            match tokens_iter.next() {
-                Some(x) => {
-                    token = x;
+            match iter.next() {
+                Some(next_item) => {
+                    println!("{}\t{:?}", line!(), next_item.1.content);
+                    i = next_item.0;
+                    token = next_item.1;
+                }
+                None => {
+                    panic!("unexpected EOF in the middle of function call");
+                }
+            }
+        };
+    }
+    macro_rules! new_node_from_expr {
+        ($expression: expr) => {
+            tree.push(ASTNode { expr: $expression })
+        };
+    }
+    let default_token = Token::default();
+    macro_rules! forward_look {
+        ($x: expr) => {
+            tokens.get(i + $x).unwrap_or(&default_token)
+        };
+    }
+
+    let mut args: Vec<usize> = Vec::new();
+
+    // make sure there is an `(`
+    next!();
+    if TokenContent::RoundParenOpen != token.content {
+        panic!(
+            "{}:{} expected a `(` for function call",
+            token.line, token.column
+        );
+    }
+
+    loop {
+        // get the next argument
+        next!();
+        match &token.content {
+            TokenContent::UInt(num) => {
+                new_node_from_expr!(Expression::NumberLiteral(*num));
+            }
+            TokenContent::String(str) => {
+                new_node_from_expr!(Expression::StringLiteral(str.clone()));
+            }
+            TokenContent::Identifier(id) => {
+                match forward_look!(1).content {
+                    TokenContent::RoundParenOpen => {
+                        let args = parse_func_args(tokens, iter, tree);
+                        new_node_from_expr!(Expression::FuncCall(id.clone(), args));
+                    }
+                    TokenContent::Comma | TokenContent::RoundParenClose => {
+                        // is a variable
+                        new_node_from_expr!(Expression::Identifier(id.clone()));
+                    }
+                    TokenContent::Equal => panic!(
+                        "{}:{} variable assignment cannot be used as an argument for a function",
+                        forward_look!(1).line,
+                        forward_look!(1).column
+                    ),
+                    _ => panic!(
+                        "{}:{} `{:?}` cannot be used as an argument for a function",
+                        forward_look!(1).line,
+                        forward_look!(1).column,
+                        forward_look!(1).content
+                    ),
+                }
+            }
+            _ => panic!(
+                "{}:{} cannot use {:?} as an argument for function",
+                token.line, token.column, token.content
+            ),
+        }
+        args.push(tree.len() - 1);
+        // if next token is `,` it means there's another argument
+        // if it's `)` then it means function call should end
+        next!();
+        match &token.content {
+            TokenContent::Comma => {}
+            TokenContent::RoundParenClose => break,
+            _ => panic!(
+                "{}:{} expected `)` or `,` after a function argument, found {:?}",
+                token.line, token.column, token.content
+            ),
+        }
+    }
+
+    args
+}
+
+#[allow(unused)]
+fn parse(
+    tree: &mut Vec<ASTNode>,
+    tokens: &Vec<Token>,
+    iter: &mut Enumerate<Iter<Token>>,
+) -> (usize, bool) {
+    // return value 0: index of newly added expression, 1: should continue recursion
+    let mut i: usize;
+    let mut token: &Token;
+    macro_rules! next {
+        () => {
+            match iter.next() {
+                Some(next_item) => {
+                    //println!("{}\t{:?}", line!(), next_item.1.content);
+                    i = next_item.0;
+                    token = next_item.1;
                 }
                 None => return (0, false),
             }
@@ -82,43 +183,16 @@ fn recursive_construct_ast(
             tree.push(ASTNode { expr: $expression })
         };
     }
+    let default_token = Token::default();
+    macro_rules! forward_look {
+        ($x: expr) => {
+            tokens.get(i + $x).unwrap_or(&default_token)
+        };
+    }
 
     next!();
 
     match &token.content {
-        TokenContent::Let => {
-            next!();
-            if let TokenContent::Identifier(var_name) = &token.content {
-                next!();
-                if TokenContent::Equal != token.content {
-                    panic!(
-                        "{}:{} expecting `=` after variable name, found {:?}",
-                        token.line, token.column, token.content
-                    );
-                }
-                let (rhs, should_continue) = recursive_construct_ast(tree, current, tokens_iter);
-                match tree.get(rhs).unwrap().expr {
-                    Expression::NumberLiteral(_) | Expression::StringLiteral(_) => {
-                        next!();
-                        if TokenContent::Semicolon != token.content {
-                            panic!(
-                                "{}:{} expecting `;` in the end of `let` statement",
-                                token.line, token.column
-                            );
-                        }
-                    }
-                    Expression::FuncCall(_, _) | Expression::Identifier(_) => {}
-                    _ => panic!("{}:{} invalid rhs for `let`", token.line, token.column),
-                }
-                new_node_from_expr!(Expression::VarInit(var_name.clone(), rhs));
-                return (tree.len() - 1, should_continue);
-            } else {
-                panic!(
-                    "{}:{} expecting an identifier following `let`, found {:?}",
-                    token.line, token.column, token.content
-                );
-            }
-        }
         TokenContent::UInt(uint) => {
             new_node_from_expr!(Expression::NumberLiteral(*uint));
             return (tree.len() - 1, true);
@@ -128,64 +202,113 @@ fn recursive_construct_ast(
             return (tree.len() - 1, true);
         }
         TokenContent::Identifier(id) => {
-            next!();
-            match token.content {
-                TokenContent::Equal => {
-                    // variable set
-                    let (rhs, should_continue) =
-                        recursive_construct_ast(tree, current, tokens_iter);
-                    match tree.get(rhs).unwrap().expr {
-                        Expression::NumberLiteral(_) | Expression::StringLiteral(_) => {
-                            next!();
-                            if TokenContent::Semicolon != token.content {
-                                panic!(
-                                    "{}:{} expecting `;` in the end of `let` statement",
-                                    token.line, token.column
-                                );
-                            }
-                        }
-                        Expression::FuncCall(_, _) | Expression::Identifier(_) => {}
-                        _ => panic!("{}:{} invalid rhs for `let`", token.line, token.column),
-                    }
-                    new_node_from_expr!(Expression::VarSet(id.clone(), rhs));
-                    return (tree.len() - 1, should_continue);
-                }
-                TokenContent::Semicolon => {
-                    new_node_from_expr!(Expression::Identifier(id.clone()));
-                    return (tree.len() - 1, true);
-                }
+            match forward_look!(1).content {
                 TokenContent::RoundParenOpen => {
-                    // function call
-                    let mut args: Vec<usize> = Vec::new();
-                    loop {
-                        let (arg, should_continue) =
-                            recursive_construct_ast(tree, current, tokens_iter);
-                        if !should_continue {
-                            panic!(
-                                "{}:{} expecting a function argument, found EOF",
-                                token.line, token.column
-                            );
-                        }
-                        args.push(arg);
-                        next!();
-                        if TokenContent::Comma == token.content {
-                        } else if TokenContent::RoundParenClose == token.content {
-                            break;
-                        } else {
-                            panic!(
-                                "{}:{} expecting an function argument, found `(`",
-                                token.line, token.column
-                            );
-                        }
-                    }
+                    // is a function call
+                    let args = parse_func_args(tokens, iter, tree);
                     new_node_from_expr!(Expression::FuncCall(id.clone(), args));
                     return (tree.len() - 1, true);
                 }
+                _ => {}
+            }
+            next!();
+            match token.content {
+                TokenContent::Equal => {
+                    // is variable assign
+                    next!();
+                    match &token.content {
+                        TokenContent::UInt(uint) => {
+                            new_node_from_expr!(Expression::NumberLiteral(*uint));
+                            return (tree.len() - 1, true);
+                        }
+                        TokenContent::String(str) => {
+                            new_node_from_expr!(Expression::StringLiteral(str.clone()));
+                            return (tree.len() - 1, true);
+                        }
+                        TokenContent::Identifier(id) => match forward_look!(1).content {
+                            TokenContent::RoundParenOpen => {
+                                // is a function call
+                                let args = parse_func_args(tokens, iter, tree);
+                                new_node_from_expr!(Expression::FuncCall(id.clone(), args));
+                            }
+                            TokenContent::Semicolon => {
+                                // is a variable
+                                next!();
+                                next!();
+                                new_node_from_expr!(Expression::Identifier(id.clone()));
+                            }
+                            _ => panic!(
+                                "{}:{} expecting `(` or `;`, found {:?}",
+                                forward_look!(1).line,
+                                forward_look!(1).column,
+                                forward_look!(1).content
+                            ),
+                        },
+                        _ => panic!(
+                            "{}:{} `{:?}` is not a valid rhs for variable assignment",
+                            token.line, token.column, token.content
+                        ),
+                    }
+                    new_node_from_expr!(Expression::VarAssign(id.clone(), tree.len() - 1));
+                }
                 _ => panic!(
-                    "{}:{} expecting `(`, `;` or `=` after {}",
-                    token.line, token.column, id
+                    "{}:{} expecting `=` or `(` after {:?}",
+                    token.line, token.column, token.content
                 ),
             }
+        }
+        TokenContent::Let => {
+            // get lhs
+            next!();
+            let lhs: &String;
+            if let TokenContent::Identifier(var_name) = &token.content {
+                lhs = var_name;
+            } else {
+                panic!(
+                    "{}:{} expecting an identifier following `let`, found {:?}",
+                    token.line, token.column, token.content
+                );
+            }
+            // make sure there is an `=`
+            next!();
+            if TokenContent::Equal != token.content {
+                panic!(
+                    "{}:{} expecting `=` after variable name, found {:?}",
+                    token.line, token.column, token.content
+                );
+            }
+            // determine the type and get rhs
+            next!();
+            match &token.content {
+                TokenContent::UInt(num) => {
+                    new_node_from_expr!(Expression::NumberLiteral(*num));
+                }
+                TokenContent::String(str) => {
+                    new_node_from_expr!(Expression::StringLiteral(str.clone()));
+                }
+                TokenContent::Identifier(id) => match forward_look!(1).content {
+                    TokenContent::RoundParenOpen => {
+                        // is a function call
+                        let args = parse_func_args(tokens, iter, tree);
+                        new_node_from_expr!(Expression::FuncCall(id.clone(), args));
+                    }
+                    TokenContent::Semicolon => {
+                        // is a variable
+                        next!();
+                        next!();
+                        new_node_from_expr!(Expression::Identifier(id.clone()));
+                    }
+                    _ => panic!(
+                        "{}:{} expecting `(` or `;`, found {:?}",
+                        forward_look!(1).line,
+                        forward_look!(1).column,
+                        forward_look!(1).content
+                    ),
+                },
+                _ => panic!("{}:{} invalid rhs for `let`", token.line, token.column),
+            }
+            new_node_from_expr!(Expression::VarInit(lhs.clone(), tree.len() - 1));
+            return (tree.len() - 1, true);
         }
         TokenContent::Semicolon => {}
         _ => {
@@ -200,10 +323,10 @@ fn recursive_construct_ast(
 }
 
 pub fn construct_ast(tokens: &Vec<Token>) -> AST {
-    let mut iter = tokens.iter();
+    let mut iter = tokens.iter().enumerate();
     let mut ast = AST::default();
     loop {
-        let (rhs, should_continue) = recursive_construct_ast(&mut ast.nodes, u64_max!(), &mut iter);
+        let (rhs, should_continue) = parse(&mut ast.nodes, &tokens, &mut iter);
         if !should_continue {
             break;
         }

@@ -1,2 +1,3 @@
-print_int(5);
+let a = subint(4, 2);
+print_int(a);
 

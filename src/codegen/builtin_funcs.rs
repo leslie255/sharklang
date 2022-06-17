@@ -78,7 +78,7 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
-            String::from("add"),
+            String::from("addint"),
             BuiltinFunc {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
@@ -91,7 +91,7 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
-            String::from("sub"),
+            String::from("subint"),
             BuiltinFunc {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
@@ -104,7 +104,7 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
-            String::from("mul"),
+            String::from("mulint"),
             BuiltinFunc {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
@@ -117,7 +117,7 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
-            String::from("div"),
+            String::from("divint"),
             BuiltinFunc {
                 externs: Vec::new(),
                 data_sect: Vec::new(),

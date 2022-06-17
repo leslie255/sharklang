@@ -85,7 +85,7 @@ fn main() {
                     }
                 }
             }
-            "-t" | "--ast" => {
+            "-a" | "--ast" => {
                 if !src_path.is_empty() {
                     print_tree(src_path);
                     return;
@@ -96,7 +96,7 @@ fn main() {
                     panic!();
                 }
             }
-            "-s" | "--tokens" => {
+            "-t" | "--tokens" => {
                 if !src_path.is_empty() {
                     print_tokens(src_path);
                     return;
