@@ -25,7 +25,10 @@ Declaring and assigning values to a variable:
 ``` Rust
 let a = 10;
 let b = a;
+a = 20;
 let c = addint(a, b);
+
+print_int(c);
 ```
 
 There are four builtin functions right now: `print_int`, `addint`, `subint`, `mulint`, `divint`
@@ -56,7 +59,7 @@ mov [rel _a], rax
 print_int(a);
 ```
 
-These three lines of assembly basically added 40 to a, so the program will output `42` instaed of `2`
+These three lines of assembly added 40 to `a`, so the program will output `42` instaed of `2`
 
 *Nested function calls (e.g. `print_int(addint(2, 3))`) are not supported yet*
 

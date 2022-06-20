@@ -180,7 +180,10 @@ impl ASMStatement {
             Self::Extern(name) => format!("\textern _{}", name),
             Self::DataInt(name, value) => format!("_{}:\tdq {}", name, value),
             Self::DataStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
-            Self::Mov(oper0, oper1) => format!("\tmov\t{}, {}", oper0.text(), oper1.text()),
+            Self::Mov(oper0, oper1) => match oper0 {
+                Operand::Var(_) => format!("\tmov\trax, {}\n\tmov\t{}, rax", oper1.text(), oper0.text()),
+                _ => format!("\tmov\t{}, {}", oper0.text(), oper1.text()),
+            },
             Self::FuncCall(name, args) => {
                 let mut result = String::new();
                 args.iter().enumerate().for_each(|(i, arg)| {
