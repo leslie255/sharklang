@@ -72,6 +72,7 @@ macro_rules! asm_fmt_str {
     }};
 }
 
+#[derive(Debug, Clone)]
 pub struct Program {
     pub externs: Vec<ASMStatement>,
     pub data_sect: Vec<ASMStatement>,

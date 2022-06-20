@@ -1,3 +1,15 @@
-let a = subint(4, 2);
+let a = 2;
+let b = a;
+let c = addint(1, 2);
+
+a = 3;
+b = c;
+c = addint(a, b);
+b = subint(a, 3);
+c = mulint(10, a);
+a = divint(10, 5);
+
 print_int(a);
+print_int(b);
+print_int(c);
 

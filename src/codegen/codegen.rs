@@ -3,60 +3,106 @@ use super::builtin_funcs::*;
 use super::ir::*;
 use super::tokens::*;
 
-pub fn recursive_handle_func_call(tree: &AST, expr: &Expression, asm: &mut Vec<ASMStatement>) {
-    if let Expression::FuncCall(name, args) = expr {
-        let mut func_call = asm!(func_call, name);
-        args.iter().for_each(|i| {
-            let arg = tree.expr(*i);
-            match arg {
-                Expression::NumberLiteral(num) => {
-                    func_call.arg(Operand::Int(*num));
-                }
-                Expression::Identifier(id) => {
-                    func_call.arg(Operand::Var(id.clone()));
-                }
-                Expression::FuncCall(_, _) => {
-                    todo!();
-                }
-                _ => {}
-            }
-        });
-        asm.push(func_call.asm);
-    }
-}
-
-#[allow(unused)]
 pub fn codegen(source: String) -> String {
     let tokens = parse_tokens(source);
-    let ast = construct_ast(&tokens);
+    let ast = construct_ast(tokens);
 
     let mut program = Program::new();
     let mut builtin_fns = BuiltinFuncChecker::new();
     let mut main_func: Vec<ASMStatement> = vec![asm!(func_def, "main")];
 
-    for i in &ast.root_nodes {
-        match ast.expr(*i) {
+    for node in &ast.nodes {
+        if let Expression::FuncCall(name, _) = &node.expr {
+            builtin_fns.add_if_needed(name, &mut program);
+        }
+    }
+
+    for (i, node) in ast.nodes.iter().enumerate() {
+        println!("{}", i);
+        match &node.expr {
+            Expression::Identifier(_) => {}
+            Expression::NumberLiteral(_) => {}
+            Expression::StringLiteral(_) => {}
             Expression::VarInit(var_name, rhs) => {
-                let asm = match ast.expr(*rhs) {
+                match ast.expr(*rhs) {
+                    Expression::Identifier(id) => {
+                        program.data_sect.push(asm!(data_int, var_name, 0));
+                        main_func.push(asm!(mov, rax!(), Operand::Var(id.clone())));
+                        main_func.push(asm!(mov, Operand::Var(var_name.clone()), rax!()));
+                    }
                     Expression::NumberLiteral(num) => {
-                        program.data_sect.push(asm!(data_int, var_name, *num))
+                        program.data_sect.push(asm!(data_int, var_name, *num));
                     }
                     Expression::StringLiteral(str) => {
-                        program.data_sect.push(asm!(data_str, var_name, str))
+                        program.data_sect.push(asm!(data_str, var_name, str));
                     }
-                    Expression::FuncCall(func_name, args) => {
-                        builtin_fns.add_if_needed(func_name, &mut program);
-                        recursive_handle_func_call(&ast, &ast.expr(*i), &mut main_func);
-                        main_func.push(asm!(mov, Operand::Var("temp".to_string()), rax!()));
+                    Expression::FuncCall(_, _) => {
+                        program.data_sect.push(asm!(data_int, var_name, 0));
+                        // there is no need to call the function because it has been called before
+                        main_func.push(asm!(mov, Operand::Var(var_name.clone()), rax!()));
                     }
                     _ => todo!(),
                 };
             }
+            Expression::VarAssign(var_name, rhs) => match ast.expr(*rhs) {
+                Expression::Identifier(id) => {
+                    main_func.push(asm!(mov, rax!(), Operand::Var(id.clone())));
+                    main_func.push(asm!(mov, Operand::Var(var_name.clone()), rax!()));
+                }
+                Expression::NumberLiteral(num) => {
+                    main_func.push(asm!(
+                        mov,
+                        Operand::Var(var_name.clone()),
+                        Operand::Int(*num)
+                    ));
+                }
+                Expression::StringLiteral(_) => {
+                    println!("using string literal as the rhs of variable assignment has not been implemented yet");
+                    todo!();
+                }
+                Expression::FuncCall(func_name, args) => {
+                    let mut func_call = asm!(func_call, func_name);
+                    for arg in args {
+                        match ast.expr(*arg) {
+                            Expression::Identifier(id) => {
+                                func_call.arg(Operand::Var(id.clone()));
+                            }
+                            Expression::NumberLiteral(num) => {
+                                func_call.arg(Operand::Int(*num));
+                            }
+                            Expression::StringLiteral(_) => {
+                                todo!();
+                            }
+                            _ => panic!(""),
+                        }
+                    }
+                    main_func.push(func_call.asm);
+                    main_func.push(asm!(mov, Operand::Var(var_name.clone()), rax!()));
+                }
+                _ => todo!(),
+            },
             Expression::FuncCall(func_name, args) => {
-                builtin_fns.add_if_needed(func_name, &mut program);
-                recursive_handle_func_call(&ast, &ast.expr(*i), &mut main_func);
+                let mut func_call = asm!(func_call, func_name);
+                for arg in args {
+                    match ast.expr(*arg) {
+                        Expression::Identifier(id) => {
+                            func_call.arg(Operand::Var(id.clone()));
+                        }
+                        Expression::NumberLiteral(num) => {
+                            func_call.arg(Operand::Int(*num));
+                        }
+                        Expression::StringLiteral(_) => {
+                            todo!();
+                        }
+                        Expression::FuncCall(_, _) => {
+                            todo!();
+                        }
+                        _ => panic!("{:?} is not a valid argument for function", ast.expr(*arg)),
+                    }
+                }
+                main_func.push(func_call.asm);
             }
-            _ => {}
+            _ => todo!(),
         }
     }
     main_func.push(asm!(func_ret, Operand::Int(0)));

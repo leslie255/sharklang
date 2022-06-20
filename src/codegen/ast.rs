@@ -1,14 +1,11 @@
 use super::tokens::*;
 
-use std::iter::Enumerate;
-use std::slice::Iter;
-
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! print_ast {
     ($ast: expr) => {
         for (i, node) in $ast.iter().enumerate() {
-            println!("{}: {:?}", i, node);
+            println!("{}:\t{:?}", i, node);
         }
     };
 }
@@ -57,44 +54,18 @@ impl std::fmt::Debug for ASTNode {
     }
 }
 
-#[allow(unused_assignments)]
-fn parse_func_args(
-    tokens: &Vec<Token>,
-    iter: &mut Enumerate<Iter<Token>>,
-    tree: &mut Vec<ASTNode>,
-) -> Vec<usize> {
-    let mut i: usize;
-    let mut token: &Token;
-    macro_rules! next {
-        () => {
-            match iter.next() {
-                Some(next_item) => {
-                    println!("{}\t{:?}", line!(), next_item.1.content);
-                    i = next_item.0;
-                    token = next_item.1;
-                }
-                None => {
-                    panic!("unexpected EOF in the middle of function call");
-                }
-            }
-        };
-    }
+fn parse_func_args(tokens: &mut TokenStream, tree: &mut Vec<ASTNode>) -> Vec<usize> {
+    let mut token: Token;
     macro_rules! new_node_from_expr {
         ($expression: expr) => {
             tree.push(ASTNode { expr: $expression })
-        };
-    }
-    let default_token = Token::default();
-    macro_rules! forward_look {
-        ($x: expr) => {
-            tokens.get(i + $x).unwrap_or(&default_token)
         };
     }
 
     let mut args: Vec<usize> = Vec::new();
 
     // make sure there is an `(`
-    next!();
+    token = tokens.next();
     if TokenContent::RoundParenOpen != token.content {
         panic!(
             "{}:{} expected a `(` for function call",
@@ -104,7 +75,7 @@ fn parse_func_args(
 
     loop {
         // get the next argument
-        next!();
+        token = tokens.next();
         match &token.content {
             TokenContent::UInt(num) => {
                 new_node_from_expr!(Expression::NumberLiteral(*num));
@@ -113,9 +84,9 @@ fn parse_func_args(
                 new_node_from_expr!(Expression::StringLiteral(str.clone()));
             }
             TokenContent::Identifier(id) => {
-                match forward_look!(1).content {
+                match tokens.look_ahead(1).content {
                     TokenContent::RoundParenOpen => {
-                        let args = parse_func_args(tokens, iter, tree);
+                        let args = parse_func_args(tokens, tree);
                         new_node_from_expr!(Expression::FuncCall(id.clone(), args));
                     }
                     TokenContent::Comma | TokenContent::RoundParenClose => {
@@ -124,14 +95,14 @@ fn parse_func_args(
                     }
                     TokenContent::Equal => panic!(
                         "{}:{} variable assignment cannot be used as an argument for a function",
-                        forward_look!(1).line,
-                        forward_look!(1).column
+                        tokens.look_ahead(1).line,
+                        tokens.look_ahead(1).column
                     ),
                     _ => panic!(
                         "{}:{} `{:?}` cannot be used as an argument for a function",
-                        forward_look!(1).line,
-                        forward_look!(1).column,
-                        forward_look!(1).content
+                        tokens.look_ahead(1).line,
+                        tokens.look_ahead(1).column,
+                        tokens.look_ahead(1).content
                     ),
                 }
             }
@@ -143,7 +114,7 @@ fn parse_func_args(
         args.push(tree.len() - 1);
         // if next token is `,` it means there's another argument
         // if it's `)` then it means function call should end
-        next!();
+        token = tokens.next();
         match &token.content {
             TokenContent::Comma => {}
             TokenContent::RoundParenClose => break,
@@ -157,91 +128,58 @@ fn parse_func_args(
     args
 }
 
-#[allow(unused)]
-fn parse(
-    tree: &mut Vec<ASTNode>,
-    tokens: &Vec<Token>,
-    iter: &mut Enumerate<Iter<Token>>,
-) -> (usize, bool) {
+fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
     // return value 0: index of newly added expression, 1: should continue recursion
-    let mut i: usize;
-    let mut token: &Token;
-    macro_rules! next {
-        () => {
-            match iter.next() {
-                Some(next_item) => {
-                    //println!("{}\t{:?}", line!(), next_item.1.content);
-                    i = next_item.0;
-                    token = next_item.1;
-                }
-                None => return (0, false),
-            }
-        };
-    }
+    let mut token: Token;
     macro_rules! new_node_from_expr {
         ($expression: expr) => {
             tree.push(ASTNode { expr: $expression })
         };
     }
-    let default_token = Token::default();
-    macro_rules! forward_look {
-        ($x: expr) => {
-            tokens.get(i + $x).unwrap_or(&default_token)
-        };
-    }
 
-    next!();
+    token = tokens.next();
 
-    match &token.content {
-        TokenContent::UInt(uint) => {
-            new_node_from_expr!(Expression::NumberLiteral(*uint));
-            return (tree.len() - 1, true);
-        }
-        TokenContent::String(str) => {
-            new_node_from_expr!(Expression::StringLiteral(str.clone()));
-            return (tree.len() - 1, true);
-        }
+    match token.content {
         TokenContent::Identifier(id) => {
-            match forward_look!(1).content {
+            match tokens.look_ahead(1).content {
                 TokenContent::RoundParenOpen => {
                     // is a function call
-                    let args = parse_func_args(tokens, iter, tree);
+                    let args = parse_func_args(tokens, tree);
                     new_node_from_expr!(Expression::FuncCall(id.clone(), args));
-                    return (tree.len() - 1, true);
+                    return tree.len() - 1;
                 }
                 _ => {}
             }
-            next!();
+            token = tokens.next();
             match token.content {
                 TokenContent::Equal => {
                     // is variable assign
-                    next!();
-                    match &token.content {
+                    token = tokens.next();
+                    match token.content {
                         TokenContent::UInt(uint) => {
-                            new_node_from_expr!(Expression::NumberLiteral(*uint));
-                            return (tree.len() - 1, true);
+                            new_node_from_expr!(Expression::NumberLiteral(uint));
+                            return tree.len() - 1;
                         }
                         TokenContent::String(str) => {
                             new_node_from_expr!(Expression::StringLiteral(str.clone()));
-                            return (tree.len() - 1, true);
+                            return tree.len() - 1;
                         }
-                        TokenContent::Identifier(id) => match forward_look!(1).content {
+                        TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                             TokenContent::RoundParenOpen => {
                                 // is a function call
-                                let args = parse_func_args(tokens, iter, tree);
+                                let args = parse_func_args(tokens, tree);
                                 new_node_from_expr!(Expression::FuncCall(id.clone(), args));
                             }
                             TokenContent::Semicolon => {
                                 // is a variable
-                                next!();
-                                next!();
+                                tokens.next();
                                 new_node_from_expr!(Expression::Identifier(id.clone()));
                             }
                             _ => panic!(
                                 "{}:{} expecting `(` or `;`, found {:?}",
-                                forward_look!(1).line,
-                                forward_look!(1).column,
-                                forward_look!(1).content
+                                tokens.look_ahead(1).line,
+                                tokens.look_ahead(1).column,
+                                tokens.look_ahead(1).content
                             ),
                         },
                         _ => panic!(
@@ -259,9 +197,9 @@ fn parse(
         }
         TokenContent::Let => {
             // get lhs
-            next!();
-            let lhs: &String;
-            if let TokenContent::Identifier(var_name) = &token.content {
+            token = tokens.next();
+            let lhs: String;
+            if let TokenContent::Identifier(var_name) = token.content {
                 lhs = var_name;
             } else {
                 panic!(
@@ -270,45 +208,45 @@ fn parse(
                 );
             }
             // make sure there is an `=`
-            next!();
-            if TokenContent::Equal != token.content {
+            if TokenContent::Equal != tokens.next().content {
+                println!("lol");
                 panic!(
                     "{}:{} expecting `=` after variable name, found {:?}",
-                    token.line, token.column, token.content
+                    tokens.look_ahead(0).line,
+                    tokens.look_ahead(0).column,
+                    tokens.look_ahead(0).content
                 );
             }
             // determine the type and get rhs
-            next!();
-            match &token.content {
+            match tokens.next().content {
                 TokenContent::UInt(num) => {
-                    new_node_from_expr!(Expression::NumberLiteral(*num));
+                    new_node_from_expr!(Expression::NumberLiteral(num));
                 }
                 TokenContent::String(str) => {
                     new_node_from_expr!(Expression::StringLiteral(str.clone()));
                 }
-                TokenContent::Identifier(id) => match forward_look!(1).content {
+                TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                     TokenContent::RoundParenOpen => {
                         // is a function call
-                        let args = parse_func_args(tokens, iter, tree);
+                        let args = parse_func_args(tokens, tree);
                         new_node_from_expr!(Expression::FuncCall(id.clone(), args));
                     }
                     TokenContent::Semicolon => {
                         // is a variable
-                        next!();
-                        next!();
+                        tokens.next();
                         new_node_from_expr!(Expression::Identifier(id.clone()));
                     }
                     _ => panic!(
                         "{}:{} expecting `(` or `;`, found {:?}",
-                        forward_look!(1).line,
-                        forward_look!(1).column,
-                        forward_look!(1).content
+                        tokens.look_ahead(1).line,
+                        tokens.look_ahead(1).column,
+                        tokens.look_ahead(1).content
                     ),
                 },
                 _ => panic!("{}:{} invalid rhs for `let`", token.line, token.column),
             }
             new_node_from_expr!(Expression::VarInit(lhs.clone(), tree.len() - 1));
-            return (tree.len() - 1, true);
+            return tree.len() - 1;
         }
         TokenContent::Semicolon => {}
         _ => {
@@ -319,18 +257,17 @@ fn parse(
         }
     };
 
-    (0, true)
+    0
 }
 
-pub fn construct_ast(tokens: &Vec<Token>) -> AST {
-    let mut iter = tokens.iter().enumerate();
+pub fn construct_ast(mut tokens: TokenStream) -> AST {
     let mut ast = AST::default();
     loop {
-        let (rhs, should_continue) = parse(&mut ast.nodes, &tokens, &mut iter);
-        if !should_continue {
+        let i = parse(&mut ast.nodes, &mut tokens);
+        if tokens.look_ahead(1).content.is_eof() {
             break;
         }
-        ast.root_nodes.push(rhs);
+        ast.root_nodes.push(i);
     }
     ast
 }
