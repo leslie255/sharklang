@@ -2,9 +2,11 @@ use super::ast::*;
 use super::builtin_funcs::*;
 use super::ir::*;
 use super::tokens::*;
+use super::preprocess::*;
 
 pub fn codegen(source: String) -> String {
-    let tokens = parse_tokens(source);
+    let preprocessed = preprocess(source);
+    let tokens = parse_tokens(preprocessed);
     let ast = construct_ast(tokens);
 
     let mut program = Program::new();

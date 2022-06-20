@@ -16,13 +16,18 @@ fn _input() -> String {
     input_str
 }
 
-fn compile(src_file: String, output_path: String) {
-    let source = fs::read_to_string(src_file).expect("cannot read file");
+fn compile(src_path: String, output_path: String) {
+    let source =
+        codegen::preprocess::preprocess(fs::read_to_string(src_path).expect("cannot read file"));
     let output = codegen(source);
 
     if Path::new(&output_path).exists() {
-        fs::remove_file(output_path.clone())
-            .unwrap_or_else(|_| panic!("Output file {} already exists and cannot be deleted", output_path));
+        fs::remove_file(output_path.clone()).unwrap_or_else(|_| {
+            panic!(
+                "Output file {} already exists and cannot be deleted",
+                output_path
+            )
+        });
     }
 
     let mut output_file = fs::File::create(output_path.clone())
@@ -35,16 +40,22 @@ fn print_tree(src_path: String) {
     let source = fs::read_to_string(src_path).expect("cannot read file");
     let tokens = codegen::tokens::parse_tokens(source);
     let ast = codegen::ast::construct_ast(tokens);
-    println!("--- AST:");
     print_ast!(ast.nodes);
 }
 
 fn print_tokens(src_path: String) {
-    let source = fs::read_to_string(src_path).expect("cannot read file");
+    let source =
+        codegen::preprocess::preprocess(fs::read_to_string(src_path).expect("cannot read file"));
     let tokens = codegen::tokens::parse_tokens(source).tokens;
     for token in tokens {
         println!("({},{}): {:?}", token.line, token.column, token.content);
     }
+}
+
+fn print_preprocessed(src_path: String) {
+    let source = fs::read_to_string(src_path).expect("cannot read file");
+    let preprocessed = codegen::preprocess::preprocess(source);
+    println!("{}", preprocessed);
 }
 
 fn print_help(arg0: String) {
@@ -85,9 +96,9 @@ fn main() {
                     }
                 }
             }
-            "-a" | "--ast" => {
+            "-p" | "--preprocess" => {
                 if !src_path.is_empty() {
-                    print_tree(src_path);
+                    print_preprocessed(src_path);
                     return;
                 } else {
                     print_help(arg0);
@@ -99,6 +110,17 @@ fn main() {
             "-t" | "--tokens" => {
                 if !src_path.is_empty() {
                     print_tokens(src_path);
+                    return;
+                } else {
+                    print_help(arg0);
+                    println!();
+                    println!("expects a source file");
+                    panic!();
+                }
+            }
+            "-a" | "--ast" => {
+                if !src_path.is_empty() {
+                    print_tree(src_path);
                     return;
                 } else {
                     print_help(arg0);
