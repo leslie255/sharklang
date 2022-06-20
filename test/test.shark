@@ -1,9 +1,9 @@
-// this is a comment
-
+// declaring a variable
 let a = 10;
-let b = a;
-a = 20;
-let c = addint(a, b);
+let b = 20;
+// assigning values to a variable
+a = b;
+let c = 0;
+c = addint(a, b);
 
 print_int(c);
-

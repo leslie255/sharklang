@@ -23,9 +23,11 @@ $ ./a.out
 Declaring and assigning values to a variable:
 
 ``` Rust
+// declaring a variable
 let a = 10;
 let b = a;
-a = 20;
+// assigning values to a variable
+a = 20;	
 let c = addint(a, b);
 
 print_int(c);
