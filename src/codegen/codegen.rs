@@ -23,6 +23,7 @@ pub fn codegen(source: String) -> String {
             Expression::NumberLiteral(_) => {}
             Expression::StringLiteral(_) => {}
             Expression::RawASM(text) => main_func.push(asm!(format!("\t{}", text))),
+            Expression::Label(name) => main_func.push(asm!(label, name)),
             Expression::VarInit(var_name, rhs) => {
                 match ast.expr(*rhs) {
                     Expression::Identifier(id) => {

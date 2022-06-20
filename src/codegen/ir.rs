@@ -4,6 +4,9 @@ macro_rules! asm {
     (sect, $sect_name: expr) => {
         ASMStatement::SectionHead(String::from($sect_name))
     };
+    (label, $label_name: expr) => {
+        ASMStatement::Label(String::from($label_name))
+    };
     (extern, $name: expr) => {
         ASMStatement::Extern($name.to_string())
     };
@@ -149,6 +152,8 @@ pub enum ASMStatement {
 
     Extern(String),
 
+    Label(String),
+
     DataInt(String, u64),
     DataStr(String, String),
 
@@ -171,6 +176,7 @@ impl ASMStatement {
     pub fn gen_code(&self) -> String {
         let mut code = match self {
             Self::SectionHead(name) => format!("\n\tsection .{}", name),
+            Self::Label(name) => format!("{}:", name),
             Self::Extern(name) => format!("\textern _{}", name),
             Self::DataInt(name, value) => format!("_{}:\tdq {}", name, value),
             Self::DataStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),

@@ -1,8 +1,10 @@
 let a = 2;
 
+_add_and_print:
 mov	rax, [rel _a]
 add	rax, 10
 mov	[rel _a], rax
-
 print_int(a);
+
+jmp _add_and_print
 

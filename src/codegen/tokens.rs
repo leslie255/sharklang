@@ -12,6 +12,7 @@ pub enum TokenContent {
     Semicolon,
     Period,
     Comma,
+    Colon,
     UInt(u64),
     String(String),
     Identifier(String),
@@ -55,7 +56,8 @@ trait StringCustomFuncs {
 impl StringCustomFuncs for String {
     fn is_asm_instruction(&self) -> bool {
         match self.as_str() {
-            "mov" | "push" | "ret" | "call" | "jmp" | "jpe" | "add" | "sub" | "mul" | "div" => true,
+            "mov" | "push" | "ret" | "call" | "cmp" | "jmp" | "jpe" | "jpz" | "add" | "sub"
+            | "mul" | "div" => true,
             _ => false,
         }
     }
@@ -85,6 +87,7 @@ impl Token {
                 ";" => TokenContent::Semicolon,
                 "." => TokenContent::Period,
                 "," => TokenContent::Comma,
+                ":" => TokenContent::Colon,
                 _ => {
                     if str
                         .chars()

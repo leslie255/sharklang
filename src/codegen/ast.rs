@@ -21,6 +21,8 @@ pub enum Expression {
     VarInit(String, usize),       // lhs, rhs
     VarAssign(String, usize),     // lhs, rhs
 
+    Label(String),
+
     RawASM(String),
 
     Unknown,
@@ -154,6 +156,10 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
             }
             token = tokens.next();
             match token.content {
+                TokenContent::Colon => {
+                    new_node_from_expr!(Expression::Label(id));
+                    return tree.len() - 1;
+                }
                 TokenContent::Equal => {
                     // is variable assign
                     token = tokens.next();
@@ -163,19 +169,19 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
                             return tree.len() - 1;
                         }
                         TokenContent::String(str) => {
-                            new_node_from_expr!(Expression::StringLiteral(str.clone()));
+                            new_node_from_expr!(Expression::StringLiteral(str));
                             return tree.len() - 1;
                         }
                         TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                             TokenContent::RoundParenOpen => {
                                 // is a function call
                                 let args = parse_func_args(tokens, tree);
-                                new_node_from_expr!(Expression::FuncCall(id.clone(), args));
+                                new_node_from_expr!(Expression::FuncCall(id, args));
                             }
                             TokenContent::Semicolon => {
                                 // is a variable
                                 tokens.next();
-                                new_node_from_expr!(Expression::Identifier(id.clone()));
+                                new_node_from_expr!(Expression::Identifier(id));
                             }
                             _ => panic!(
                                 "{}:{} expecting `(` or `;`, found {:?}",
@@ -189,7 +195,7 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
                             token.line, token.column, token.content
                         ),
                     }
-                    new_node_from_expr!(Expression::VarAssign(id.clone(), tree.len() - 1));
+                    new_node_from_expr!(Expression::VarAssign(id, tree.len() - 1));
                 }
                 _ => panic!(
                     "{}:{} expecting `=` or `(` after {:?}",
@@ -225,18 +231,18 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
                     new_node_from_expr!(Expression::NumberLiteral(num));
                 }
                 TokenContent::String(str) => {
-                    new_node_from_expr!(Expression::StringLiteral(str.clone()));
+                    new_node_from_expr!(Expression::StringLiteral(str));
                 }
                 TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                     TokenContent::RoundParenOpen => {
                         // is a function call
                         let args = parse_func_args(tokens, tree);
-                        new_node_from_expr!(Expression::FuncCall(id.clone(), args));
+                        new_node_from_expr!(Expression::FuncCall(id, args));
                     }
                     TokenContent::Semicolon => {
                         // is a variable
                         tokens.next();
-                        new_node_from_expr!(Expression::Identifier(id.clone()));
+                        new_node_from_expr!(Expression::Identifier(id));
                     }
                     _ => panic!(
                         "{}:{} expecting `(` or `;`, found {:?}",
@@ -247,7 +253,7 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
                 },
                 _ => panic!("{}:{} invalid rhs for `let`", token.line, token.column),
             }
-            new_node_from_expr!(Expression::VarInit(lhs.clone(), tree.len() - 1));
+            new_node_from_expr!(Expression::VarInit(lhs, tree.len() - 1));
             return tree.len() - 1;
         }
         TokenContent::Semicolon => {}
