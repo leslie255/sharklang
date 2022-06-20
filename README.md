@@ -36,11 +36,13 @@ print_int(c);
 There are four builtin functions right now: `print_int`, `addint`, `subint`, `mulint`, `divint`
 
 ``` Rust
+// math functions
 let a = addint(3, 4);
 let b = subint(a, 1);
 let c = mulint(a, b);
 let d = divint(c, 2);
 
+// printing integars using `print_int`
 print_int(a);
 print_int(b);
 print_int(c);
@@ -54,6 +56,7 @@ You can also write Assembly instructions directly among the Shark code:
 ``` Rust
 let a = 2;
 
+// add 40 to `a`
 mov rax, [rel _a]
 add rax, 40
 mov [rel _a], rax
