@@ -17,12 +17,12 @@ pub fn codegen(source: String) -> String {
         }
     }
 
-    for (i, node) in ast.nodes.iter().enumerate() {
-        println!("{}", i);
+    for node in &ast.nodes {
         match &node.expr {
             Expression::Identifier(_) => {}
             Expression::NumberLiteral(_) => {}
             Expression::StringLiteral(_) => {}
+            Expression::RawASM(text) => main_func.push(asm!(format!("\t{}", text))),
             Expression::VarInit(var_name, rhs) => {
                 match ast.expr(*rhs) {
                     Expression::Identifier(id) => {

@@ -21,6 +21,8 @@ pub enum Expression {
     VarInit(String, usize),       // lhs, rhs
     VarAssign(String, usize),     // lhs, rhs
 
+    RawASM(String),
+
     Unknown,
 }
 impl Default for Expression {
@@ -249,6 +251,9 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
             return tree.len() - 1;
         }
         TokenContent::Semicolon => {}
+        TokenContent::RawASM(text) => {
+            new_node_from_expr!(Expression::RawASM(text));
+        }
         _ => {
             panic!(
                 "{}:{} unidentified token `{:?}`",

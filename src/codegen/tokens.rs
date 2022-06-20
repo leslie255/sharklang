@@ -1,5 +1,4 @@
 #[derive(Debug, PartialEq, Clone)]
-#[allow(unused)]
 pub enum TokenContent {
     RoundParenOpen,
     RoundParenClose,
@@ -14,11 +13,11 @@ pub enum TokenContent {
     Period,
     Comma,
     UInt(u64),
-    Float(f64),
     String(String),
     Identifier(String),
     Let,
-    Set,
+
+    RawASM(String),
 
     Unknown,
     EOF,
@@ -50,6 +49,18 @@ impl CharCustomFuncs for char {
     }
 }
 
+trait StringCustomFuncs {
+    fn is_asm_instruction(&self) -> bool;
+}
+impl StringCustomFuncs for String {
+    fn is_asm_instruction(&self) -> bool {
+        match self.as_str() {
+            "mov" | "push" | "ret" | "call" | "jmp" | "jpe" | "add" | "sub" | "mul" | "div" => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Token {
     pub content: TokenContent,
@@ -71,7 +82,6 @@ impl Token {
                 "true" => TokenContent::True,
                 "false" => TokenContent::False,
                 "let" => TokenContent::Let,
-                "set" => TokenContent::Set,
                 ";" => TokenContent::Semicolon,
                 "." => TokenContent::Period,
                 "," => TokenContent::Comma,
@@ -158,12 +168,34 @@ pub fn parse_tokens<'a>(source: String) -> TokenStream {
             '\n' => {
                 line += 1;
                 column = 0;
-                if !last_word.is_empty() {
+                if last_word.is_empty() {
+                    ch = iter.next();
+                    continue;
+                }
+                tokens.push(Token::from(&last_word, line, column));
+                last_word = String::new();
+            }
+            ' ' | '\t' => {
+                if last_word.is_empty() {
+                    ch = iter.next();
+                    continue;
+                }
+                if last_word.is_asm_instruction() {
+                    while ch != Some('\n') {
+                        last_word.push(ch.unwrap());
+                        ch = iter.next();
+                    }
+                    line += 1;
+                    tokens.push(Token {
+                        content: TokenContent::RawASM(last_word),
+                        line: line.clone(),
+                        column: column.clone(),
+                    });
+                    last_word = String::new();
+                } else {
                     tokens.push(Token::from(&last_word, line, column));
                     last_word = String::new();
                 }
-                ch = iter.next();
-                continue;
             }
             '\"' => {
                 // string
@@ -180,10 +212,6 @@ pub fn parse_tokens<'a>(source: String) -> TokenStream {
                     line: line.clone(),
                     column: column.clone(),
                 });
-                last_word = String::new();
-            }
-            ' ' => {
-                tokens.push(Token::from(&last_word, line, column));
                 last_word = String::new();
             }
             _ => {
