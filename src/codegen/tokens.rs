@@ -21,6 +21,15 @@ pub enum TokenContent {
     Set,
 
     Unknown,
+    EOF,
+}
+impl TokenContent {
+    pub fn is_eof(&self) -> bool {
+        match self {
+            Self::EOF => true,
+            _ => false,
+        }
+    }
 }
 impl Default for TokenContent {
     fn default() -> Self {
@@ -86,10 +95,57 @@ impl Token {
             column: column.clone(),
         }
     }
+    fn eof() -> Token {
+        Token {
+            content: TokenContent::EOF,
+            line: 0,
+            column: 0,
+        }
+    }
 }
 
-pub fn parse_tokens(source: String) -> Vec<Token> {
-    // TODO: add line & column number for each token
+#[derive(Debug, Clone)]
+pub struct TokenStream {
+    pub tokens: Vec<Token>,
+    pub i: usize,
+
+    has_started: bool,
+}
+
+impl TokenStream {
+    pub fn next(&mut self) -> Token {
+        if self.has_started {
+            self.i += 1;
+            match self.tokens.get(self.i) {
+                Some(token) => token.clone(),
+                None => Token::eof(),
+            }
+        } else {
+            self.has_started = true;
+            self.tokens.first().unwrap().clone()
+        }
+    }
+    pub fn look_ahead(&self, i: usize) -> Token {
+        match self.tokens.get(self.i + i) {
+            Some(token) => token.clone(),
+            None => Token::eof(),
+        }
+    }
+
+    pub fn from(tokens: Vec<Token>) -> TokenStream {
+        let mut stream = TokenStream {
+            tokens: Vec::new(),
+            i: 0,
+            has_started: false,
+        };
+
+        stream.tokens = tokens;
+
+        stream
+    }
+}
+
+pub fn parse_tokens<'a>(source: String) -> TokenStream {
     let mut tokens: Vec<Token> = Vec::new();
     let mut line: u64 = 0;
     let mut column: u64 = 0;
@@ -152,5 +208,5 @@ pub fn parse_tokens(source: String) -> Vec<Token> {
     if !last_word.is_empty() {
         tokens.push(Token::from(&last_word, line, column));
     }
-    tokens
+    TokenStream::from(tokens)
 }

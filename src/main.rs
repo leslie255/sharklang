@@ -34,14 +34,14 @@ fn compile(src_file: String, output_path: String) {
 fn print_tree(src_path: String) {
     let source = fs::read_to_string(src_path).expect("cannot read file");
     let tokens = codegen::tokens::parse_tokens(source);
-    let ast = codegen::ast::construct_ast(&tokens);
+    let ast = codegen::ast::construct_ast(tokens);
     println!("--- AST:");
     print_ast!(ast.nodes);
 }
 
 fn print_tokens(src_path: String) {
     let source = fs::read_to_string(src_path).expect("cannot read file");
-    let tokens = codegen::tokens::parse_tokens(source);
+    let tokens = codegen::tokens::parse_tokens(source).tokens;
     for token in tokens {
         println!("({},{}): {:?}", token.line, token.column, token.content);
     }

@@ -18,13 +18,13 @@ pub struct BuiltinFuncChecker {
 }
 impl BuiltinFuncChecker {
     pub fn add_if_needed(&mut self, name: &String, program: &mut Program) {
-        if self.existing_funcs.contains(name) {
-            self.existing_funcs.insert(name.clone());
-            return;
-        }
         if !self.funcs.contains_key(name) {
             return;
         }
+        if self.existing_funcs.contains(name) {
+            return;
+        }
+        self.existing_funcs.insert(name.clone());
         let func = self.funcs.get(name).unwrap();
         for func_extern in &func.externs {
             if !self.existing_externs.contains(func_extern) {
@@ -83,7 +83,7 @@ impl BuiltinFuncChecker {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
                 text_sect: vec![
-                    asm!(func_def, "add"),
+                    asm!(func_def, "addint"),
                     asm!(mov, rax!(), rdi!()),
                     asm!(add, rax!(), rsi!()),
                     asm!(func_ret),
@@ -96,7 +96,7 @@ impl BuiltinFuncChecker {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
                 text_sect: vec![
-                    asm!(func_def, "sub"),
+                    asm!(func_def, "subint"),
                     asm!(mov, rax!(), rdi!()),
                     asm!(add, rax!(), rsi!()),
                     asm!(func_ret),
@@ -109,7 +109,7 @@ impl BuiltinFuncChecker {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
                 text_sect: vec![
-                    asm!(func_def, "mul"),
+                    asm!(func_def, "mulint"),
                     asm!(mov, rax!(), rdi!()),
                     asm!(mul, rsi!()),
                     asm!(func_ret),
@@ -122,9 +122,9 @@ impl BuiltinFuncChecker {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
                 text_sect: vec![
-                    asm!(func_def, "div"),
+                    asm!(func_def, "divint"),
                     asm!(mov, rax!(), rdi!()),
-                    asm!(mul, rsi!()),
+                    asm!(div, rsi!()),
                     asm!(func_ret),
                 ],
             },
