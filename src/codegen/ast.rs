@@ -103,7 +103,7 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut Vec<ASTNode>) -> Vec<usi
                         tokens.look_ahead(1).column
                     ),
                     _ => panic!(
-                        "{}:{} `{:?}` cannot be used as an argument for a function",
+                        "{}:{} expecting `(`, `,` or `)`, found {:?}",
                         tokens.look_ahead(1).line,
                         tokens.look_ahead(1).column,
                         tokens.look_ahead(1).content
@@ -128,6 +128,7 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut Vec<ASTNode>) -> Vec<usi
             ),
         }
     }
+    println!("{:?}", token);
 
     args
 }
@@ -166,11 +167,9 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
                     match token.content {
                         TokenContent::UInt(uint) => {
                             new_node_from_expr!(Expression::NumberLiteral(uint));
-                            return tree.len() - 1;
                         }
                         TokenContent::String(str) => {
                             new_node_from_expr!(Expression::StringLiteral(str));
-                            return tree.len() - 1;
                         }
                         TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                             TokenContent::RoundParenOpen => {
