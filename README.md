@@ -42,6 +42,22 @@ print_int(c);
 print_int(d);
 ```
 
+You can also write Assembly instructions directly among the Shark code:
+
+(They have to be in x86_64 NASM)
+
+``` Rust
+let a = 2;
+
+mov rax, [rel _a]
+add rax, 40
+mov [rel _a], rax
+
+print_int(a);
+```
+
+These three lines of assembly basically added 40 to a, so the program will output `42` instaed of `2`
+
 *Nested function calls (e.g. `print_int(addint(2, 3))`) are not supported yet*
 
 Note that if you're on Linux you will have to change the `macho64` in `compile.sh` to `elf64`,
