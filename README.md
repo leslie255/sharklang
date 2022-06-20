@@ -9,7 +9,7 @@
 
 Printing an integar:
 
-``` C
+``` Rust
 print_int(42);
 ```
 
@@ -22,7 +22,7 @@ $ ./a.out
 
 Declaring and assigning values to a variable:
 
-``` C
+``` Rust
 let a = 10;
 let b = a;
 let c = addint(a, b);
@@ -30,7 +30,7 @@ let c = addint(a, b);
 
 There are four builtin functions right now: `print_int`, `addint`, `subint`, `mulint`, `divint`
 
-``` C
+``` Rust
 let a = addint(3, 4);
 let b = subint(a, 1);
 let c = mulint(a, b);
