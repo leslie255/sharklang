@@ -98,7 +98,7 @@ impl BuiltinFuncChecker {
                 text_sect: vec![
                     asm!(func_def, "subint"),
                     asm!(mov, rax!(), rdi!()),
-                    asm!(add, rax!(), rsi!()),
+                    asm!(sub, rax!(), rsi!()),
                     asm!(func_ret),
                 ],
             },

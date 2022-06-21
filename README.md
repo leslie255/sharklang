@@ -40,7 +40,7 @@ There are four builtin functions right now: `print_int`, `addint`, `subint`, `mu
 let a = addint(3, 4);
 let b = subint(a, 1);
 let c = mulint(a, b);
-let d = divint(c, 2);
+let d = divint(c, subint(15, 12)); // Nested function calls are also supported
 
 // printing integars using `print_int`
 print_int(a);
@@ -65,8 +65,6 @@ print_int(a);
 ```
 
 These three lines of assembly added 40 to `a`, so the program will output `42` instaed of `2`
-
-*Nested function calls (e.g. `print_int(addint(2, 3))`) are not supported yet*
 
 Note that if you're on Linux you will have to change the `macho64` in `compile.sh` to `elf64`,
 

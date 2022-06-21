@@ -35,6 +35,7 @@ impl Default for Expression {
 #[derive(Default, Clone)]
 pub struct ASTNode {
     pub expr: Expression,
+    pub is_root: bool,
 }
 #[derive(Default)]
 pub struct AST {
@@ -50,6 +51,13 @@ impl AST {
     pub fn expr(&self, i: usize) -> &Expression {
         unsafe { &self.nodes.get_unchecked(i).expr }
     }
+    pub fn new_expr(&mut self, expr: Expression) {
+        self.nodes.push(ASTNode {
+            expr: Expression::Unknown,
+            is_root: false,
+        });
+        self.nodes.last_mut().unwrap().expr = expr;
+    }
 }
 
 impl std::fmt::Debug for ASTNode {
@@ -58,13 +66,8 @@ impl std::fmt::Debug for ASTNode {
     }
 }
 
-fn parse_func_args(tokens: &mut TokenStream, tree: &mut Vec<ASTNode>) -> Vec<usize> {
+fn parse_func_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
     let mut token: Token;
-    macro_rules! new_node_from_expr {
-        ($expression: expr) => {
-            tree.push(ASTNode { expr: $expression })
-        };
-    }
 
     let mut args: Vec<usize> = Vec::new();
 
@@ -82,20 +85,21 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut Vec<ASTNode>) -> Vec<usi
         token = tokens.next();
         match &token.content {
             TokenContent::UInt(num) => {
-                new_node_from_expr!(Expression::NumberLiteral(*num));
+                tree.new_expr(Expression::NumberLiteral(*num));
             }
             TokenContent::String(str) => {
-                new_node_from_expr!(Expression::StringLiteral(str.clone()));
+                tree.new_expr(Expression::StringLiteral(str.clone()));
             }
             TokenContent::Identifier(id) => {
                 match tokens.look_ahead(1).content {
-                    TokenContent::RoundParenOpen => {
-                        let args = parse_func_args(tokens, tree);
-                        new_node_from_expr!(Expression::FuncCall(id.clone(), args));
-                    }
                     TokenContent::Comma | TokenContent::RoundParenClose => {
                         // is a variable
-                        new_node_from_expr!(Expression::Identifier(id.clone()));
+                        tree.new_expr(Expression::Identifier(id.clone()));
+                    }
+                    TokenContent::RoundParenOpen => {
+                        // is a function call
+                        let args = parse_func_args(tokens, tree);
+                        tree.new_expr(Expression::FuncCall(id.clone(), args));
                     }
                     TokenContent::Equal => panic!(
                         "{}:{} variable assignment cannot be used as an argument for a function",
@@ -115,7 +119,7 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut Vec<ASTNode>) -> Vec<usi
                 token.line, token.column, token.content
             ),
         }
-        args.push(tree.len() - 1);
+        args.push(tree.nodes.len() - 1);
         // if next token is `,` it means there's another argument
         // if it's `)` then it means function call should end
         token = tokens.next();
@@ -133,14 +137,9 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut Vec<ASTNode>) -> Vec<usi
     args
 }
 
-fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
+fn parse(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     // return value 0: index of newly added expression, 1: should continue recursion
     let mut token: Token;
-    macro_rules! new_node_from_expr {
-        ($expression: expr) => {
-            tree.push(ASTNode { expr: $expression })
-        };
-    }
 
     token = tokens.next();
 
@@ -150,37 +149,37 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
                 TokenContent::RoundParenOpen => {
                     // is a function call
                     let args = parse_func_args(tokens, tree);
-                    new_node_from_expr!(Expression::FuncCall(id.clone(), args));
-                    return tree.len() - 1;
+                    tree.new_expr(Expression::FuncCall(id.clone(), args));
+                    return tree.nodes.len() - 1;
                 }
                 _ => {}
             }
             token = tokens.next();
             match token.content {
                 TokenContent::Colon => {
-                    new_node_from_expr!(Expression::Label(id));
-                    return tree.len() - 1;
+                    tree.new_expr(Expression::Label(id));
+                    return tree.nodes.len() - 1;
                 }
                 TokenContent::Equal => {
                     // is variable assign
                     token = tokens.next();
                     match token.content {
                         TokenContent::UInt(uint) => {
-                            new_node_from_expr!(Expression::NumberLiteral(uint));
+                            tree.new_expr(Expression::NumberLiteral(uint));
                         }
                         TokenContent::String(str) => {
-                            new_node_from_expr!(Expression::StringLiteral(str));
+                            tree.new_expr(Expression::StringLiteral(str));
                         }
                         TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                             TokenContent::RoundParenOpen => {
                                 // is a function call
                                 let args = parse_func_args(tokens, tree);
-                                new_node_from_expr!(Expression::FuncCall(id, args));
+                                tree.new_expr(Expression::FuncCall(id, args));
                             }
                             TokenContent::Semicolon => {
                                 // is a variable
                                 tokens.next();
-                                new_node_from_expr!(Expression::Identifier(id));
+                                tree.new_expr(Expression::Identifier(id));
                             }
                             _ => panic!(
                                 "{}:{} expecting `(` or `;`, found {:?}",
@@ -194,7 +193,7 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
                             token.line, token.column, token.content
                         ),
                     }
-                    new_node_from_expr!(Expression::VarAssign(id, tree.len() - 1));
+                    tree.new_expr(Expression::VarAssign(id, tree.nodes.len() - 1));
                 }
                 _ => panic!(
                     "{}:{} expecting `=` or `(` after {:?}",
@@ -216,7 +215,6 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
             }
             // make sure there is an `=`
             if TokenContent::Equal != tokens.next().content {
-                println!("lol");
                 panic!(
                     "{}:{} expecting `=` after variable name, found {:?}",
                     tokens.look_ahead(0).line,
@@ -227,21 +225,21 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
             // determine the type and get rhs
             match tokens.next().content {
                 TokenContent::UInt(num) => {
-                    new_node_from_expr!(Expression::NumberLiteral(num));
+                    tree.new_expr(Expression::NumberLiteral(num));
                 }
                 TokenContent::String(str) => {
-                    new_node_from_expr!(Expression::StringLiteral(str));
+                    tree.new_expr(Expression::StringLiteral(str));
                 }
                 TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                     TokenContent::RoundParenOpen => {
                         // is a function call
                         let args = parse_func_args(tokens, tree);
-                        new_node_from_expr!(Expression::FuncCall(id, args));
+                        tree.new_expr(Expression::FuncCall(id, args));
                     }
                     TokenContent::Semicolon => {
                         // is a variable
                         tokens.next();
-                        new_node_from_expr!(Expression::Identifier(id));
+                        tree.new_expr(Expression::Identifier(id));
                     }
                     _ => panic!(
                         "{}:{} expecting `(` or `;`, found {:?}",
@@ -252,12 +250,12 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
                 },
                 _ => panic!("{}:{} invalid rhs for `let`", token.line, token.column),
             }
-            new_node_from_expr!(Expression::VarInit(lhs, tree.len() - 1));
-            return tree.len() - 1;
+            tree.new_expr(Expression::VarInit(lhs, tree.nodes.len() - 1));
+            return tree.nodes.len() - 1;
         }
         TokenContent::Semicolon => {}
         TokenContent::RawASM(text) => {
-            new_node_from_expr!(Expression::RawASM(text));
+            tree.new_expr(Expression::RawASM(text));
         }
         _ => {
             panic!(
@@ -273,7 +271,8 @@ fn parse(tree: &mut Vec<ASTNode>, tokens: &mut TokenStream) -> usize {
 pub fn construct_ast(mut tokens: TokenStream) -> AST {
     let mut ast = AST::default();
     loop {
-        let i = parse(&mut ast.nodes, &mut tokens);
+        let i = parse(&mut ast, &mut tokens);
+        ast.nodes.last_mut().unwrap().is_root = true;
         if tokens.look_ahead(1).content.is_eof() {
             break;
         }

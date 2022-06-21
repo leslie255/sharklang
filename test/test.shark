@@ -1,9 +1,13 @@
-// declaring a variable
-let a = 10;
-let b = 20;
-// assigning values to a variable
-a = b;
-let c = 0;
-c = addint(a, b);
+// math functions
+let a = addint(3, 4);
+let b = subint(a, 1);
+let c = mulint(a, b);
+// Nested function calls are also supported
+let d = divint(c, subint(15, 12));
 
+// printing integars using `print_int`
+print_int(a);
+print_int(b);
 print_int(c);
+print_int(d);
+

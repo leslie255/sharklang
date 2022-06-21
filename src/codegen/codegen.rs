@@ -1,8 +1,49 @@
 use super::ast::*;
 use super::builtin_funcs::*;
 use super::ir::*;
-use super::tokens::*;
 use super::preprocess::*;
+use super::tokens::*;
+
+static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 8] = [
+    Register::r8,
+    Register::r9,
+    Register::r10,
+    Register::r11,
+    Register::r12,
+    Register::r13,
+    Register::r14,
+    Register::r15,
+];
+fn codegen_for_fn_call(ast: &AST, node: &ASTNode, target: &mut Vec<ASMStatement>) {
+    if let Expression::FuncCall(func_name, args) = &node.expr {
+        let mut func_call = asm!(func_call, func_name);
+        for (i, arg) in args.iter().enumerate() {
+            match ast.expr(*arg) {
+                Expression::Identifier(id) => {
+                    func_call.arg(Operand::Var(id.clone()));
+                }
+                Expression::NumberLiteral(num) => {
+                    func_call.arg(Operand::Int(*num));
+                }
+                Expression::StringLiteral(_) => {
+                    todo!();
+                }
+                Expression::FuncCall(_, _) => {
+                    codegen_for_fn_call(ast, ast.node(*arg), target);
+                    let reg = NESTED_FUNC_CALL_BUFFER_REGS[i];
+                    target.push(asm!(
+                        mov,
+                        Operand::Reg(reg),
+                        rax!()
+                    ));
+                    func_call.arg(Operand::Reg(reg));
+                }
+                _ => panic!("{:?} is not a valid argument for function", ast.expr(*arg)),
+            }
+        }
+        target.push(func_call.asm);
+    }
+}
 
 pub fn codegen(source: String) -> String {
     let preprocessed = preprocess(source);
@@ -41,7 +82,7 @@ pub fn codegen(source: String) -> String {
                     }
                     Expression::FuncCall(_, _) => {
                         program.data_sect.push(asm!(data_int, var_name, 0));
-                        // there is no need to call the function because it has been called before
+                        codegen_for_fn_call(&ast, ast.node(*rhs), &mut main_func);
                         main_func.push(asm!(mov, Operand::Var(var_name.clone()), rax!()));
                     }
                     _ => todo!(),
@@ -63,47 +104,16 @@ pub fn codegen(source: String) -> String {
                     println!("using string literal as the rhs of variable assignment has not been implemented yet");
                     todo!();
                 }
-                Expression::FuncCall(func_name, args) => {
-                    let mut func_call = asm!(func_call, func_name);
-                    for arg in args {
-                        match ast.expr(*arg) {
-                            Expression::Identifier(id) => {
-                                func_call.arg(Operand::Var(id.clone()));
-                            }
-                            Expression::NumberLiteral(num) => {
-                                func_call.arg(Operand::Int(*num));
-                            }
-                            Expression::StringLiteral(_) => {
-                                todo!();
-                            }
-                            _ => panic!(""),
-                        }
-                    }
-                    main_func.push(func_call.asm);
+                Expression::FuncCall(_, _) => {
+                    codegen_for_fn_call(&ast, &ast.node(*rhs), &mut main_func);
                     main_func.push(asm!(mov, Operand::Var(var_name.clone()), rax!()));
                 }
                 _ => todo!(),
             },
-            Expression::FuncCall(func_name, args) => {
-                let mut func_call = asm!(func_call, func_name);
-                for arg in args {
-                    match ast.expr(*arg) {
-                        Expression::Identifier(id) => {
-                            func_call.arg(Operand::Var(id.clone()));
-                        }
-                        Expression::NumberLiteral(num) => {
-                            func_call.arg(Operand::Int(*num));
-                        }
-                        Expression::StringLiteral(_) => {
-                            todo!();
-                        }
-                        Expression::FuncCall(_, _) => {
-                            todo!();
-                        }
-                        _ => panic!("{:?} is not a valid argument for function", ast.expr(*arg)),
-                    }
+            Expression::FuncCall(_, _) => {
+                if node.is_root {
+                    codegen_for_fn_call(&ast, node, &mut main_func);
                 }
-                main_func.push(func_call.asm);
             }
             _ => todo!(),
         }
