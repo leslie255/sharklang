@@ -132,7 +132,6 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
             ),
         }
     }
-    println!("{:?}", token);
 
     args
 }
