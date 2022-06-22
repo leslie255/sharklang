@@ -7,15 +7,20 @@
 
 **here's how to use this current (extremely primitive) version of Shark:**
 
-Printing an integar:
+Hello World:
 
 ``` Swift
-// everything has to be inside the main function
+// the main function is the entry point of the program
 func main() {
-
+	// if encountered a string literal with no further context,
+	// sharkc automatically knows that you want to print it
+	"hello, world";
+	
+	// printing an integar requires the `print_int` function
 	print_int(42);
-
-	return 0; // like C the return value of `main` will be used as program exit code
+	
+	// like C the return value of `main` will be used as program exit code
+	return 0;
 }
 ```
 
@@ -95,7 +100,7 @@ func main() {
 }
 ```
 
-Note that you currently cannot use variables of the same name across two different functions, this is because current all variables are statically defined in the data section, it will change in the future
+Note that you currently cannot use variables of the same name across two different functions, this will be changed in the future
 
 The compiled program can only run on 64-bit systems (although the compiler itself might work on 32-bit systems)
 
@@ -113,4 +118,3 @@ LICENSED UNDER GPLv3
 - if statement
 - type checking
 - standard library
-
