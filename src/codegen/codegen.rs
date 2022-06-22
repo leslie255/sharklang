@@ -105,7 +105,6 @@ fn gen_code_for_expr(
     }
 }
 
-#[allow(unused)]
 pub fn codegen(source: String) -> String {
     let preprocessed = preprocess(source);
     let tokens = parse_tokens(preprocessed);
@@ -123,8 +122,12 @@ pub fn codegen(source: String) -> String {
             for i in &block.body {
                 gen_code_for_expr(&ast, ast.node(*i), &mut program, &mut func);
             }
-            //func.push(asm!(func_ret));
             program.funcs.push(func);
+        }
+        if let Expression::RawASM(code) = &node.expr {
+            if node.is_top_level {
+                program.data_sect.push(asm!(code));
+            }
         }
     }
 

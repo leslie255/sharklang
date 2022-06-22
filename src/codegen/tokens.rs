@@ -58,7 +58,7 @@ impl StringCustomFuncs for String {
     fn is_asm_instruction(&self) -> bool {
         match self.as_str() {
             "mov" | "push" | "pop" | "ret" | "call" | "cmp" | "jmp" | "jpe" | "jpz" | "add" | "sub"
-            | "mul" | "div" => true,
+            | "mul" | "div" | "extern" => true,
             _ => false,
         }
     }

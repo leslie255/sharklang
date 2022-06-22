@@ -1,29 +1,9 @@
-func print_255() {
-	print_int(255);
-
-	pop	rbp
-	ret
-}
+extern _hello_from_c
 
 func main() {
-	// math functions
-	let a = addint(3, 4);
-	let b = subint(a, 1);
-	let c = mulint(a, b);
-	// Nested function calls are also supported
-	let d = divint(c, subint(15, 12));
-
-	// printing integars using `print_int`
-	print_int(a);
-	print_int(b);
-	print_int(c);
-	print_int(d);
 	
-	// calling the custom function!
-	print_255();
+	hello_from_c();
 
-	// return statement haven't been implemented yet
-	// so you have to do it manually
 	pop	rbp
 	mov	rax, 0
 	ret
