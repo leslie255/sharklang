@@ -1,14 +1,15 @@
-func test_func() {
-	let b = 255;
-	return b;
+func square() {
+	mov	rax, rdi
+	mul	rdi
+
+	return;
 }
 
 func main() {
 
-	let a = test_func();
+	let a = subint(square(16), 1);
 	print_int(a);
 
-	mov	rax, 0
-	return;
+	return 0;
 }
 

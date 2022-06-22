@@ -15,11 +15,7 @@ func main() {
 
 	print_int(42);
 
-	// return statements haven't been implemented
-	// so you have to do it by inline assembly
-	pop rbp
-	mov rax, 0
-	ret
+	return 0; // like C the return value of `main` will be used as program exit code
 }
 ```
 
@@ -29,6 +25,13 @@ To compile a Shark program:
 $ ./compile.sh program.shark
 $ ./a.out
 ```
+
+`compile.sh` will emit the assembly code generated for debug
+
+You will need `nasm`, `gcc` and `bat` to compile (`gcc` won't be needed in the future when the Shark Standard Library is built).
+
+Note that if you're on Linux you will have to change the `macho64` in `compile.sh` to `elf64`,
+if you're on Windows, you will have to do `cargo run program.shark -o output.asm`, then assemble and link the generated assembly code using `nasm` and `gcc`.
 
 Declaring and assigning values to a variable:
 
@@ -79,11 +82,20 @@ print_int(a);
 
 These three lines of assembly added 40 to `a`, so the program will output `42` instaed of `2`
 
-Note that if you're on Linux you will have to change the `macho64` in `compile.sh` to `elf64`,
+Defining a function:
+``` Rust
+func a_number() {
+	return mulint(16, 16);
+}
 
-If you're on Windows, you will have to do `cargo run program.shark -o output.asm`, then assemble and link the generated assembly code using `nasm` and `gcc`.
+func main() {
+	let a = subint(a_number(), 1);
+	print_int(a);
+	return 0;
+}
+```
 
-Also note that the `compile.sh` will emit the compiled assembly code for debug.
+Note that you currently cannot use variables of the same name across two different functions, this is because current all variables are statically defined in the data section, it will change in the future
 
 The compiled program can only run on 64-bit systems (although the compiler itself might work on 32-bit systems)
 
@@ -93,7 +105,6 @@ Just open up a new PR and I'll review it as soon as possible. All issues and PR'
 LICENSED UNDER GPLv3
 
 ### TODO
-- return statement
 - local variables (currently all variables are stored statically in the data section of the program)
 - argument names
 - types
