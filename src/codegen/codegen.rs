@@ -71,7 +71,10 @@ fn gen_code_for_expr(
                     codegen_for_fn_call(&ast, ast.node(*rhs), target);
                     target.push(asm!(mov, Operand::Var(var_name.clone()), rax!()));
                 }
-                _ => todo!(),
+                _ => {
+                    println!("using string literal as the rhs of variable declaration has not been implemented yet");
+                    todo!();
+                }
             };
         }
         Expression::VarAssign(var_name, rhs) => match ast.expr(*rhs) {
@@ -100,6 +103,9 @@ fn gen_code_for_expr(
             if node.is_root {
                 codegen_for_fn_call(&ast, node, target);
             }
+        }
+        Expression::ReturnVoid => {
+            target.push(asm!(func_ret));
         }
         _ => {}
     }

@@ -21,6 +21,7 @@ pub enum Expression {
 
     // Control flows
     FuncDef(String, CodeBlock),
+    ReturnVoid,
 
     Unknown,
 }
@@ -147,6 +148,41 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
     args
 }
 
+fn parse_single_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
+    let token = tokens.next();
+    match token.content {
+        TokenContent::UInt(uint) => {
+            tree.new_expr(Expression::NumberLiteral(uint));
+        }
+        TokenContent::String(str) => {
+            tree.new_expr(Expression::StringLiteral(str));
+        }
+        TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
+            TokenContent::RoundParenOpen => {
+                // is a function call
+                let args = parse_func_args(tokens, tree);
+                tree.new_expr(Expression::FuncCall(id, args));
+            }
+            TokenContent::Semicolon => {
+                // is a variable
+                tokens.next();
+                tree.new_expr(Expression::Identifier(id));
+            }
+            _ => panic!(
+                "{}:{} expecting `(` or `;`, found {:?}",
+                tokens.look_ahead(1).line,
+                tokens.look_ahead(1).column,
+                tokens.look_ahead(1).content
+            ),
+        },
+        _ => panic!(
+            "{}:{} `{:?}` is not a valid rhs for variable assignment",
+            token.line, token.column, token.content
+        ),
+    }
+    tree.nodes.len() - 1
+}
+
 fn parse_expression(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     let mut token: Token;
 
@@ -171,38 +207,8 @@ fn parse_expression(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 }
                 TokenContent::Equal => {
                     // is variable assign
-                    token = tokens.next();
-                    match token.content {
-                        TokenContent::UInt(uint) => {
-                            tree.new_expr(Expression::NumberLiteral(uint));
-                        }
-                        TokenContent::String(str) => {
-                            tree.new_expr(Expression::StringLiteral(str));
-                        }
-                        TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
-                            TokenContent::RoundParenOpen => {
-                                // is a function call
-                                let args = parse_func_args(tokens, tree);
-                                tree.new_expr(Expression::FuncCall(id, args));
-                            }
-                            TokenContent::Semicolon => {
-                                // is a variable
-                                tokens.next();
-                                tree.new_expr(Expression::Identifier(id));
-                            }
-                            _ => panic!(
-                                "{}:{} expecting `(` or `;`, found {:?}",
-                                tokens.look_ahead(1).line,
-                                tokens.look_ahead(1).column,
-                                tokens.look_ahead(1).content
-                            ),
-                        },
-                        _ => panic!(
-                            "{}:{} `{:?}` is not a valid rhs for variable assignment",
-                            token.line, token.column, token.content
-                        ),
-                    }
-                    tree.new_expr(Expression::VarAssign(id, tree.nodes.len() - 1));
+                    let i = parse_single_expr(tree, tokens);
+                    tree.new_expr(Expression::VarAssign(id, i));
                     return tree.nodes.len() - 1;
                 }
                 _ => panic!(
@@ -233,36 +239,17 @@ fn parse_expression(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 );
             }
             // get rhs
-            match tokens.next().content {
-                TokenContent::UInt(num) => {
-                    tree.new_expr(Expression::NumberLiteral(num));
-                }
-                TokenContent::String(str) => {
-                    tree.new_expr(Expression::StringLiteral(str));
-                }
-                TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
-                    TokenContent::RoundParenOpen => {
-                        // is a function call
-                        let args = parse_func_args(tokens, tree);
-                        tree.new_expr(Expression::FuncCall(id, args));
-                    }
-                    TokenContent::Semicolon => {
-                        // is a variable
-                        tokens.next();
-                        tree.new_expr(Expression::Identifier(id));
-                    }
-                    _ => panic!(
-                        "{}:{} expecting `(` or `;`, found {:?}",
-                        tokens.look_ahead(1).line,
-                        tokens.look_ahead(1).column,
-                        tokens.look_ahead(1).content
-                    ),
-                },
-                _ => panic!("{}:{} invalid rhs for `let`", token.line, token.column),
-            }
-            tree.new_expr(Expression::VarInit(lhs, tree.nodes.len() - 1));
+            let i = parse_single_expr(tree, tokens);
+            tree.new_expr(Expression::VarInit(lhs, i));
             return tree.nodes.len() - 1;
         }
+        TokenContent::Return => match tokens.look_ahead(1).content {
+            TokenContent::Semicolon => {
+                tree.new_expr(Expression::ReturnVoid);
+                return tree.nodes.len() - 1;
+            }
+            _ => todo!(),
+        },
         TokenContent::Semicolon => {
             return usize::MAX;
         }

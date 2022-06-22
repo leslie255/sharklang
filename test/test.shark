@@ -1,11 +1,10 @@
-extern _hello_from_c
-
 func main() {
-	
-	hello_from_c();
 
-	pop	rbp
+	let a = 0;
+	a = 1;
+	print_int(1);
+
 	mov	rax, 0
-	ret
+	return;
 }
 

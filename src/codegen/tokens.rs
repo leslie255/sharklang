@@ -18,6 +18,7 @@ pub enum TokenContent {
     Identifier(String),
     Let,
     Func,
+    Return,
 
     RawASM(String),
 
@@ -90,6 +91,7 @@ impl Token {
                 "," => TokenContent::Comma,
                 ":" => TokenContent::Colon,
                 "func" => TokenContent::Func,
+                "return" => TokenContent::Return,
                 _ => {
                     if str
                         .chars()
