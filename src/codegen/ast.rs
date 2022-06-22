@@ -22,6 +22,7 @@ pub enum Expression {
     // Control flows
     FuncDef(String, CodeBlock),
     ReturnVoid,
+    ReturnVal(usize),
 
     Unknown,
 }
@@ -248,7 +249,11 @@ fn parse_expression(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 tree.new_expr(Expression::ReturnVoid);
                 return tree.nodes.len() - 1;
             }
-            _ => todo!(),
+            _ => {
+                let i = parse_single_expr(tree, tokens);
+                tree.new_expr(Expression::ReturnVal(i));
+                return tree.nodes.len() - 1;
+            }
         },
         TokenContent::Semicolon => {
             return usize::MAX;

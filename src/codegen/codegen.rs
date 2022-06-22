@@ -89,22 +89,31 @@ fn gen_code_for_expr(
                     Operand::Int(*num)
                 ));
             }
-            Expression::StringLiteral(_) => {
-                println!("using string literal as the rhs of variable assignment has not been implemented yet");
-                todo!();
-            }
             Expression::FuncCall(_, _) => {
                 codegen_for_fn_call(&ast, &ast.node(*rhs), target);
                 target.push(asm!(mov, Operand::Var(var_name.clone()), rax!()));
             }
-            _ => todo!(),
+            _ => panic!("{:?} is not a valid expression", ast.expr(*rhs)),
         },
         Expression::FuncCall(_, _) => {
             if node.is_root {
                 codegen_for_fn_call(&ast, node, target);
             }
         }
-        Expression::ReturnVoid => {
+        Expression::ReturnVoid => target.push(asm!(func_ret)),
+        Expression::ReturnVal(val) => {
+            match ast.expr(*val) {
+                Expression::Identifier(id) => {
+                    target.push(asm!(mov, rax!(), Operand::Var(id.clone())));
+                }
+                Expression::NumberLiteral(num) => {
+                    target.push(asm!(mov, rax!(), Operand::Int(*num)));
+                }
+                Expression::FuncCall(_, _) => {
+                    codegen_for_fn_call(&ast, &ast.node(*val), target);
+                }
+                _ => panic!("{:?} is not a valid expression", ast.expr(*val)),
+            }
             target.push(asm!(func_ret));
         }
         _ => {}

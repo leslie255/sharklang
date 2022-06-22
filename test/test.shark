@@ -1,8 +1,12 @@
+func test_func() {
+	let b = 255;
+	return b;
+}
+
 func main() {
 
-	let a = 0;
-	a = 1;
-	print_int(1);
+	let a = test_func();
+	print_int(a);
 
 	mov	rax, 0
 	return;
