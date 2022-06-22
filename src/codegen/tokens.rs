@@ -58,8 +58,11 @@ trait StringCustomFuncs {
 impl StringCustomFuncs for String {
     fn is_asm_instruction(&self) -> bool {
         match self.as_str() {
-            "mov" | "push" | "pop" | "ret" | "call" | "cmp" | "jmp" | "jpe" | "jpz" | "add" | "sub"
-            | "mul" | "div" | "extern" => true,
+            "mov" | "push" | "pop" | "ret" | "call" | "cmp" | "add" | "sub" | "mul" | "div"
+            | "extern" | "inc" | "dec" | "jmp" | "jo" | "jno" | "js" | "jns" | "je" | "jz"
+            | "jne" | "jnz" | "jp" | "jpe" | "jnp" | "jpo" | "jcxz" | "jecxz" | "jb" | "jnae"
+            | "jc" | "jnb" | "jae" | "jnc" | "jbe" | "jna" | "ja" | "jnbe" | "jl" | "jnge"
+            | "jge" | "jnl" | "jle" | "jng" | "jg" | "jnle" => true,
             _ => false,
         }
     }
