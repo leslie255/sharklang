@@ -57,7 +57,6 @@ pub struct AST {
 }
 
 impl AST {
-    #[allow(dead_code)]
     pub fn node(&self, i: usize) -> &ASTNode {
         unsafe { self.nodes.get_unchecked(i) }
     }
@@ -91,6 +90,10 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
     loop {
         // get the next argument
         token = tokens.next();
+        match &token.content {
+            TokenContent::RoundParenClose => break,
+            _ => (),
+        }
         match &token.content {
             TokenContent::UInt(num) => {
                 tree.new_expr(Expression::NumberLiteral(*num));
@@ -203,8 +206,8 @@ fn parse_expression(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     return tree.nodes.len() - 1;
                 }
                 _ => panic!(
-                    "{}:{} expecting `=` or `(` after {:?}",
-                    token.line, token.column, token.content
+                    "{}:{} expecting `=` or `(` after {}",
+                    token.line, token.column, id
                 ),
             }
         }
@@ -276,7 +279,6 @@ fn parse_expression(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     };
 }
 
-#[allow(unused)]
 fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     let mut token: Token;
     match tokens.look_ahead(1).content {
@@ -294,8 +296,8 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 );
             }
             // TODO: argument names
-            token = tokens.next();
-            token = tokens.next();
+            tokens.next();
+            tokens.next();
 
             token = tokens.next();
             if token.content != TokenContent::BigParenOpen {

@@ -1,3 +1,10 @@
+func print_255() {
+	print_int(255);
+
+	pop	rbp
+	ret
+}
+
 func main() {
 	// math functions
 	let a = addint(3, 4);
@@ -11,5 +18,14 @@ func main() {
 	print_int(b);
 	print_int(c);
 	print_int(d);
+	
+	// calling the custom function!
+	print_255();
+
+	// return statement haven't been implemented yet
+	// so you have to do it manually
+	pop	rbp
+	mov	rax, 0
+	ret
 }
 

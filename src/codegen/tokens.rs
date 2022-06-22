@@ -57,7 +57,7 @@ trait StringCustomFuncs {
 impl StringCustomFuncs for String {
     fn is_asm_instruction(&self) -> bool {
         match self.as_str() {
-            "mov" | "push" | "ret" | "call" | "cmp" | "jmp" | "jpe" | "jpz" | "add" | "sub"
+            "mov" | "push" | "pop" | "ret" | "call" | "cmp" | "jmp" | "jpe" | "jpz" | "add" | "sub"
             | "mul" | "div" => true,
             _ => false,
         }
@@ -141,7 +141,10 @@ impl TokenStream {
         }
     }
     pub fn look_ahead(&self, i: usize) -> Token {
-        match self.tokens.get(if self.has_started { self.i + i } else { 0 }) {
+        match self
+            .tokens
+            .get(if self.has_started { self.i + i } else { 0 })
+        {
             Some(token) => token.clone(),
             None => Token::eof(),
         }
@@ -170,20 +173,14 @@ pub fn parse_tokens<'a>(source: String) -> TokenStream {
     while ch.is_some() {
         column += 1;
         match ch.unwrap() {
-            '\n' => {
-                line += 1;
-                column = 0;
+            ' ' | '\t' | '\n' => {
                 if last_word.is_empty() {
                     ch = iter.next();
                     continue;
                 }
-                tokens.push(Token::from(&last_word, line, column));
-                last_word = String::new();
-            }
-            ' ' | '\t' => {
-                if last_word.is_empty() {
-                    ch = iter.next();
-                    continue;
+                if ch == Some('\n') {
+                    line += 1;
+                    column = 0;
                 }
                 if last_word.is_asm_instruction() {
                     while ch != Some('\n') {
