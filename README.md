@@ -46,7 +46,7 @@ let c = addint(a, b);
 print_int(c);
 ```
 
-There are four builtin functions right now: `print_int`, `addint`, `subint`, `mulint`, `divint`
+There are five builtin functions right now: `print_int`, `addint`, `subint`, `mulint`, `divint`
 
 ``` Rust
 // math functions
@@ -91,4 +91,15 @@ The compiled program can only run on 64-bit systems (although the compiler itsel
 Just open up a new PR and I'll review it as soon as possible. All issues and PR's should be in English.
 
 LICENSED UNDER GPLv3
+
+### TODO
+- return statement
+- local variables (currently all variables are stored statically in the data section of the program)
+- argument names
+- types
+- argument checking
+- loops
+- if statement
+- type checking
+- standard library
 
