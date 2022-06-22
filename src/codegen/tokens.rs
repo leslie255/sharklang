@@ -17,6 +17,7 @@ pub enum TokenContent {
     String(String),
     Identifier(String),
     Let,
+    Func,
 
     RawASM(String),
 
@@ -88,6 +89,7 @@ impl Token {
                 "." => TokenContent::Period,
                 "," => TokenContent::Comma,
                 ":" => TokenContent::Colon,
+                "func" => TokenContent::Func,
                 _ => {
                     if str
                         .chars()
@@ -139,7 +141,7 @@ impl TokenStream {
         }
     }
     pub fn look_ahead(&self, i: usize) -> Token {
-        match self.tokens.get(self.i + i) {
+        match self.tokens.get(if self.has_started { self.i + i } else { 0 }) {
             Some(token) => token.clone(),
             None => Token::eof(),
         }

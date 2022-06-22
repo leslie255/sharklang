@@ -1,15 +1,9 @@
 use super::tokens::*;
 
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! print_ast {
-    ($ast: expr) => {
-        for (i, node) in $ast.iter().enumerate() {
-            println!("{}:\t{:?}", i, node);
-        }
-    };
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CodeBlock {
+    pub body: Vec<usize>,
 }
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     // Non-Recursive expression
@@ -21,9 +15,12 @@ pub enum Expression {
     VarInit(String, usize),       // lhs, rhs
     VarAssign(String, usize),     // lhs, rhs
 
+    // Raw ASM
     Label(String),
-
     RawASM(String),
+
+    // Control flows
+    FuncDef(String, CodeBlock),
 
     Unknown,
 }
@@ -36,11 +33,27 @@ impl Default for Expression {
 pub struct ASTNode {
     pub expr: Expression,
     pub is_root: bool,
+    pub is_top_level: bool,
 }
+#[macro_export]
+macro_rules! print_ast {
+    ($ast: expr) => {
+        for (i, node) in $ast.iter().enumerate() {
+            print!("{}:\t{:?}", i, node.expr);
+            if node.is_top_level {
+                print!("\ttop_level");
+            }
+            if node.is_root {
+                print!("\troot");
+            }
+            println!("");
+        }
+    };
+}
+
 #[derive(Default)]
 pub struct AST {
     pub nodes: Vec<ASTNode>,
-    pub root_nodes: Vec<usize>,
 }
 
 impl AST {
@@ -55,14 +68,9 @@ impl AST {
         self.nodes.push(ASTNode {
             expr: Expression::Unknown,
             is_root: false,
+            is_top_level: false,
         });
         self.nodes.last_mut().unwrap().expr = expr;
-    }
-}
-
-impl std::fmt::Debug for ASTNode {
-    fn fmt(&self, format: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        self.expr.fmt(format)
     }
 }
 
@@ -71,7 +79,7 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
 
     let mut args: Vec<usize> = Vec::new();
 
-    // make sure there is an `(`
+    // make sure there is a `(`
     token = tokens.next();
     if TokenContent::RoundParenOpen != token.content {
         panic!(
@@ -137,7 +145,6 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
 }
 
 fn parse(tree: &mut AST, tokens: &mut TokenStream) -> usize {
-    // return value 0: index of newly added expression, 1: should continue recursion
     let mut token: Token;
 
     token = tokens.next();
@@ -267,15 +274,69 @@ fn parse(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     0
 }
 
+#[allow(unused)]
+fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
+    let mut token: Token;
+    match tokens.look_ahead(1).content {
+        TokenContent::Func => {
+            tokens.next();
+            token = tokens.next();
+            let func_name: String;
+            let mut code_block = CodeBlock::default();
+            if let TokenContent::Identifier(id) = token.content {
+                func_name = id;
+            } else {
+                panic!(
+                    "{}:{} expected an identifier after `func`, found {:?}",
+                    token.line, token.column, token.content
+                );
+            }
+            // TODO: argument names
+            token = tokens.next();
+            token = tokens.next();
+
+            token = tokens.next();
+            if token.content != TokenContent::BigParenOpen {
+                panic!(
+                    "{}:{} expected `{{`, found {:?}",
+                    token.line, token.column, token.content
+                );
+            }
+            loop {
+                match tokens.look_ahead(1).content {
+                    TokenContent::EOF | TokenContent::BigParenClose => {
+                        tokens.next();
+                        break;
+                    }
+                    _ => (),
+                }
+                let i = parse(tree, tokens);
+                if !tree.nodes.is_empty() {
+                    tree.nodes.last_mut().unwrap().is_root = true;
+                    code_block.body.push(i);
+                }
+            }
+            let expr = Expression::FuncDef(func_name, code_block);
+            tree.new_expr(expr);
+            tree.nodes.last_mut().unwrap().is_root = true;
+        }
+        _ => {
+            parse(tree, tokens);
+        }
+    }
+    tree.nodes.len().saturating_sub(1)
+}
+
 pub fn construct_ast(mut tokens: TokenStream) -> AST {
     let mut ast = AST::default();
     loop {
-        let i = parse(&mut ast, &mut tokens);
-        ast.nodes.last_mut().unwrap().is_root = true;
+        parse_top_level(&mut ast, &mut tokens);
+        if !ast.nodes.is_empty() {
+            ast.nodes.last_mut().unwrap().is_top_level = true;
+        }
         if tokens.look_ahead(1).content.is_eof() {
             break;
         }
-        ast.root_nodes.push(i);
     }
     ast
 }
