@@ -37,7 +37,8 @@ fn compile(src_path: String, output_path: String) {
 }
 
 fn print_tree(src_path: String) {
-    let source = fs::read_to_string(src_path).expect("cannot read file");
+    let source =
+        codegen::preprocess::preprocess(fs::read_to_string(src_path).expect("cannot read file"));
     let tokens = codegen::tokens::parse_tokens(source);
     let ast = codegen::ast::construct_ast(tokens);
     print_ast!(ast.nodes);
@@ -48,7 +49,7 @@ fn print_tokens(src_path: String) {
         codegen::preprocess::preprocess(fs::read_to_string(src_path).expect("cannot read file"));
     let tokens = codegen::tokens::parse_tokens(source).tokens;
     for token in tokens {
-        println!("({},{}): {:?}", token.line, token.column, token.content);
+        println!("{}:{}\t{:?}", token.line, token.column, token.content);
     }
 }
 

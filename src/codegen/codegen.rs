@@ -31,11 +31,7 @@ fn codegen_for_fn_call(ast: &AST, node: &ASTNode, target: &mut Vec<ASMStatement>
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(ast, ast.node(*arg), target);
                     let reg = NESTED_FUNC_CALL_BUFFER_REGS[i];
-                    target.push(asm!(
-                        mov,
-                        Operand::Reg(reg),
-                        rax!()
-                    ));
+                    target.push(asm!(mov, Operand::Reg(reg), rax!()));
                     func_call.arg(Operand::Reg(reg));
                 }
                 _ => panic!("{:?} is not a valid argument for function", ast.expr(*arg)),

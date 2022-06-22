@@ -144,7 +144,7 @@ fn parse_func_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
     args
 }
 
-fn parse(tree: &mut AST, tokens: &mut TokenStream) -> usize {
+fn parse_expression(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     let mut token: Token;
 
     token = tokens.next();
@@ -200,6 +200,7 @@ fn parse(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                         ),
                     }
                     tree.new_expr(Expression::VarAssign(id, tree.nodes.len() - 1));
+                    return tree.nodes.len() - 1;
                 }
                 _ => panic!(
                     "{}:{} expecting `=` or `(` after {:?}",
@@ -228,7 +229,7 @@ fn parse(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     tokens.look_ahead(0).content
                 );
             }
-            // determine the type and get rhs
+            // get rhs
             match tokens.next().content {
                 TokenContent::UInt(num) => {
                     tree.new_expr(Expression::NumberLiteral(num));
@@ -259,9 +260,12 @@ fn parse(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             tree.new_expr(Expression::VarInit(lhs, tree.nodes.len() - 1));
             return tree.nodes.len() - 1;
         }
-        TokenContent::Semicolon => {}
+        TokenContent::Semicolon => {
+            return usize::MAX;
+        }
         TokenContent::RawASM(text) => {
             tree.new_expr(Expression::RawASM(text));
+            return tree.nodes.len() - 1;
         }
         _ => {
             panic!(
@@ -270,8 +274,6 @@ fn parse(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             );
         }
     };
-
-    0
 }
 
 #[allow(unused)]
@@ -310,9 +312,12 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     }
                     _ => (),
                 }
-                let i = parse(tree, tokens);
-                if !tree.nodes.is_empty() {
-                    tree.nodes.last_mut().unwrap().is_root = true;
+                let i = parse_expression(tree, tokens);
+                if let Some(node) = tree.nodes.get_mut(i) {
+                    if node.is_root {
+                        continue;
+                    }
+                    node.is_root = true;
                     code_block.body.push(i);
                 }
             }
@@ -321,7 +326,7 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             tree.nodes.last_mut().unwrap().is_root = true;
         }
         _ => {
-            parse(tree, tokens);
+            parse_expression(tree, tokens);
         }
     }
     tree.nodes.len().saturating_sub(1)
