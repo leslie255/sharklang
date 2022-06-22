@@ -1,4 +1,7 @@
 // ir: intermedia representation
+
+use std::collections::HashMap;
+
 #[macro_export]
 macro_rules! asm {
     (sect, $sect_name: expr) => {
@@ -80,6 +83,7 @@ pub struct Program {
     pub externs: Vec<ASMStatement>,
     pub data_sect: Vec<ASMStatement>,
     pub funcs: Vec<Vec<ASMStatement>>,
+    pub strliterals_ids: HashMap<String, u64>,
 }
 impl Program {
     pub fn new() -> Program {
@@ -87,6 +91,7 @@ impl Program {
             externs: Vec::new(),
             data_sect: vec![asm!(sect, "data"), asm!(data_int, "temp", 0)],
             funcs: Vec::new(),
+            strliterals_ids: HashMap::new(),
         }
     }
     pub fn gen_code(&self) -> String {

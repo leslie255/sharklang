@@ -61,6 +61,23 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
+            String::from("println"),
+            BuiltinFunc {
+                externs: vec![String::from("printf")],
+                data_sect: vec![asm!(data_str, "println_fmt", "%s\n")],
+                text_sect: vec![
+                    asm!(func_def, "println"),
+                    asm!(mov, rax!(), rdi!()),
+                    asm!(func_call, "printf")
+                        .arg(addr!("println_fmt"))
+                        .arg(rax!())
+                        .asm
+                        .clone(),
+                    asm!(func_ret),
+                ],
+            },
+        );
+        checker.funcs.insert(
             String::from("print_int"),
             BuiltinFunc {
                 externs: vec![String::from("printf")],

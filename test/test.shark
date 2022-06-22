@@ -1,14 +1,6 @@
-func square() {
-	mov	rax, rdi
-	mul	rdi
-
-	return;
-}
-
 func main() {
 
-	let a = subint(square(16), 1);
-	print_int(a);
+	"hello, world";
 
 	return 0;
 }

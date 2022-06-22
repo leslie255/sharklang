@@ -184,7 +184,7 @@ fn parse_single_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     tree.nodes.len() - 1
 }
 
-fn parse_expression(tree: &mut AST, tokens: &mut TokenStream) -> usize {
+fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     let mut token: Token;
 
     token = tokens.next();
@@ -262,6 +262,14 @@ fn parse_expression(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             tree.new_expr(Expression::RawASM(text));
             return tree.nodes.len() - 1;
         }
+        TokenContent::String(str) => {
+            tree.new_expr(Expression::StringLiteral(str));
+            tree.new_expr(Expression::FuncCall(
+                String::from("println"),
+                vec![tree.nodes.len() - 1],
+            ));
+            return tree.nodes.len() - 1;
+        }
         _ => {
             panic!(
                 "{}:{} unidentified token `{:?}`",
@@ -306,7 +314,7 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     }
                     _ => (),
                 }
-                let i = parse_expression(tree, tokens);
+                let i = parse_expr(tree, tokens);
                 if let Some(node) = tree.nodes.get_mut(i) {
                     if node.is_root {
                         continue;
@@ -320,7 +328,7 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             tree.nodes.last_mut().unwrap().is_root = true;
         }
         _ => {
-            parse_expression(tree, tokens);
+            parse_expr(tree, tokens);
         }
     }
     tree.nodes.len().saturating_sub(1)

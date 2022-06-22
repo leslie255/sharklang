@@ -14,7 +14,12 @@ static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 8] = [
     Register::r14,
     Register::r15,
 ];
-fn codegen_for_fn_call(ast: &AST, node: &ASTNode, target: &mut Vec<ASMStatement>) {
+fn codegen_for_fn_call(
+    program: &Program,
+    ast: &AST,
+    node: &ASTNode,
+    target: &mut Vec<ASMStatement>,
+) {
     if let Expression::FuncCall(func_name, args) = &node.expr {
         let mut func_call = asm!(func_call, func_name);
         for (i, arg) in args.iter().enumerate() {
@@ -25,11 +30,14 @@ fn codegen_for_fn_call(ast: &AST, node: &ASTNode, target: &mut Vec<ASMStatement>
                 Expression::NumberLiteral(num) => {
                     func_call.arg(Operand::Int(*num));
                 }
-                Expression::StringLiteral(_) => {
-                    todo!();
+                Expression::StringLiteral(str) => {
+                    func_call.arg(Operand::Addr(format!(
+                        "strliteral_{}",
+                        program.strliterals_ids.get(str).unwrap()
+                    )));
                 }
                 Expression::FuncCall(_, _) => {
-                    codegen_for_fn_call(ast, ast.node(*arg), target);
+                    codegen_for_fn_call(program, ast, ast.node(*arg), target);
                     let reg = NESTED_FUNC_CALL_BUFFER_REGS[i];
                     target.push(asm!(mov, Operand::Reg(reg), rax!()));
                     func_call.arg(Operand::Reg(reg));
@@ -68,7 +76,7 @@ fn gen_code_for_expr(
                 }
                 Expression::FuncCall(_, _) => {
                     program.data_sect.push(asm!(data_int, var_name, 0));
-                    codegen_for_fn_call(&ast, ast.node(*rhs), target);
+                    codegen_for_fn_call(program, &ast, ast.node(*rhs), target);
                     target.push(asm!(mov, Operand::Var(var_name.clone()), rax!()));
                 }
                 _ => {
@@ -90,14 +98,14 @@ fn gen_code_for_expr(
                 ));
             }
             Expression::FuncCall(_, _) => {
-                codegen_for_fn_call(&ast, &ast.node(*rhs), target);
+                codegen_for_fn_call(program, &ast, &ast.node(*rhs), target);
                 target.push(asm!(mov, Operand::Var(var_name.clone()), rax!()));
             }
             _ => panic!("{:?} is not a valid expression", ast.expr(*rhs)),
         },
         Expression::FuncCall(_, _) => {
             if node.is_root {
-                codegen_for_fn_call(&ast, node, target);
+                codegen_for_fn_call(program, &ast, node, target);
             }
         }
         Expression::ReturnVoid => target.push(asm!(func_ret)),
@@ -110,7 +118,7 @@ fn gen_code_for_expr(
                     target.push(asm!(mov, rax!(), Operand::Int(*num)));
                 }
                 Expression::FuncCall(_, _) => {
-                    codegen_for_fn_call(&ast, &ast.node(*val), target);
+                    codegen_for_fn_call(program, &ast, &ast.node(*val), target);
                 }
                 _ => panic!("{:?} is not a valid expression", ast.expr(*val)),
             }
@@ -127,6 +135,16 @@ pub fn codegen(source: String) -> String {
 
     let mut program = Program::new();
     let mut builtin_fns = BuiltinFuncChecker::new();
+
+    // generate string literals
+    for (i, node) in ast.nodes.iter().enumerate() {
+        if let Expression::StringLiteral(str) = &node.expr {
+            program.strliterals_ids.insert(str.clone(), i as u64);
+            program
+                .data_sect
+                .push(asm!(data_str, format!("strliteral_{}", i), str));
+        }
+    }
 
     for node in &ast.nodes {
         if let Expression::FuncCall(name, _) = &node.expr {
