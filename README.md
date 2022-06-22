@@ -10,7 +10,17 @@
 Printing an integar:
 
 ``` Rust
-print_int(42);
+// everything has to be inside the main function
+func main() {
+
+	print_int(42);
+
+	// return statements haven't been implemented
+	// so you have to do it by inline assembly
+	pop rbp
+	mov rax, 0
+	ret
+}
 ```
 
 To compile a Shark program:
@@ -23,6 +33,9 @@ $ ./a.out
 Declaring and assigning values to a variable:
 
 ``` Rust
+// the following also have to be inside the main function,
+// same with other examples below
+
 // declaring a variable
 let a = 10;
 let b = a;
