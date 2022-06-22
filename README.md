@@ -9,7 +9,7 @@
 
 Printing an integar:
 
-``` Rust
+``` Swift
 // everything has to be inside the main function
 func main() {
 
@@ -35,7 +35,7 @@ if you're on Windows, you will have to do `cargo run program.shark -o output.asm
 
 Declaring and assigning values to a variable:
 
-``` Rust
+``` Swift
 // the following also have to be inside the main function,
 // same with other examples below
 
@@ -51,7 +51,7 @@ print_int(c);
 
 There are five builtin functions right now: `print_int`, `addint`, `subint`, `mulint`, `divint`
 
-``` Rust
+``` Swift
 // math functions
 let a = addint(3, 4);
 let b = subint(a, 1);
@@ -69,7 +69,7 @@ You can also write Assembly instructions directly among the Shark code:
 
 (They have to be in x86_64 NASM)
 
-``` Rust
+``` Swift
 let a = 2;
 
 // add 40 to `a`
@@ -83,7 +83,7 @@ print_int(a);
 These three lines of assembly added 40 to `a`, so the program will output `42` instaed of `2`
 
 Defining a function:
-``` Rust
+``` Swift
 func a_number() {
 	return mulint(16, 16);
 }
