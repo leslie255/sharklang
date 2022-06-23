@@ -78,9 +78,9 @@ You can also write Assembly instructions directly among the Shark code:
 let a = 2;
 
 // add 40 to `a`
-mov rax, [rel _a]
+mov rax, qword [rbp - 8]
 add rax, 40
-mov [rel _a], rax
+mov qword [rbp - 8], rax
 
 print_int(a);
 ```
@@ -89,13 +89,15 @@ These three lines of assembly added 40 to `a`, so the program will output `42` i
 
 Defining a function:
 ``` Swift
-func a_number() {
-	return mulint(16, 16);
+func square(a) {
+	return mulint(a, a);
 }
 
 func main() {
-	let a = subint(a_number(), 1);
+	"the square of 16 is...";
+	let a = square(16);
 	print_int(a);
+
 	return 0;
 }
 ```
@@ -108,7 +110,6 @@ Just open up a new PR and I'll review it as soon as possible. All issues and PR'
 LICENSED UNDER GPLv3
 
 ### TODO
-- argument names
 - types
 - argument checking
 - loops
