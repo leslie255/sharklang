@@ -112,6 +112,7 @@ fn gen_code_inside_block(
             }
         }
         Expression::ReturnVoid => {
+            println!("{}\t{}", line!(), block.total_var_bytes);
             if block.total_var_bytes != 0 {
                 target.push(asm!(add, rsp!(), Operand::Int(block.total_var_bytes)));
             }
@@ -134,6 +135,7 @@ fn gen_code_inside_block(
                 }
                 _ => panic!("{:?} is not a valid expression", ast.expr(*val)),
             }
+            println!("{}\t{}", line!(), block.total_var_bytes);
             if block.total_var_bytes != 0 {
                 target.push(asm!(add, rsp!(), Operand::Int(block.total_var_bytes)));
             }
@@ -143,6 +145,7 @@ fn gen_code_inside_block(
     }
 }
 
+static ARG_REG_NAMES: [Operand; 6] = [rdi!(), rsi!(), rdx!(), rcx!(), r8!(), r9!()];
 pub fn codegen(source: String) -> String {
     let preprocessed = preprocess(source);
     let tokens = parse_tokens(preprocessed);
@@ -167,8 +170,19 @@ pub fn codegen(source: String) -> String {
         }
         if let Expression::FuncDef(name, block) = &node.expr {
             let mut func: Vec<ASMStatement> = vec![asm!(func_def, name)];
+            println!("{}\t{}\t{:?}", line!(), block.total_var_bytes, name);
             if block.total_var_bytes != 0 {
                 func.push(asm!(sub, rsp!(), Operand::Int(block.total_var_bytes)));
+            }
+            for (i, arg) in block.args.iter().enumerate() {
+                let var_addr = block.var_addrs.get(arg).unwrap();
+                func.push(asm!(
+                    mov,
+                    Operand::LocalVar(*var_addr).clone(),
+                    ARG_REG_NAMES.get(i)
+                        .expect("passing more than 6 arguments into a function haven't been implemented yet")
+                        .clone()
+                ));
             }
             for i in &block.body {
                 gen_code_inside_block(&block, &ast, ast.node(*i), &mut program, &mut func);

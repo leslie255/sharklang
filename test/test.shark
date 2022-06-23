@@ -1,19 +1,11 @@
-func square() {
-
-	mov	rax, rdi
-	mul	rdi
-	
-	return;
+func sum(a, b, c) {
+	return addint(addint(a, b), c);
 }
 
 func main() {
 
-	let x = 1;
-	
-	let a = square(4);
-	let y = addint(a, x);
-
-	print_int(y);
+	let x = sum(1, 2, 3);
+	print_int(x);
 
 	return 0;
 }

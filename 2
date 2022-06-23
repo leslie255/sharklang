@@ -7,26 +7,17 @@ pub struct CodeBlock {
     pub body: Vec<usize>,
     pub var_addrs: HashMap<String, usize>,
     pub total_var_bytes: u64,
-    pub args: Vec<String>,
 }
 impl CodeBlock {
     pub fn gen_vars(&mut self, nodes: &Vec<ASTNode>) {
-        for arg in &self.args {
-            self.total_var_bytes += 8;
-            self.var_addrs
-                .insert(arg.clone(), self.total_var_bytes as usize);
-        }
         for i in self.body.iter() {
             let node = &nodes[*i];
             if let Expression::VarInit(var_name, _) = &node.expr {
                 self.total_var_bytes += 8;
-                self.var_addrs
-                    .insert(var_name.clone(), self.total_var_bytes as usize);
+                self.var_addrs.insert(var_name.clone(), self.total_var_bytes as usize);
             }
         }
-        if self.total_var_bytes != 0 {
-            self.total_var_bytes += 8;
-        }
+        self.total_var_bytes += 8;
     }
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -100,11 +91,13 @@ impl AST {
     }
 }
 
-fn parse_fn_call_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
+fn parse_func_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
+    let mut token: Token;
+
     let mut args: Vec<usize> = Vec::new();
-    let mut token = tokens.next();
 
     // make sure there is a `(`
+    token = tokens.next();
     if TokenContent::RoundParenOpen != token.content {
         panic!(
             "{}:{} expected a `(` for function call",
@@ -115,8 +108,6 @@ fn parse_fn_call_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
     loop {
         // get the next argument
         token = tokens.next();
-
-        // if there is a `)` coming immediately after the `(`, there are no arguments
         match &token.content {
             TokenContent::RoundParenClose => break,
             _ => (),
@@ -136,7 +127,7 @@ fn parse_fn_call_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
                     }
                     TokenContent::RoundParenOpen => {
                         // is a function call
-                        let args = parse_fn_call_args(tokens, tree);
+                        let args = parse_func_args(tokens, tree);
                         tree.new_expr(Expression::FuncCall(id.clone(), args));
                     }
                     TokenContent::Equal => panic!(
@@ -186,7 +177,7 @@ fn parse_single_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
         TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
             TokenContent::RoundParenOpen => {
                 // is a function call
-                let args = parse_fn_call_args(tokens, tree);
+                let args = parse_func_args(tokens, tree);
                 tree.new_expr(Expression::FuncCall(id, args));
             }
             TokenContent::Semicolon => {
@@ -219,7 +210,7 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             match tokens.look_ahead(1).content {
                 TokenContent::RoundParenOpen => {
                     // is a function call
-                    let args = parse_fn_call_args(tokens, tree);
+                    let args = parse_func_args(tokens, tree);
                     tree.new_expr(Expression::FuncCall(id.clone(), args));
                     return tree.nodes.len() - 1;
                 }
@@ -304,49 +295,6 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     };
 }
 
-fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<String> {
-    let mut args: Vec<String> = Vec::new();
-    let mut token = tokens.next();
-
-    // make sure there is a `(`
-    if token.content != TokenContent::RoundParenOpen {
-        panic!(
-            "{}:{} expecting `(` after function call, found {:?}",
-            token.line, token.column, token.content
-        );
-    }
-
-    loop {
-        token = tokens.next();
-
-        // if there is a `)` coming immediately after the `(`, there are no arguments
-        match &token.content {
-            TokenContent::RoundParenClose => break,
-            _ => (),
-        }
-        match &token.content {
-            TokenContent::Identifier(id) => {
-                args.push(id.clone());
-            }
-            _ => panic!(
-                "{}:{} expecting an identifier as the name of a function arguments, found {:?}",
-                token.line, token.column, token.content
-            ),
-        }
-        token = tokens.next();
-        match &token.content {
-            TokenContent::Comma => {}
-            TokenContent::RoundParenClose => break,
-            _ => panic!(
-                "{}:{} expected `)` or `,` after an argument name, found {:?}",
-                token.line, token.column, token.content
-            ),
-        }
-    }
-
-    args
-}
-
 fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     let mut token: Token;
     match tokens.look_ahead(1).content {
@@ -364,7 +312,8 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 );
             }
             // TODO: argument names
-            code_block.args = parse_fn_def_args(tokens);
+            tokens.next();
+            tokens.next();
 
             token = tokens.next();
             if token.content != TokenContent::BigParenOpen {

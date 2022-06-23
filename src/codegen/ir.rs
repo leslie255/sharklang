@@ -2,6 +2,9 @@
 
 use std::collections::HashMap;
 
+// names of the register to pass function calling arguments to
+static ARG_REG_NAMES: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+
 #[macro_export]
 macro_rules! asm {
     (sect, $sect_name: expr) => {
@@ -246,8 +249,6 @@ impl Register {
         }
     }
 }
-// names of the register to pass function calling arguments to
-static ARG_REG_NAMES: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
 
 impl ASMFuncCallConstructor {
     pub fn arg(&mut self, arg: Operand) -> &mut ASMFuncCallConstructor {
@@ -291,6 +292,13 @@ macro_rules! rcx {
 macro_rules! rsi {
     () => {
         Operand::Reg(Register::rsi)
+    };
+}
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! rdx {
+    () => {
+        Operand::Reg(Register::rdx)
     };
 }
 #[allow(unused_macros)]
