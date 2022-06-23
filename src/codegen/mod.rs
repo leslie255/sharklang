@@ -6,4 +6,5 @@ pub mod codegen;
 pub mod tokens;
 pub mod builtin_funcs;
 pub mod preprocess;
+pub mod typecheck;
 

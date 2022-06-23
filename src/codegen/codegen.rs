@@ -61,7 +61,7 @@ fn gen_code_inside_block(
         Expression::StringLiteral(_) => {}
         Expression::RawASM(text) => target.push(asm!(format!("\t{}", text))),
         Expression::Label(name) => target.push(asm!(label, name)),
-        Expression::VarInit(var_name, rhs) => {
+        Expression::VarInit(var_name, _, rhs) => {
             let addr_lhs = *block.var_addrs.get(var_name).unwrap();
             match ast.expr(*rhs) {
                 Expression::Identifier(id) => {

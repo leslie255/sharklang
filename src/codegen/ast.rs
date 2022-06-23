@@ -1,13 +1,15 @@
 use super::tokens::*;
+use super::typecheck::*;
 
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CodeBlock {
     pub body: Vec<usize>,
+    pub args: Vec<String>,
+    pub var_types: HashMap<String, DataType>, // also includes arguments
     pub var_addrs: HashMap<String, usize>,
     pub total_var_bytes: u64,
-    pub args: Vec<String>,
 }
 impl CodeBlock {
     pub fn gen_vars(&mut self, nodes: &Vec<ASTNode>) {
@@ -18,7 +20,7 @@ impl CodeBlock {
         }
         for i in self.body.iter() {
             let node = &nodes[*i];
-            if let Expression::VarInit(var_name, _) = &node.expr {
+            if let Expression::VarInit(var_name, _, _) = &node.expr {
                 self.total_var_bytes += 8;
                 self.var_addrs
                     .insert(var_name.clone(), self.total_var_bytes as usize);
@@ -36,9 +38,9 @@ pub enum Expression {
     NumberLiteral(u64),
     StringLiteral(String),
     // Recursive expression
-    FuncCall(String, Vec<usize>), // function name, arguments
-    VarInit(String, usize),       // lhs, rhs
-    VarAssign(String, usize),     // lhs, rhs
+    FuncCall(String, Vec<usize>),     // function name, arguments
+    VarInit(String, DataType, usize), // lhs, rhs
+    VarAssign(String, usize),         // lhs, rhs
 
     // Raw ASM
     Label(String),
@@ -244,9 +246,12 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             }
         }
         TokenContent::Let => {
+            // let var_name: type = rhs;
+            // rhs could be: number literal, identifier, function call
             // get lhs
             token = tokens.next();
             let lhs: String;
+            let var_type: DataType;
             if let TokenContent::Identifier(var_name) = token.content {
                 lhs = var_name;
             } else {
@@ -255,10 +260,34 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     token.line, token.column, token.content
                 );
             }
-            // make sure there is an `=`
-            if TokenContent::Equal != tokens.next().content {
+            // get type
+            if tokens.next().content == TokenContent::Colon {
+                token = tokens.next();
+                if let TokenContent::Identifier(type_name) = token.content {
+                    var_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
+                        panic!(
+                            "{}:{} `{}` is not a valid data type",
+                            token.line, token.column, type_name
+                        )
+                    });
+                } else {
+                    panic!(
+                        "{}:{} `{:?}` is not a valid data type",
+                        token.line, token.column, token.content
+                    )
+                }
+            } else {
                 panic!(
-                    "{}:{} expecting `=` after variable name, found {:?}",
+                    "{}:{} expecting `:` after variable name, found {:?}",
+                    tokens.look_ahead(0).line,
+                    tokens.look_ahead(0).column,
+                    tokens.look_ahead(0).content
+                );
+            }
+            // make sure there is an `=`
+            if tokens.next().content != TokenContent::Equal {
+                panic!(
+                    "{}:{} expecting `=` after variable type, found {:?}",
                     tokens.look_ahead(0).line,
                     tokens.look_ahead(0).column,
                     tokens.look_ahead(0).content
@@ -266,7 +295,7 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             }
             // get rhs
             let i = parse_single_expr(tree, tokens);
-            tree.new_expr(Expression::VarInit(lhs, i));
+            tree.new_expr(Expression::VarInit(lhs, var_type, i));
             return tree.nodes.len() - 1;
         }
         TokenContent::Return => match tokens.look_ahead(1).content {

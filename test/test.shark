@@ -4,7 +4,7 @@ func square(a) {
 
 func main() {
 	"the square of 16 is...";
-	let a = square(16);
+	let a: uint64 = square(16);
 	print_int(a);
 
 	return 0;
