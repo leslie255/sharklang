@@ -3,6 +3,7 @@ use super::builtin_funcs::*;
 use super::ir::*;
 use super::preprocess::*;
 use super::tokens::*;
+use super::typecheck::*;
 
 static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 6] = [
     Register::r10,
@@ -149,8 +150,15 @@ pub fn codegen(source: String) -> String {
     let tokens = parse_tokens(preprocessed);
     let ast = construct_ast(tokens);
 
-    let mut program = Program::new();
     let mut builtin_fns = BuiltinFuncChecker::new();
+
+    let err_count = type_check(&ast, &builtin_fns);
+    if err_count != 0 {
+        println!("{} errors found by type checker, aborting...", err_count);
+        panic!();
+    }
+
+    let mut program = Program::new();
 
     // generate string literals
     for (i, node) in ast.nodes.iter().enumerate() {

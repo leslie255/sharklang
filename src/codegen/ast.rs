@@ -7,8 +7,8 @@ use std::collections::HashMap;
 pub struct CodeBlock {
     pub body: Vec<usize>,
     pub args: Vec<String>,
-    pub var_types: HashMap<String, DataType>, // also includes arguments
     pub var_addrs: HashMap<String, usize>,
+    pub var_types: HashMap<String, DataType>, // also includes arguments
     pub total_var_bytes: u64,
 }
 impl CodeBlock {
@@ -83,6 +83,7 @@ macro_rules! print_ast {
 #[derive(Default)]
 pub struct AST {
     pub nodes: Vec<ASTNode>,
+    pub func_defs: HashMap<String, usize>,
 }
 
 impl AST {
@@ -98,6 +99,13 @@ impl AST {
             is_root: false,
             is_top_level: false,
         });
+        match expr {
+            Expression::FuncDef(ref func_name, _) => {
+                self.func_defs
+                    .insert(func_name.clone(), self.nodes.len() - 1);
+            }
+            _ => (),
+        }
         self.nodes.last_mut().unwrap().expr = expr;
     }
 }

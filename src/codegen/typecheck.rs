@@ -1,4 +1,7 @@
-#![allow(unused)]
+use super::ast::*;
+use super::builtin_funcs::*;
+
+#[allow(unused)]
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum DataType {
     UInt8,
@@ -31,4 +34,41 @@ impl DataType {
             _ => None,
         }
     }
+}
+
+pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker) -> usize {
+    // returns the number of errors
+
+    let mut err_count: usize = 0;
+
+    for node in &ast.nodes {
+        match &node.expr {
+            Expression::FuncCall(func_name, args) => {
+                if let Some(i) = ast.func_defs.get(func_name) {
+                    let block = match ast.expr(*i) {
+                        Expression::FuncDef(_, b) => b,
+                        _ => panic!(),
+                    };
+                    if block.args.len() != args.len() {
+                        err_count += 1;
+                        println!("while calling function `{}`:", func_name);
+                        println!(
+                            "\texpected {} arguments, found {}",
+                            block.args.len(),
+                            args.len()
+                        );
+                    }
+                    // TODO: check if the type of arguments matches
+                } else if builtin_fns.is_builtin_func(func_name) {
+                    // TODO: arguments check for builtin functions
+                } else {
+                    err_count += 1;
+                    println!("`{}` is not a function", func_name);
+                }
+            }
+            _ => (),
+        }
+    }
+
+    err_count
 }
