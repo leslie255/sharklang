@@ -1,12 +1,11 @@
-func sum(a, b, c) {
-	return addint(addint(a, b), c);
+func square(a) {
+	return mulint(a, a);
 }
 
 func main() {
-
-	let x = sum(1, 2, 3);
-	print_int(x);
+	"the square of 16 is...";
+	let a = square(16);
+	print_int(a);
 
 	return 0;
 }
-
