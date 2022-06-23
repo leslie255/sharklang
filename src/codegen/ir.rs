@@ -89,7 +89,7 @@ impl Program {
     pub fn new() -> Program {
         Program {
             externs: Vec::new(),
-            data_sect: vec![asm!(sect, "data"), asm!(data_int, "temp", 0)],
+            data_sect: Vec::new(),
             funcs: Vec::new(),
             strliterals_ids: HashMap::new(),
         }
