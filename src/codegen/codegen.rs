@@ -4,9 +4,7 @@ use super::ir::*;
 use super::preprocess::*;
 use super::tokens::*;
 
-static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 8] = [
-    Register::r8,
-    Register::r9,
+static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 6] = [
     Register::r10,
     Register::r11,
     Register::r12,

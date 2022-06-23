@@ -137,8 +137,8 @@ pub enum Register {
 pub enum Operand {
     Reg(Register),     // rax, rbx, ...
     StaticVar(String), // [rel _label]
-    LocalVar(usize),     // qword [rbp - addr]
-    Label(String),      // _label
+    LocalVar(usize),   // qword [rbp - addr]
+    Label(String),     // _label
     Int(u64),          // just data
     Raw(String),
 }
@@ -247,7 +247,7 @@ impl Register {
     }
 }
 // names of the register to pass function calling arguments to
-static ARG_REG_NAMES: [&'static str; 2] = ["rdi", "rsi"];
+static ARG_REG_NAMES: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
 
 impl ASMFuncCallConstructor {
     pub fn arg(&mut self, arg: Operand) -> &mut ASMFuncCallConstructor {
