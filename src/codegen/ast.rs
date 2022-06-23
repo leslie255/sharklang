@@ -1,8 +1,23 @@
 use super::tokens::*;
 
-#[derive(Debug, Clone, PartialEq, Default)]
+use std::collections::HashMap;
+
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CodeBlock {
     pub body: Vec<usize>,
+    pub var_addrs: HashMap<String, usize>,
+}
+impl CodeBlock {
+    pub fn gen_vars(&mut self, nodes: &Vec<ASTNode>) {
+        let mut total: usize = 0;
+        for i in self.body.iter() {
+            let node = &nodes[*i];
+            if let Expression::VarInit(var_name, _) = &node.expr {
+                total += 8;
+                self.var_addrs.insert(var_name.clone(), total);
+            }
+        }
+    }
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
@@ -323,6 +338,7 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     code_block.body.push(i);
                 }
             }
+            code_block.gen_vars(&tree.nodes);
             let expr = Expression::FuncDef(func_name, code_block);
             tree.new_expr(expr);
             tree.nodes.last_mut().unwrap().is_root = true;

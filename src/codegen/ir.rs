@@ -135,18 +135,22 @@ pub enum Register {
 #[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Operand {
-    Reg(Register), // rax, rbx, ...
-    Var(String),   // [rel _label]
-    Addr(String),  // _label
-    Int(u64),      // just data
+    Reg(Register),     // rax, rbx, ...
+    StaticVar(String), // [rel _label]
+    LocalVar(usize),     // qword [rbp - addr]
+    Label(String),      // _label
+    Int(u64),          // just data
+    Raw(String),
 }
 impl Operand {
     pub fn text(&self) -> String {
         match self {
             Self::Reg(reg) => reg.name(),
-            Self::Var(name) => format!("[rel _{}]", name),
-            Self::Addr(addr) => format!("_{}", addr),
+            Self::StaticVar(name) => format!("[rel _{}]", name),
+            Self::LocalVar(addr) => format!("qword [rbp - {}]", addr),
+            Self::Label(label) => format!("_{}", label),
             Self::Int(int) => format!("{}", int),
+            Self::Raw(str) => str.clone(),
         }
     }
 }
@@ -186,7 +190,9 @@ impl ASMStatement {
             Self::DataInt(name, value) => format!("_{}:\tdq {}", name, value),
             Self::DataStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
             Self::Mov(oper0, oper1) => match oper0 {
-                Operand::Var(_) => format!("\tmov\trax, {}\n\tmov\t{}, rax", oper1.text(), oper0.text()),
+                Operand::StaticVar(_) => {
+                    format!("\tmov\trax, {}\n\tmov\t{}, rax", oper1.text(), oper0.text())
+                }
                 _ => format!("\tmov\t{}, {}", oper0.text(), oper1.text()),
             },
             Self::FuncCall(name, args) => {
@@ -199,7 +205,10 @@ impl ASMStatement {
                 result.push_str(format!("\tcall\t_{}\n", name).as_str());
                 result
             }
-            Self::FuncDef(name) => format!("\n\tglobal _{}\n_{}:\n\tpush\trbp\n", name, name),
+            Self::FuncDef(name) => format!(
+                "\n\tglobal _{}\n_{}:\n\tpush\trbp\n",
+                name, name
+            ),
             Self::FuncRetVoid => format!("\tpop\trbp\n\tret"),
             Self::FuncRet(oper) => format!("\tpop\trbp\n\tmov\trax, {}\n\tret", oper.text()),
             Self::Add(oper0, oper1) => format!("\tadd\t{}, {}", oper0.text(), oper1.text()),
@@ -253,7 +262,7 @@ impl ASMFuncCallConstructor {
 #[macro_export]
 macro_rules! addr {
     ($name: expr) => {
-        Operand::Addr($name.to_string())
+        Operand::Label($name.to_string())
     };
 }
 #[allow(unused_macros)]
