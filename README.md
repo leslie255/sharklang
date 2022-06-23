@@ -100,8 +100,6 @@ func main() {
 }
 ```
 
-Note that you currently cannot use variables of the same name across two different functions, this will be changed in the future
-
 The compiled program can only run on 64-bit systems (although the compiler itself might work on 32-bit systems)
 
 ### Contributing
@@ -110,7 +108,6 @@ Just open up a new PR and I'll review it as soon as possible. All issues and PR'
 LICENSED UNDER GPLv3
 
 ### TODO
-- local variables (currently all variables are stored statically in the data section of the program)
 - argument names
 - types
 - argument checking

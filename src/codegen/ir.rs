@@ -206,7 +206,7 @@ impl ASMStatement {
                 result
             }
             Self::FuncDef(name) => format!(
-                "\n\tglobal _{}\n_{}:\n\tpush\trbp\n",
+                "\n\tglobal _{}\n_{}:\n\tpush\trbp\n\tmov\trbp, rsp\n",
                 name, name
             ),
             Self::FuncRetVoid => format!("\tpop\trbp\n\tret"),

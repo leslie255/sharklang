@@ -81,7 +81,7 @@ impl BuiltinFuncChecker {
             String::from("print_int"),
             BuiltinFunc {
                 externs: vec![String::from("printf")],
-                data_sect: vec![asm!(data_str, "printint_fmt", "%d\n")],
+                data_sect: vec![asm!(data_str, "printint_fmt", "%llu\n")],
                 text_sect: vec![
                     asm!(func_def, "print_int"),
                     asm!(mov, rax!(), rdi!()),

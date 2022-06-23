@@ -113,7 +113,12 @@ fn gen_code_inside_block(
                 codegen_for_fn_call(block, program, &ast, node, target);
             }
         }
-        Expression::ReturnVoid => target.push(asm!(func_ret)),
+        Expression::ReturnVoid => {
+            if block.total_var_bytes != 0 {
+                target.push(asm!(add, rsp!(), Operand::Int(block.total_var_bytes)));
+            }
+            target.push(asm!(func_ret));
+        }
         Expression::ReturnVal(val) => {
             match ast.expr(*val) {
                 Expression::Identifier(id) => {
@@ -130,6 +135,9 @@ fn gen_code_inside_block(
                     codegen_for_fn_call(block, program, &ast, &ast.node(*val), target);
                 }
                 _ => panic!("{:?} is not a valid expression", ast.expr(*val)),
+            }
+            if block.total_var_bytes != 0 {
+                target.push(asm!(add, rsp!(), Operand::Int(block.total_var_bytes)));
             }
             target.push(asm!(func_ret));
         }
@@ -161,6 +169,9 @@ pub fn codegen(source: String) -> String {
         }
         if let Expression::FuncDef(name, block) = &node.expr {
             let mut func: Vec<ASMStatement> = vec![asm!(func_def, name)];
+            if block.total_var_bytes != 0 {
+                func.push(asm!(sub, rsp!(), Operand::Int(block.total_var_bytes)));
+            }
             for i in &block.body {
                 gen_code_inside_block(&block, &ast, ast.node(*i), &mut program, &mut func);
             }

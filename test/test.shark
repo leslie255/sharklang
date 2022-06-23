@@ -1,9 +1,19 @@
+func square() {
+
+	mov	rax, rdi
+	mul	rdi
+	
+	return;
+}
+
 func main() {
 
-	let i = 255;
-	print_int(i);
-	let j = i;
-	print_int(addint(i, j));
+	let x = 1;
+	
+	let a = square(4);
+	let y = addint(a, x);
+
+	print_int(y);
 
 	return 0;
 }

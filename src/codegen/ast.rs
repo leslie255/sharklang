@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub struct CodeBlock {
     pub body: Vec<usize>,
     pub var_addrs: HashMap<String, usize>,
+    pub total_var_bytes: u64,
 }
 impl CodeBlock {
     pub fn gen_vars(&mut self, nodes: &Vec<ASTNode>) {
@@ -17,6 +18,7 @@ impl CodeBlock {
                 self.var_addrs.insert(var_name.clone(), total);
             }
         }
+        self.total_var_bytes = total as u64 + 8;
     }
 }
 #[derive(Debug, Clone, PartialEq)]
