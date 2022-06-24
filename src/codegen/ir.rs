@@ -140,7 +140,7 @@ pub enum Register {
 pub enum Operand {
     Reg(Register),     // rax, rbx, ...
     StaticVar(String), // [rel _label]
-    LocalVar(usize),   // qword [rbp - addr]
+    LocalVar(u64),   // qword [rbp - addr]
     Label(String),     // _label
     Int(u64),          // just data
     Raw(String),

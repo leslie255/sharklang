@@ -1,31 +1,68 @@
 use super::tokens::*;
+use super::typecheck::*;
 
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct VarInfo {
+    pub addr: u64,
+    pub data_type: DataType,
+    pub def_i: usize, // where in the AST the variable is defined
+    pub is_arg: bool,
+}
+impl VarInfo {
+    pub fn new(addr: u64, data_type: DataType, def_i: usize, is_arg: bool) -> VarInfo {
+        let mut info = VarInfo {
+            addr: 0,
+            data_type: DataType::UInt64,
+            def_i: 0,
+            is_arg: false,
+        };
+        info.addr = addr;
+        info.data_type = data_type;
+        info.def_i = def_i;
+        info.is_arg = is_arg;
+
+        info
+    }
+}
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CodeBlock {
     pub body: Vec<usize>,
-    pub var_addrs: HashMap<String, usize>,
+    pub vars: HashMap<String, VarInfo>,
     pub total_var_bytes: u64,
-    pub args: Vec<String>,
+    pub arg_types: Vec<DataType>,
+    pub has_vars: bool,
 }
 impl CodeBlock {
-    pub fn gen_vars(&mut self, nodes: &Vec<ASTNode>) {
-        for arg in &self.args {
-            self.total_var_bytes += 8;
-            self.var_addrs
-                .insert(arg.clone(), self.total_var_bytes as usize);
+    pub fn gen_vars_with_args(&mut self, nodes: &Vec<ASTNode>, args: Vec<(String, DataType)>) {
+        self.has_vars = false; // has at least one variable
+        self.total_var_bytes = 8; // stack pointer
+        for (arg_name, arg_type) in &args {
+            self.has_vars = true;
+            self.total_var_bytes += arg_type.size();
+            self.vars.insert(
+                arg_name.clone(),
+                VarInfo::new(self.total_var_bytes, arg_type.clone(), 0, true),
+            );
+            self.arg_types.push(arg_type.clone());
         }
-        for i in self.body.iter() {
+        for i in &self.body {
+            self.has_vars = true;
             let node = &nodes[*i];
-            if let Expression::VarInit(var_name, _) = &node.expr {
-                self.total_var_bytes += 8;
-                self.var_addrs
-                    .insert(var_name.clone(), self.total_var_bytes as usize);
+            if let Expression::VarInit(var_name, var_type, _) = &node.expr {
+                self.total_var_bytes += var_type.size();
+                self.vars.insert(
+                    var_name.clone(),
+                    VarInfo::new(self.total_var_bytes, var_type.clone(), *i, false),
+                );
             }
         }
-        if self.total_var_bytes != 0 {
-            self.total_var_bytes += 8;
+    }
+    pub fn var_addr(&self, var_name: &String) -> Option<u64> {
+        match self.vars.get(var_name) {
+            Some(x) => Some(x.addr),
+            None => None,
         }
     }
 }
@@ -36,9 +73,9 @@ pub enum Expression {
     NumberLiteral(u64),
     StringLiteral(String),
     // Recursive expression
-    FuncCall(String, Vec<usize>), // function name, arguments
-    VarInit(String, usize),       // lhs, rhs
-    VarAssign(String, usize),     // lhs, rhs
+    FuncCall(String, Vec<usize>),     // function name, arguments
+    VarInit(String, DataType, usize), // lhs, rhs
+    VarAssign(String, usize),         // lhs, rhs
 
     // Raw ASM
     Label(String),
@@ -81,6 +118,7 @@ macro_rules! print_ast {
 #[derive(Default)]
 pub struct AST {
     pub nodes: Vec<ASTNode>,
+    pub func_defs: HashMap<String, usize>,
 }
 
 impl AST {
@@ -96,6 +134,13 @@ impl AST {
             is_root: false,
             is_top_level: false,
         });
+        match expr {
+            Expression::FuncDef(ref func_name, _) => {
+                self.func_defs
+                    .insert(func_name.clone(), self.nodes.len() - 1);
+            }
+            _ => (),
+        }
         self.nodes.last_mut().unwrap().expr = expr;
     }
 }
@@ -244,9 +289,12 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             }
         }
         TokenContent::Let => {
+            // let var_name: type = rhs;
+            // rhs could be: number literal, identifier, function call
             // get lhs
             token = tokens.next();
             let lhs: String;
+            let var_type: DataType;
             if let TokenContent::Identifier(var_name) = token.content {
                 lhs = var_name;
             } else {
@@ -255,10 +303,34 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     token.line, token.column, token.content
                 );
             }
-            // make sure there is an `=`
-            if TokenContent::Equal != tokens.next().content {
+            // get type
+            if tokens.next().content == TokenContent::Colon {
+                token = tokens.next();
+                if let TokenContent::Identifier(type_name) = token.content {
+                    var_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
+                        panic!(
+                            "{}:{} `{}` is not a valid data type",
+                            token.line, token.column, type_name
+                        )
+                    });
+                } else {
+                    panic!(
+                        "{}:{} `{:?}` is not a valid data type",
+                        token.line, token.column, token.content
+                    )
+                }
+            } else {
                 panic!(
-                    "{}:{} expecting `=` after variable name, found {:?}",
+                    "{}:{} expecting `:` after variable name, found {:?}",
+                    tokens.look_ahead(0).line,
+                    tokens.look_ahead(0).column,
+                    tokens.look_ahead(0).content
+                );
+            }
+            // make sure there is an `=`
+            if tokens.next().content != TokenContent::Equal {
+                panic!(
+                    "{}:{} expecting `=` after variable type, found {:?}",
                     tokens.look_ahead(0).line,
                     tokens.look_ahead(0).column,
                     tokens.look_ahead(0).content
@@ -266,7 +338,7 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             }
             // get rhs
             let i = parse_single_expr(tree, tokens);
-            tree.new_expr(Expression::VarInit(lhs, i));
+            tree.new_expr(Expression::VarInit(lhs, var_type, i));
             return tree.nodes.len() - 1;
         }
         TokenContent::Return => match tokens.look_ahead(1).content {
@@ -304,8 +376,7 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     };
 }
 
-fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<String> {
-    let mut args: Vec<String> = Vec::new();
+fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
     let mut token = tokens.next();
 
     // make sure there is a `(`
@@ -316,23 +387,53 @@ fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<String> {
         );
     }
 
-    loop {
-        token = tokens.next();
+    // if there is a `)` coming immediately after the `(`, there are no arguments
+    if tokens.look_ahead(1).content == TokenContent::RoundParenClose {
+        tokens.next();
+        return Vec::new();
+    }
 
-        // if there is a `)` coming immediately after the `(`, there are no arguments
-        match &token.content {
-            TokenContent::RoundParenClose => break,
-            _ => (),
-        }
+    let mut args: Vec<(String, DataType)> = Vec::new();
+
+    loop {
+        let arg_name: String;
+        let arg_type: DataType;
+
+        token = tokens.next();
         match &token.content {
             TokenContent::Identifier(id) => {
-                args.push(id.clone());
+                arg_name = id.clone();
             }
             _ => panic!(
                 "{}:{} expecting an identifier as the name of a function arguments, found {:?}",
                 token.line, token.column, token.content
             ),
         }
+
+        token = tokens.next();
+        if token.content != TokenContent::Colon {
+            panic!(
+                "{}:{} expecting `:` after name of a function arguments, found {:?}",
+                token.line, token.column, token.content
+            );
+        }
+
+        token = tokens.next();
+        if let TokenContent::Identifier(type_name) = token.content {
+            arg_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
+                panic!(
+                    "{}:{} {} is not a valid data type",
+                    token.line, token.column, type_name
+                )
+            });
+        } else {
+            panic!(
+                "{}:{} expecting an identifier after `:` for argument name, found {:?}",
+                token.line, token.column, token.content
+            );
+        }
+        args.push((arg_name, arg_type));
+
         token = tokens.next();
         match &token.content {
             TokenContent::Comma => {}
@@ -363,8 +464,8 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     token.line, token.column, token.content
                 );
             }
-            // TODO: argument names
-            code_block.args = parse_fn_def_args(tokens);
+
+            let func_args = parse_fn_def_args(tokens);
 
             token = tokens.next();
             if token.content != TokenContent::BigParenOpen {
@@ -390,7 +491,7 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     code_block.body.push(i);
                 }
             }
-            code_block.gen_vars(&tree.nodes);
+            code_block.gen_vars_with_args(&tree.nodes, func_args);
             let expr = Expression::FuncDef(func_name, code_block);
             tree.new_expr(expr);
             tree.nodes.last_mut().unwrap().is_root = true;

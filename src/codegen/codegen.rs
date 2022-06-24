@@ -3,6 +3,7 @@ use super::builtin_funcs::*;
 use super::ir::*;
 use super::preprocess::*;
 use super::tokens::*;
+use super::typecheck::*;
 
 static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 6] = [
     Register::r10,
@@ -24,7 +25,7 @@ fn codegen_for_fn_call(
         for (i, arg) in args.iter().enumerate() {
             match ast.expr(*arg) {
                 Expression::Identifier(id) => {
-                    func_call.arg(Operand::LocalVar(*block.var_addrs.get(id).unwrap()));
+                    func_call.arg(Operand::LocalVar(block.var_addr(id).unwrap()));
                 }
                 Expression::NumberLiteral(num) => {
                     func_call.arg(Operand::Int(*num));
@@ -61,11 +62,11 @@ fn gen_code_inside_block(
         Expression::StringLiteral(_) => {}
         Expression::RawASM(text) => target.push(asm!(format!("\t{}", text))),
         Expression::Label(name) => target.push(asm!(label, name)),
-        Expression::VarInit(var_name, rhs) => {
-            let addr_lhs = *block.var_addrs.get(var_name).unwrap();
+        Expression::VarInit(var_name, _, rhs) => {
+            let addr_lhs = block.var_addr(var_name).unwrap();
             match ast.expr(*rhs) {
                 Expression::Identifier(id) => {
-                    let addr_rhs = *block.var_addrs.get(id).unwrap();
+                    let addr_rhs = block.var_addr(id).unwrap();
                     target.push(asm!(mov, rax!(), Operand::LocalVar(addr_rhs)));
                     target.push(asm!(mov, Operand::LocalVar(addr_lhs), rax!()));
                 }
@@ -86,13 +87,13 @@ fn gen_code_inside_block(
             };
         }
         Expression::VarAssign(var_name, rhs) => {
-            let addr_lhs = *block.var_addrs.get(var_name).unwrap();
+            let addr_lhs = block.var_addr(var_name).unwrap();
             match ast.expr(*rhs) {
                 Expression::Identifier(id) => {
                     target.push(asm!(
                         mov,
                         rax!(),
-                        Operand::LocalVar(*block.var_addrs.get(id).unwrap())
+                        Operand::LocalVar(block.var_addr(id).unwrap())
                     ));
                     target.push(asm!(mov, Operand::LocalVar(addr_lhs), rax!()));
                 }
@@ -112,7 +113,7 @@ fn gen_code_inside_block(
             }
         }
         Expression::ReturnVoid => {
-            if block.total_var_bytes != 0 {
+            if block.has_vars {
                 target.push(asm!(add, rsp!(), Operand::Int(block.total_var_bytes)));
             }
             target.push(asm!(func_ret));
@@ -123,7 +124,7 @@ fn gen_code_inside_block(
                     target.push(asm!(
                         mov,
                         rax!(),
-                        Operand::LocalVar(*block.var_addrs.get(id).unwrap())
+                        Operand::LocalVar(block.var_addr(id).unwrap())
                     ));
                 }
                 Expression::NumberLiteral(num) => {
@@ -134,7 +135,7 @@ fn gen_code_inside_block(
                 }
                 _ => panic!("{:?} is not a valid expression", ast.expr(*val)),
             }
-            if block.total_var_bytes != 0 {
+            if block.has_vars {
                 target.push(asm!(add, rsp!(), Operand::Int(block.total_var_bytes)));
             }
             target.push(asm!(func_ret));
@@ -149,8 +150,15 @@ pub fn codegen(source: String) -> String {
     let tokens = parse_tokens(preprocessed);
     let ast = construct_ast(tokens);
 
-    let mut program = Program::new();
     let mut builtin_fns = BuiltinFuncChecker::new();
+
+    let err_count = type_check(&ast, &builtin_fns);
+    if err_count != 0 {
+        println!("{} errors found by type checker, aborting...", err_count);
+        panic!();
+    }
+
+    let mut program = Program::new();
 
     // generate string literals
     for (i, node) in ast.nodes.iter().enumerate() {
@@ -168,14 +176,17 @@ pub fn codegen(source: String) -> String {
         }
         if let Expression::FuncDef(name, block) = &node.expr {
             let mut func: Vec<ASMStatement> = vec![asm!(func_def, name)];
-            if block.total_var_bytes != 0 {
+            if block.has_vars {
                 func.push(asm!(sub, rsp!(), Operand::Int(block.total_var_bytes)));
             }
-            for (i, arg) in block.args.iter().enumerate() {
-                let var_addr = block.var_addrs.get(arg).unwrap();
+            for (i, (_, var_info)) in block.vars.iter().enumerate() {
+                if !var_info.is_arg {
+                    // arguments always come before other variables
+                    break;
+                }
                 func.push(asm!(
                     mov,
-                    Operand::LocalVar(*var_addr).clone(),
+                    Operand::LocalVar(var_info.addr).clone(),
                     ARG_REG_NAMES.get(i)
                         .expect("passing more than 6 arguments into a function haven't been implemented yet")
                         .clone()

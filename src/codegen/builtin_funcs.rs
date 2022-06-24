@@ -17,6 +17,9 @@ pub struct BuiltinFuncChecker {
     funcs: HashMap<String, BuiltinFunc>,
 }
 impl BuiltinFuncChecker {
+    pub fn is_builtin_func(&self, name: &String) -> bool {
+        self.funcs.contains_key(name)
+    }
     pub fn add_if_needed(&mut self, name: &String, program: &mut Program) {
         if !self.funcs.contains_key(name) {
             return;

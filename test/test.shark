@@ -1,10 +1,11 @@
-func square(a) {
+func square(a: uint64) {
 	return mulint(a, a);
 }
 
 func main() {
 	"the square of 16 is...";
-	let a = square(16);
+	let a: uint32 = 0;
+	a = square(16);
 	print_int(a);
 
 	return 0;
