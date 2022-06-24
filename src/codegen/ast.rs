@@ -13,19 +13,24 @@ pub struct CodeBlock {
 }
 impl CodeBlock {
     pub fn gen_vars(&mut self, nodes: &Vec<ASTNode>) {
-        self.total_var_bytes = 8; // stack pointer has 8 bytes to start with
         for arg in &self.args {
-            self.total_var_bytes += 8;
+            self.total_var_bytes += self.var_types.get(arg).unwrap().size();
             self.var_addrs
                 .insert(arg.clone(), self.total_var_bytes as usize);
         }
+        let mut has_var = false;
         for i in self.body.iter() {
+            has_var = true;
             let node = &nodes[*i];
-            if let Expression::VarInit(var_name, _, _) = &node.expr {
-                self.total_var_bytes += 8;
+            if let Expression::VarInit(var_name, var_type, _) = &node.expr {
+                self.total_var_bytes += var_type.size();
                 self.var_addrs
                     .insert(var_name.clone(), self.total_var_bytes as usize);
+                self.var_types.insert(var_name.clone(), var_type.clone());
             }
+        }
+        if !has_var {
+            self.total_var_bytes += 8; // stack pointer
         }
     }
 }
