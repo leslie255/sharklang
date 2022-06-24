@@ -126,21 +126,25 @@ fn fn_exist_check(
     }
 }
 
-pub fn fn_args_check(err_count: &mut usize, ast: &AST, fn_name: &String, input_args: &Vec<usize>) {
+pub fn fn_args_check(err_count: &mut usize, ast: &AST, block: &CodeBlock, fn_name: &String, input_args: &Vec<usize>) {
     if !ast.func_defs.contains_key(fn_name) {
         // TODO: arguments check for builtin functions
         return;
     }
-    if let Expression::FuncDef(_, block) = ast.expr(*ast.func_defs.get(fn_name).unwrap()) {
-        if input_args.len() != block.arg_types.len() {
+    if let Expression::FuncDef(_, fn_block) = ast.expr(*ast.func_defs.get(fn_name).unwrap()) {
+        // check number of arguments
+        if input_args.len() != fn_block.arg_types.len() {
             *err_count += 1;
             println!(
                 "expected needs {} arguments for function `{}`, found {}",
-                block.arg_types.len(),
+                fn_block.arg_types.len(),
                 fn_name,
                 input_args.len()
             );
         }
+
+        // check arguments
+        println!("{}:{}\t{:?}", file!(), line!(), input_args);
         for (i, arg_i) in input_args.iter().enumerate() {
             let arg = ast.expr(*arg_i);
             if let Expression::Identifier(id) = arg {
@@ -148,7 +152,7 @@ pub fn fn_args_check(err_count: &mut usize, ast: &AST, fn_name: &String, input_a
                     continue;
                 }
             }
-            let expected_type = block.arg_types.get(i).unwrap();
+            let expected_type = fn_block.arg_types.get(i).unwrap();
             if !expected_type.matches(ast, arg, &block.vars) {
                 *err_count += 1;
                 println!(
@@ -175,7 +179,7 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker) -> usize {
                     match &node.expr {
                         Expression::FuncCall(fn_name, args) => {
                             if fn_exist_check(&mut err_count, fn_name, ast, builtin_fns) {
-                                fn_args_check(&mut err_count, ast, fn_name, args);
+                                fn_args_check(&mut err_count, ast, block, fn_name, args);
                             }
                         }
                         Expression::VarAssign(var_name, rhs) => {
@@ -185,7 +189,7 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker) -> usize {
                             }
                             if let Expression::FuncCall(fn_name, args) = rhs_expr {
                                 fn_exist_check(&mut err_count, fn_name, ast, builtin_fns);
-                                fn_args_check(&mut err_count, ast, fn_name, args);
+                                fn_args_check(&mut err_count, ast, block, fn_name, args);
                             }
                             let lhs_type = &block.vars.get(var_name).unwrap().data_type;
                             if !lhs_type.matches(ast, rhs_expr, &block.vars) {
@@ -203,7 +207,7 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker) -> usize {
                                 var_exist_check(&mut err_count, id, block, *i);
                             } else if let Expression::FuncCall(fn_name, args) = rhs_expr {
                                 fn_exist_check(&mut err_count, fn_name, ast, builtin_fns);
-                                fn_args_check(&mut err_count, ast, fn_name, args);
+                                fn_args_check(&mut err_count, ast, block, fn_name, args);
                             }
                             if !var_type.matches(ast, rhs_expr, &block.vars) {
                                 err_count += 1;

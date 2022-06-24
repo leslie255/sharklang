@@ -30,20 +30,19 @@ impl VarInfo {
 pub struct CodeBlock {
     pub body: Vec<usize>,
     pub vars: HashMap<String, VarInfo>,
-    pub total_var_bytes: u64,
+    pub stack_depth: u64,
     pub arg_types: Vec<DataType>,
     pub has_vars: bool,
 }
 impl CodeBlock {
     pub fn gen_vars_with_args(&mut self, nodes: &Vec<ASTNode>, args: Vec<(String, DataType)>) {
         self.has_vars = false; // has at least one variable
-        self.total_var_bytes = 8; // stack pointer
         for (arg_name, arg_type) in &args {
             self.has_vars = true;
-            self.total_var_bytes += arg_type.size();
+            self.stack_depth += arg_type.size();
             self.vars.insert(
                 arg_name.clone(),
-                VarInfo::new(self.total_var_bytes, arg_type.clone(), 0, true),
+                VarInfo::new(self.stack_depth, arg_type.clone(), 0, true),
             );
             self.arg_types.push(arg_type.clone());
         }
@@ -51,10 +50,10 @@ impl CodeBlock {
             self.has_vars = true;
             let node = &nodes[*i];
             if let Expression::VarInit(var_name, var_type, _) = &node.expr {
-                self.total_var_bytes += var_type.size();
+                self.stack_depth += var_type.size();
                 self.vars.insert(
                     var_name.clone(),
-                    VarInfo::new(self.total_var_bytes, var_type.clone(), *i, false),
+                    VarInfo::new(self.stack_depth, var_type.clone(), *i, false),
                 );
             }
         }
