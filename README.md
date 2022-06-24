@@ -49,7 +49,7 @@ let a: uint64 = 10;
 let b: uint64 = a;
 // assigning values to a variable
 a = 20;	
-let c = addint(a, b);
+let c: uint64 = addint(a, b);
 
 print_int(c);
 ```
@@ -116,4 +116,5 @@ LICENSED UNDER GPLv3
 - pointers
 - loops
 - if statement
+- type infer
 - standard library
