@@ -13,6 +13,7 @@ pub struct CodeBlock {
 }
 impl CodeBlock {
     pub fn gen_vars(&mut self, nodes: &Vec<ASTNode>) {
+        self.total_var_bytes = 8; // stack pointer has 8 bytes to start with
         for arg in &self.args {
             self.total_var_bytes += 8;
             self.var_addrs
@@ -25,9 +26,6 @@ impl CodeBlock {
                 self.var_addrs
                     .insert(var_name.clone(), self.total_var_bytes as usize);
             }
-        }
-        if self.total_var_bytes != 0 {
-            self.total_var_bytes += 8;
         }
     }
 }
@@ -341,8 +339,7 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
     };
 }
 
-fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<String> {
-    let mut args: Vec<String> = Vec::new();
+fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
     let mut token = tokens.next();
 
     // make sure there is a `(`
@@ -353,23 +350,53 @@ fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<String> {
         );
     }
 
-    loop {
-        token = tokens.next();
+    // if there is a `)` coming immediately after the `(`, there are no arguments
+    if tokens.look_ahead(1).content == TokenContent::RoundParenClose {
+        tokens.next();
+        return Vec::new();
+    }
 
-        // if there is a `)` coming immediately after the `(`, there are no arguments
-        match &token.content {
-            TokenContent::RoundParenClose => break,
-            _ => (),
-        }
+    let mut args: Vec<(String, DataType)> = Vec::new();
+
+    loop {
+        let arg_name: String;
+        let arg_type: DataType;
+
+        token = tokens.next();
         match &token.content {
             TokenContent::Identifier(id) => {
-                args.push(id.clone());
+                arg_name = id.clone();
             }
             _ => panic!(
                 "{}:{} expecting an identifier as the name of a function arguments, found {:?}",
                 token.line, token.column, token.content
             ),
         }
+
+        token = tokens.next();
+        if token.content != TokenContent::Colon {
+            panic!(
+                "{}:{} expecting `:` after name of a function arguments, found {:?}",
+                token.line, token.column, token.content
+            );
+        }
+
+        token = tokens.next();
+        if let TokenContent::Identifier(type_name) = token.content {
+            arg_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
+                panic!(
+                    "{}:{} {} is not a valid data type",
+                    token.line, token.column, type_name
+                )
+            });
+        } else {
+            panic!(
+                "{}:{} expecting an identifier after `:` for argument name, found {:?}",
+                token.line, token.column, token.content
+            );
+        }
+        args.push((arg_name, arg_type));
+
         token = tokens.next();
         match &token.content {
             TokenContent::Comma => {}
@@ -400,8 +427,12 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     token.line, token.column, token.content
                 );
             }
-            // TODO: argument names
-            code_block.args = parse_fn_def_args(tokens);
+
+            let func_args = parse_fn_def_args(tokens);
+            for arg in func_args {
+                code_block.args.push(arg.0.clone());
+                code_block.var_types.insert(arg.0, arg.1);
+            }
 
             token = tokens.next();
             if token.content != TokenContent::BigParenOpen {

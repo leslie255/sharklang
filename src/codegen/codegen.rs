@@ -113,7 +113,7 @@ fn gen_code_inside_block(
             }
         }
         Expression::ReturnVoid => {
-            if block.total_var_bytes != 0 {
+            if block.total_var_bytes != 8 {
                 target.push(asm!(add, rsp!(), Operand::Int(block.total_var_bytes)));
             }
             target.push(asm!(func_ret));
@@ -135,7 +135,7 @@ fn gen_code_inside_block(
                 }
                 _ => panic!("{:?} is not a valid expression", ast.expr(*val)),
             }
-            if block.total_var_bytes != 0 {
+            if block.total_var_bytes != 8 {
                 target.push(asm!(add, rsp!(), Operand::Int(block.total_var_bytes)));
             }
             target.push(asm!(func_ret));
@@ -176,7 +176,7 @@ pub fn codegen(source: String) -> String {
         }
         if let Expression::FuncDef(name, block) = &node.expr {
             let mut func: Vec<ASMStatement> = vec![asm!(func_def, name)];
-            if block.total_var_bytes != 0 {
+            if block.total_var_bytes != 8 {
                 func.push(asm!(sub, rsp!(), Operand::Int(block.total_var_bytes)));
             }
             for (i, arg) in block.args.iter().enumerate() {

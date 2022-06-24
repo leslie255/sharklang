@@ -1,4 +1,4 @@
-func square(a) {
+func square(a: uint64) {
 	return mulint(a, a);
 }
 
