@@ -12,15 +12,15 @@ Hello World:
 ``` Swift
 // the main function is the entry point of the program
 func main() {
-	// if encountered a string literal with no further context,
-	// sharkc automatically knows that you want to print it
-	"hello, world";
-	
-	// printing an integar requires the `print_int` function
-	print_int(42);
-	
-	// like C the return value of `main` will be used as program exit code
-	return 0;
+    // if encountered a string literal with no further context,
+    // sharkc automatically knows that you want to print it
+    "hello, world";
+
+    // printing an integar requires the `print_int` function
+    print_int(42);
+
+    // like C the return value of `main` will be used as program exit code
+    return 0;
 }
 ```
 
@@ -45,8 +45,8 @@ Declaring and assigning values to a variable:
 // same with other examples below
 
 // declaring a variable
-let a = 10;
-let b = a;
+let a: uint64 = 10;
+let b: uint64 = a;
 // assigning values to a variable
 a = 20;	
 let c = addint(a, b);
@@ -58,10 +58,10 @@ There are five builtin functions right now: `print_int`, `addint`, `subint`, `mu
 
 ``` Swift
 // math functions
-let a = addint(3, 4);
-let b = subint(a, 1);
-let c = mulint(a, b);
-let d = divint(c, subint(15, 12)); // Nested function calls are also supported
+let a: uint64 = addint(3, 4);
+let b: uint64 = subint(a, 1);
+let c: uint64 = mulint(a, b);
+let d: uint64 = divint(c, subint(15, 12)); // Nested function calls are also supported
 
 // printing integars using `print_int`
 print_int(a);
@@ -75,7 +75,7 @@ You can also write Assembly instructions directly among the Shark code:
 (They have to be in x86_64 NASM)
 
 ``` Swift
-let a = 2;
+let a: uint64 = 2;
 
 // add 40 to `a`
 mov rax, qword [rbp - 8]
@@ -90,15 +90,15 @@ These three lines of assembly added 40 to `a`, so the program will output `42` i
 Defining a function:
 ``` Swift
 func square(a) {
-	return mulint(a, a);
+    return mulint(a, a);
 }
 
 func main() {
-	"the square of 16 is...";
-	let a = square(16);
-	print_int(a);
+    "the square of 16 is...";
+    let a: uint64 = square(16);
+    print_int(a);
 
-	return 0;
+    return 0;
 }
 ```
 
@@ -110,9 +110,10 @@ Just open up a new PR and I'll review it as soon as possible. All issues and PR'
 LICENSED UNDER GPLv3
 
 ### TODO
-- types
-- argument checking
+- 32, 16, 8 bit types
+- floating point numbers and signed integars
+- characters
+- pointers
 - loops
 - if statement
-- type checking
 - standard library
