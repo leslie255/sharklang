@@ -1,13 +1,15 @@
-func square(a: uint64) {
-	return mulint(a, a);
-}
-
 func main() {
-	"the square of 16 is...";
-	let b: uint64 = 0
-	let a: uint64 = 0;
-	a = square(b);
+	// math functions
+	let a: uint64 = addint(3, 4);
+	let b: uint64 = subint(a, 1);
+	let c: uint64 = mulint(a, b);
+	let d: uint64 = divint(c, subint(15, 12));
+
+	// printing integars using `print_int`
 	print_int(a);
+	print_int(b);
+	print_int(c);
+	print_int(d);
 
 	return 0;
 }

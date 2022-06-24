@@ -114,7 +114,7 @@ fn gen_code_inside_block(
         }
         Expression::ReturnVoid => {
             if block.has_vars {
-                target.push(asm!(add, rsp!(), Operand::Int(block.stack_depth + 8)));
+                target.push(asm!(add, rsp!(), Operand::Int(block.stack_depth)));
             }
             target.push(asm!(func_ret));
         }
@@ -136,7 +136,7 @@ fn gen_code_inside_block(
                 _ => panic!("{:?} is not a valid expression", ast.expr(*val)),
             }
             if block.has_vars {
-                target.push(asm!(add, rsp!(), Operand::Int(block.stack_depth + 8)));
+                target.push(asm!(add, rsp!(), Operand::Int(block.stack_depth)));
             }
             target.push(asm!(func_ret));
         }
@@ -177,7 +177,7 @@ pub fn codegen(source: String) -> String {
         if let Expression::FuncDef(name, block) = &node.expr {
             let mut func: Vec<ASMStatement> = vec![asm!(func_def, name)];
             if block.has_vars {
-                func.push(asm!(sub, rsp!(), Operand::Int(block.stack_depth + 8)));
+                func.push(asm!(sub, rsp!(), Operand::Int(block.stack_depth)));
             }
             for (i, (_, var_info)) in block.vars.iter().enumerate() {
                 if !var_info.is_arg {

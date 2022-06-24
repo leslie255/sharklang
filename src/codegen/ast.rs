@@ -57,6 +57,18 @@ impl CodeBlock {
                 );
             }
         }
+        self.stack_depth += 8;
+        if !self.stack_depth.is_power_of_two() {
+            let mut i = 3;
+            loop {
+                let stack_size = (2 as u64).pow(i);
+                if self.stack_depth < stack_size {
+                    self.stack_depth = stack_size;
+                    break;
+                }
+                i += 1;
+            }
+        }
     }
     pub fn var_addr(&self, var_name: &String) -> Option<u64> {
         match self.vars.get(var_name) {
