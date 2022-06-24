@@ -40,18 +40,17 @@ impl DataType {
         match self {
             DataType::UInt8 => 1,
             DataType::UInt16 => 2,
-            DataType::UInt32 => 4, 
+            DataType::UInt32 => 4,
             DataType::UInt64 => 8,
             DataType::Int8 => 1,
             DataType::Int16 => 2,
             DataType::Int32 => 4,
             DataType::Int64 => 8,
-            DataType::Float32 => 1, 
+            DataType::Float32 => 1,
             DataType::Float64 => 2,
             DataType::Pointer => 8,
         }
     }
-    #[allow(unused)]
     pub fn description(&self) -> String {
         match self {
             DataType::UInt8 => String::from("uint8"),
@@ -67,14 +66,13 @@ impl DataType {
             DataType::Pointer => String::from("ptr"),
         }
     }
-    #[allow(unused)]
+    #[allow(unused_variables)]
     pub fn matches(
         &self,
         ast: &AST,
         expr: &Expression,
-        var_types: &HashMap<String, DataType>,
+        var_infos: &HashMap<String, VarInfo>,
     ) -> bool {
-        println!("{}:{}\t{:?}", file!(), line!(), var_types);
         match expr {
             Expression::NumberLiteral(_) => match self {
                 DataType::UInt8 | DataType::UInt64 | DataType::UInt32 | DataType::UInt16 => true,
@@ -85,13 +83,81 @@ impl DataType {
                 true
             }
             Expression::Identifier(var_name) => {
-                if let Some(var_type) = var_types.get(var_name) {
-                    var_type == self
+                if let Some(var_info) = var_infos.get(var_name) {
+                    &var_info.data_type == self
                 } else {
                     false
                 }
             }
             _ => false,
+        }
+    }
+}
+
+fn var_exist_check(err_count: &mut usize, var_name: &String, block: &CodeBlock, i: usize) -> bool {
+    if let Some(var_info) = block.vars.get(var_name) {
+        if var_info.def_i > i {
+            *err_count += 1;
+            println!("using the variable `{}` before it was declared", var_name);
+            return false;
+        }
+        true
+    } else {
+        *err_count += 1;
+        println!("{} is not a variable", var_name);
+        false
+    }
+}
+
+fn fn_exist_check(
+    err_count: &mut usize,
+    fn_name: &String,
+    ast: &AST,
+    builtin_fns: &BuiltinFuncChecker,
+) -> bool {
+    if ast.func_defs.contains_key(fn_name) {
+        true
+    } else if builtin_fns.is_builtin_func(fn_name) {
+        true
+    } else {
+        *err_count += 1;
+        println!("`{}` is not a function", fn_name);
+        false
+    }
+}
+
+pub fn fn_args_check(err_count: &mut usize, ast: &AST, fn_name: &String, input_args: &Vec<usize>) {
+    if !ast.func_defs.contains_key(fn_name) {
+        // TODO: arguments check for builtin functions
+        return;
+    }
+    if let Expression::FuncDef(_, block) = ast.expr(*ast.func_defs.get(fn_name).unwrap()) {
+        if input_args.len() != block.arg_types.len() {
+            *err_count += 1;
+            println!(
+                "expected needs {} arguments for function `{}`, found {}",
+                block.arg_types.len(),
+                fn_name,
+                input_args.len()
+            );
+        }
+        for (i, arg_i) in input_args.iter().enumerate() {
+            let arg = ast.expr(*arg_i);
+            if let Expression::Identifier(id) = arg {
+                if !var_exist_check(err_count, id, block, *arg_i) {
+                    continue;
+                }
+            }
+            let expected_type = block.arg_types.get(i).unwrap();
+            if !expected_type.matches(ast, arg, &block.vars) {
+                *err_count += 1;
+                println!(
+                    "expected expression of type {} for argument of function `{}`, found {:?}",
+                    expected_type.description(),
+                    fn_name,
+                    arg
+                );
+            }
         }
     }
 }
@@ -107,38 +173,56 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker) -> usize {
                 for i in &block.body {
                     let node = ast.node(*i);
                     match &node.expr {
-                        Expression::FuncCall(func_name, args) => {
-                            if let Some(i) = ast.func_defs.get(func_name) {
-                                let block = match ast.expr(*i) {
-                                    Expression::FuncDef(_, b) => b,
-                                    _ => panic!(),
-                                };
-                                if block.args.len() != args.len() {
-                                    err_count += 1;
-                                    println!(
-                                        "\texpected {} arguments for function {}, found {}",
-                                        block.args.len(),
-                                        func_name,
-                                        args.len()
-                                    );
-                                }
-                                // TODO: check if function arguments have the correct types
-                            } else if builtin_fns.is_builtin_func(func_name) {
-                                // TODO: argument check for builtin functions
-                            } else {
-                                err_count += 1;
-                                println!("{} is not the name of a function", func_name);
+                        Expression::FuncCall(fn_name, args) => {
+                            if fn_exist_check(&mut err_count, fn_name, ast, builtin_fns) {
+                                fn_args_check(&mut err_count, ast, fn_name, args);
                             }
                         }
-                        Expression::VarAssign(var_name, _) => {
-                            // TODO: check if rhs matches the type of lhs
-                            if !block.var_addrs.contains_key(var_name) {
+                        Expression::VarAssign(var_name, rhs) => {
+                            let rhs_expr = ast.expr(*rhs);
+                            if !var_exist_check(&mut err_count, var_name, block, *i) {
+                                continue;
+                            }
+                            if let Expression::FuncCall(fn_name, args) = rhs_expr {
+                                fn_exist_check(&mut err_count, fn_name, ast, builtin_fns);
+                                fn_args_check(&mut err_count, ast, fn_name, args);
+                            }
+                            let lhs_type = &block.vars.get(var_name).unwrap().data_type;
+                            if !lhs_type.matches(ast, rhs_expr, &block.vars) {
                                 err_count += 1;
-                                println!("{} is not a variable", var_name)
+                                println!(
+                                    "expecting expression of type `{}` as rhs, found {:?}",
+                                    lhs_type.description(),
+                                    rhs_expr
+                                );
+                            }
+                        }
+                        Expression::VarInit(_, var_type, rhs) => {
+                            let rhs_expr = ast.expr(*rhs);
+                            if let Expression::Identifier(id) = rhs_expr {
+                                var_exist_check(&mut err_count, id, block, *i);
+                            } else if let Expression::FuncCall(fn_name, args) = rhs_expr {
+                                fn_exist_check(&mut err_count, fn_name, ast, builtin_fns);
+                                fn_args_check(&mut err_count, ast, fn_name, args);
+                            }
+                            if !var_type.matches(ast, rhs_expr, &block.vars) {
+                                err_count += 1;
+                                println!(
+                                    "expecting expression of type `{}` as rhs, found {:?}",
+                                    var_type.description(),
+                                    rhs_expr
+                                );
                             }
                         }
                         _ => (),
                     }
+                }
+            }
+            Expression::VarAssign(_, _) => {
+                if node.is_top_level {
+                    err_count += 1;
+                    println!("variable assignment is not allowed at top level");
+                    continue;
                 }
             }
             Expression::FuncCall(_, _) => {

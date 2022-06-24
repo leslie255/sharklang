@@ -25,7 +25,7 @@ fn codegen_for_fn_call(
         for (i, arg) in args.iter().enumerate() {
             match ast.expr(*arg) {
                 Expression::Identifier(id) => {
-                    func_call.arg(Operand::LocalVar(*block.var_addrs.get(id).unwrap()));
+                    func_call.arg(Operand::LocalVar(block.var_addr(id).unwrap()));
                 }
                 Expression::NumberLiteral(num) => {
                     func_call.arg(Operand::Int(*num));
@@ -63,10 +63,10 @@ fn gen_code_inside_block(
         Expression::RawASM(text) => target.push(asm!(format!("\t{}", text))),
         Expression::Label(name) => target.push(asm!(label, name)),
         Expression::VarInit(var_name, _, rhs) => {
-            let addr_lhs = *block.var_addrs.get(var_name).unwrap();
+            let addr_lhs = block.var_addr(var_name).unwrap();
             match ast.expr(*rhs) {
                 Expression::Identifier(id) => {
-                    let addr_rhs = *block.var_addrs.get(id).unwrap();
+                    let addr_rhs = block.var_addr(id).unwrap();
                     target.push(asm!(mov, rax!(), Operand::LocalVar(addr_rhs)));
                     target.push(asm!(mov, Operand::LocalVar(addr_lhs), rax!()));
                 }
@@ -87,13 +87,13 @@ fn gen_code_inside_block(
             };
         }
         Expression::VarAssign(var_name, rhs) => {
-            let addr_lhs = *block.var_addrs.get(var_name).unwrap();
+            let addr_lhs = block.var_addr(var_name).unwrap();
             match ast.expr(*rhs) {
                 Expression::Identifier(id) => {
                     target.push(asm!(
                         mov,
                         rax!(),
-                        Operand::LocalVar(*block.var_addrs.get(id).unwrap())
+                        Operand::LocalVar(block.var_addr(id).unwrap())
                     ));
                     target.push(asm!(mov, Operand::LocalVar(addr_lhs), rax!()));
                 }
@@ -113,20 +113,18 @@ fn gen_code_inside_block(
             }
         }
         Expression::ReturnVoid => {
-            println!("{}:{}\t{}", file!(), line!(), block.total_var_bytes);
-            if block.total_var_bytes != 0 {
+            if block.has_vars {
                 target.push(asm!(add, rsp!(), Operand::Int(block.total_var_bytes)));
             }
             target.push(asm!(func_ret));
         }
         Expression::ReturnVal(val) => {
-            println!("{}:{}\t{}", file!(), line!(), block.total_var_bytes);
             match ast.expr(*val) {
                 Expression::Identifier(id) => {
                     target.push(asm!(
                         mov,
                         rax!(),
-                        Operand::LocalVar(*block.var_addrs.get(id).unwrap())
+                        Operand::LocalVar(block.var_addr(id).unwrap())
                     ));
                 }
                 Expression::NumberLiteral(num) => {
@@ -137,7 +135,7 @@ fn gen_code_inside_block(
                 }
                 _ => panic!("{:?} is not a valid expression", ast.expr(*val)),
             }
-            if block.total_var_bytes != 0 {
+            if block.has_vars {
                 target.push(asm!(add, rsp!(), Operand::Int(block.total_var_bytes)));
             }
             target.push(asm!(func_ret));
@@ -178,14 +176,17 @@ pub fn codegen(source: String) -> String {
         }
         if let Expression::FuncDef(name, block) = &node.expr {
             let mut func: Vec<ASMStatement> = vec![asm!(func_def, name)];
-            if block.total_var_bytes != 0 {
+            if block.has_vars {
                 func.push(asm!(sub, rsp!(), Operand::Int(block.total_var_bytes)));
             }
-            for (i, arg) in block.args.iter().enumerate() {
-                let var_addr = block.var_addrs.get(arg).unwrap();
+            for (i, (_, var_info)) in block.vars.iter().enumerate() {
+                if !var_info.is_arg {
+                    // arguments always come before other variables
+                    break;
+                }
                 func.push(asm!(
                     mov,
-                    Operand::LocalVar(*var_addr).clone(),
+                    Operand::LocalVar(var_info.addr).clone(),
                     ARG_REG_NAMES.get(i)
                         .expect("passing more than 6 arguments into a function haven't been implemented yet")
                         .clone()

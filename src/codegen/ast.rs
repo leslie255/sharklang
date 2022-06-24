@@ -3,34 +3,66 @@ use super::typecheck::*;
 
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct VarInfo {
+    pub addr: u64,
+    pub data_type: DataType,
+    pub def_i: usize, // where in the AST the variable is defined
+    pub is_arg: bool,
+}
+impl VarInfo {
+    pub fn new(addr: u64, data_type: DataType, def_i: usize, is_arg: bool) -> VarInfo {
+        let mut info = VarInfo {
+            addr: 0,
+            data_type: DataType::UInt64,
+            def_i: 0,
+            is_arg: false,
+        };
+        info.addr = addr;
+        info.data_type = data_type;
+        info.def_i = def_i;
+        info.is_arg = is_arg;
+
+        info
+    }
+}
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CodeBlock {
     pub body: Vec<usize>,
-    pub args: Vec<String>,
-    pub var_addrs: HashMap<String, usize>,
-    pub var_types: HashMap<String, DataType>, // also includes arguments
+    pub vars: HashMap<String, VarInfo>,
     pub total_var_bytes: u64,
+    pub arg_types: Vec<DataType>,
+    pub has_vars: bool,
 }
 impl CodeBlock {
-    pub fn gen_vars(&mut self, nodes: &Vec<ASTNode>) {
-        for arg in &self.args {
-            self.total_var_bytes += self.var_types.get(arg).unwrap().size();
-            self.var_addrs
-                .insert(arg.clone(), self.total_var_bytes as usize);
+    pub fn gen_vars_with_args(&mut self, nodes: &Vec<ASTNode>, args: Vec<(String, DataType)>) {
+        self.has_vars = false; // has at least one variable
+        self.total_var_bytes = 8; // stack pointer
+        for (arg_name, arg_type) in &args {
+            self.has_vars = true;
+            self.total_var_bytes += arg_type.size();
+            self.vars.insert(
+                arg_name.clone(),
+                VarInfo::new(self.total_var_bytes, arg_type.clone(), 0, true),
+            );
+            self.arg_types.push(arg_type.clone());
         }
-        let mut has_var = false;
-        for i in self.body.iter() {
-            has_var = true;
+        for i in &self.body {
+            self.has_vars = true;
             let node = &nodes[*i];
             if let Expression::VarInit(var_name, var_type, _) = &node.expr {
                 self.total_var_bytes += var_type.size();
-                self.var_addrs
-                    .insert(var_name.clone(), self.total_var_bytes as usize);
-                self.var_types.insert(var_name.clone(), var_type.clone());
+                self.vars.insert(
+                    var_name.clone(),
+                    VarInfo::new(self.total_var_bytes, var_type.clone(), *i, false),
+                );
             }
         }
-        if !has_var {
-            self.total_var_bytes += 8; // stack pointer
+    }
+    pub fn var_addr(&self, var_name: &String) -> Option<u64> {
+        match self.vars.get(var_name) {
+            Some(x) => Some(x.addr),
+            None => None,
         }
     }
 }
@@ -434,10 +466,6 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             }
 
             let func_args = parse_fn_def_args(tokens);
-            for arg in func_args {
-                code_block.args.push(arg.0.clone());
-                code_block.var_types.insert(arg.0, arg.1);
-            }
 
             token = tokens.next();
             if token.content != TokenContent::BigParenOpen {
@@ -463,7 +491,7 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     code_block.body.push(i);
                 }
             }
-            code_block.gen_vars(&tree.nodes);
+            code_block.gen_vars_with_args(&tree.nodes, func_args);
             let expr = Expression::FuncDef(func_name, code_block);
             tree.new_expr(expr);
             tree.nodes.last_mut().unwrap().is_root = true;
