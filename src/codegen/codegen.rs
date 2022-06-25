@@ -146,8 +146,7 @@ fn gen_code_inside_block(
 
 static ARG_REG_NAMES: [Operand; 6] = [rdi!(), rsi!(), rdx!(), rcx!(), r8!(), r9!()];
 pub fn codegen(source: String) -> String {
-    let preprocessed = preprocess(source);
-    let tokens = parse_tokens(preprocessed);
+    let tokens = preprocess(parse_tokens(source));
     let ast = construct_ast(tokens);
 
     let mut builtin_fns = BuiltinFuncChecker::new();

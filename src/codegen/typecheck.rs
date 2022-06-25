@@ -78,6 +78,7 @@ impl DataType {
                 DataType::UInt8 | DataType::UInt64 | DataType::UInt32 | DataType::UInt16 => true,
                 _ => false,
             },
+            Expression::StringLiteral(_) => self == &DataType::Pointer,
             Expression::FuncCall(name, _) => {
                 println!("type check is not implemented for function return values, assuming that the function `{}` returns value of type `{}`", name, self.description());
                 true
@@ -126,7 +127,13 @@ fn fn_exist_check(
     }
 }
 
-pub fn fn_args_check(err_count: &mut usize, ast: &AST, block: &CodeBlock, fn_name: &String, input_args: &Vec<usize>) {
+pub fn fn_args_check(
+    err_count: &mut usize,
+    ast: &AST,
+    block: &CodeBlock,
+    fn_name: &String,
+    input_args: &Vec<usize>,
+) {
     if !ast.func_defs.contains_key(fn_name) {
         // TODO: arguments check for builtin functions
         return;
@@ -144,7 +151,6 @@ pub fn fn_args_check(err_count: &mut usize, ast: &AST, block: &CodeBlock, fn_nam
         }
 
         // check arguments
-        println!("{}:{}\t{:?}", file!(), line!(), input_args);
         for (i, arg_i) in input_args.iter().enumerate() {
             let arg = ast.expr(*arg_i);
             if let Expression::Identifier(id) = arg {

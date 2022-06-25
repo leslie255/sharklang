@@ -1,31 +1,13 @@
-#[allow(unused_assignments)]
-pub fn preprocess(source: String) -> String {
-    let mut iter = source.chars();
-    let mut processed = String::new();
-    let mut last_ch = '\0';
-    let mut ch = '\0';
+use super::tokens::*;
 
-    macro_rules! next {
-        () => {{
-            last_ch = ch;
-            ch = match iter.next() {
-                Some(x) => x,
-                None => break,
-            }
-        }};
-    }
+pub fn preprocess(tokens: TokenStream) -> TokenStream {
+    let mut result = TokenStream::default();
 
-    loop {
-        next!();
-        
-        if ch == '/' && last_ch == '/' {
-            processed.pop();
-            while ch != '\n' {
-                next!();
-            }
+    for token in tokens.tokens {
+        if token.content != TokenContent::NewLine {
+            result.tokens.push(token);
         }
-        processed.push(ch);
     }
 
-    processed
+    result
 }
