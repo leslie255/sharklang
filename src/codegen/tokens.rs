@@ -59,7 +59,7 @@ impl CharCustomFuncs for char {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TokenStream {
     pub tokens: Vec<Token>,
     pub i: usize,
@@ -302,6 +302,15 @@ pub fn parse_tokens(source: String) -> TokenStream {
                 }
             }
             prototypes.push(TokenPrototype::from(&current_word, i));
+        }
+        if current_word == "//" {
+            loop {
+                next!();
+                current_word.push(ch);
+                if ch == '\n' {
+                    break;
+                }
+            }
         }
         if TokenPrototype::is_valid(&current_word) {
             next!();

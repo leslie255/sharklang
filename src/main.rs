@@ -17,8 +17,7 @@ fn _input() -> String {
 }
 
 fn compile(src_path: String, output_path: String) {
-    let source =
-        codegen::preprocess::preprocess(fs::read_to_string(src_path).expect("cannot read file"));
+    let source = fs::read_to_string(src_path).expect("cannot read file");
     let output = codegen(source);
 
     if Path::new(&output_path).exists() {
@@ -38,7 +37,7 @@ fn compile(src_path: String, output_path: String) {
 
 fn print_tree(src_path: String) {
     let source =
-        codegen::preprocess::preprocess(fs::read_to_string(src_path).expect("cannot read file"));
+        fs::read_to_string(src_path).expect("cannot read file");
     let tokens = codegen::tokens::parse_tokens(source);
     let ast = codegen::ast::construct_ast(tokens);
     print_ast!(ast.nodes);
@@ -46,17 +45,11 @@ fn print_tree(src_path: String) {
 
 fn print_tokens(src_path: String) {
     let source =
-        codegen::preprocess::preprocess(fs::read_to_string(src_path).expect("cannot read file"));
+        fs::read_to_string(src_path).expect("cannot read file");
     let tokens = codegen::tokens::parse_tokens(source).tokens;
     for token in tokens {
         println!("{}\t{:?}", token.position, token.content);
     }
-}
-
-fn print_preprocessed(src_path: String) {
-    let source = fs::read_to_string(src_path).expect("cannot read file");
-    let preprocessed = codegen::preprocess::preprocess(source);
-    println!("{}", preprocessed);
 }
 
 fn print_help(arg0: String) {
@@ -95,17 +88,6 @@ fn main() {
                         println!("expects an arguments after `-o` for output file");
                         panic!();
                     }
-                }
-            }
-            "-p" | "--preprocess" => {
-                if !src_path.is_empty() {
-                    print_preprocessed(src_path);
-                    return;
-                } else {
-                    print_help(arg0);
-                    println!();
-                    println!("expects a source file");
-                    panic!();
                 }
             }
             "-t" | "--tokens" => {

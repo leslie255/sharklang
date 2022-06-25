@@ -1,5 +1,8 @@
-func main() -> uint64 {
-	"hello";
+func main() {
+	let a: uint64 = 16;
+	"hello"; // lolol
+	"the square of 16 is..."
+	print_int(mulint(a, a));
 	return 0;
 }
 

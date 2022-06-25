@@ -47,9 +47,9 @@ impl CodeBlock {
             self.arg_types.push(arg_type.clone());
         }
         for i in &self.body {
-            self.has_vars = true;
             let node = &nodes[*i];
             if let Expression::VarInit(var_name, var_type, _) = &node.expr {
+                self.has_vars = true;
                 self.stack_depth += var_type.size();
                 self.vars.insert(
                     var_name.clone(),
@@ -69,6 +69,7 @@ impl CodeBlock {
                 i += 1;
             }
         }
+        println!("--- {}", self.stack_depth);
     }
     pub fn var_addr(&self, var_name: &String) -> Option<u64> {
         match self.vars.get(var_name) {
@@ -162,10 +163,7 @@ fn parse_fn_call_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
 
     // make sure there is a `(`
     if TokenContent::RoundParenOpen != token.content {
-        panic!(
-            "{} expected a `(` for function call",
-            token.position
-        );
+        panic!("{} expected a `(` for function call", token.position);
     }
 
     loop {
@@ -290,10 +288,7 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     tree.new_expr(Expression::VarAssign(id, i));
                     return tree.nodes.len() - 1;
                 }
-                _ => panic!(
-                    "{} expecting `=` or `(` after {}",
-                    token.position, id
-                ),
+                _ => panic!("{} expecting `=` or `(` after {}", token.position, id),
             }
         }
         TokenContent::Let => {
@@ -427,10 +422,7 @@ fn parse_fn_def(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
         token = tokens.next();
         if let TokenContent::Identifier(type_name) = token.content {
             arg_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
-                panic!(
-                    "{} {} is not a valid data type",
-                    token.position, type_name
-                )
+                panic!("{} {} is not a valid data type", token.position, type_name)
             });
         } else {
             panic!(
