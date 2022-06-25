@@ -1,0 +1,15 @@
+func main() {
+	// the following also have to be inside the main function,
+	// same with other examples below
+
+	// declaring a variable
+	let a: uint64 = 10;
+	let b: uint64 = a;
+	// assigning values to a variable
+	a = 20;	
+	let c: uint64 = addint(a, b);
+
+	print_int(c);
+
+	return 0;
+}

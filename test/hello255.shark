@@ -1,0 +1,13 @@
+// the main function is the entry point of the program
+func main() {
+    // if encountered a string literal with no further context,
+    // sharkc automatically knows that you want to print it
+    "hello, world";
+
+    // printing an integar requires the `print_int` function
+    print_int(255);
+
+    // like C the return value of `main` will be used as program exit code
+    return 0;
+}
+

@@ -89,7 +89,7 @@ These three lines of assembly added 40 to `a`, so the program will output `42` i
 
 Defining a function:
 ``` Swift
-func square(a) {
+func square(a: uint64) {
     return mulint(a, a);
 }
 
