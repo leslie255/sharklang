@@ -1,8 +1,7 @@
 func main() {
 	let a: uint64 = 16;
-	"hello"; // lolol
-	"the square of 16 is..."
-	print_int(mulint(a, a));
+	let b: uint32 = 12;
+
 	return 0;
 }
 
