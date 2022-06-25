@@ -1,5 +1,7 @@
+use super::error::*;
 use super::tokens::*;
 use super::typecheck::*;
+use std::process::exit;
 
 use std::collections::HashMap;
 
@@ -69,7 +71,6 @@ impl CodeBlock {
                 i += 1;
             }
         }
-        println!("--- {}", self.stack_depth);
     }
     pub fn var_addr(&self, var_name: &String) -> Option<u64> {
         match self.vars.get(var_name) {
@@ -226,7 +227,11 @@ fn parse_fn_call_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
     args
 }
 
-fn parse_single_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
+fn parse_single_expr(
+    tree: &mut AST,
+    tokens: &mut TokenStream,
+    err_collector: &mut ErrorCollector,
+) -> usize {
     let token = tokens.next();
     match token.content {
         TokenContent::UInt(uint) => {
@@ -246,21 +251,36 @@ fn parse_single_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 tokens.next();
                 tree.new_expr(Expression::Identifier(id));
             }
-            _ => panic!(
-                "{} expecting `(` or `;`, found {:?}",
-                tokens.look_ahead(1).position,
-                tokens.look_ahead(1).content
-            ),
+            _ => {
+                let token = tokens.next();
+                err_collector.syntax_err(
+                    &token,
+                    format!("expecting `(` or `;`, found {:?}", token.content),
+                );
+                err_collector.print_errs();
+                exit(1);
+            }
         },
-        _ => panic!(
-            "{} `{:?}` is not a valid rhs for variable assignment",
-            token.position, token.content
-        ),
+        _ => {
+            err_collector.syntax_err(
+                &token,
+                format!(
+                    "`{:?}` is not a valid rhs for variable assignment",
+                    token.content
+                ),
+            );
+            err_collector.print_errs();
+            exit(1);
+        }
     }
     tree.nodes.len() - 1
 }
 
-fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
+fn parse_expr(
+    tree: &mut AST,
+    tokens: &mut TokenStream,
+    err_collector: &mut ErrorCollector,
+) -> usize {
     let mut token: Token;
 
     token = tokens.next();
@@ -284,11 +304,15 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 }
                 TokenContent::Equal => {
                     // is variable assign
-                    let i = parse_single_expr(tree, tokens);
+                    let i = parse_single_expr(tree, tokens, err_collector);
                     tree.new_expr(Expression::VarAssign(id, i));
                     return tree.nodes.len() - 1;
                 }
-                _ => panic!("{} expecting `=` or `(` after {}", token.position, id),
+                _ => {
+                    err_collector.syntax_err(&token, format!("expecting `=` or `(` after {}", id));
+                    err_collector.print_errs();
+                    exit(1);
+                }
             }
         }
         TokenContent::Let => {
@@ -301,44 +325,61 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             if let TokenContent::Identifier(var_name) = token.content {
                 lhs = var_name;
             } else {
-                panic!(
-                    "{} expecting an identifier following `let`, found {:?}",
-                    token.position, token.content
+                err_collector.syntax_err(
+                    &token,
+                    format!(
+                        "expecting an identifier following `let`, found {:?}",
+                        token.content
+                    ),
                 );
+                err_collector.print_errs();
+                exit(1);
             }
             // get type
             if tokens.next().content == TokenContent::Colon {
                 token = tokens.next();
-                if let TokenContent::Identifier(type_name) = token.content {
+                if let TokenContent::Identifier(ref type_name) = token.content {
                     var_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
-                        panic!(
-                            "{} `{}` is not a valid data type",
-                            token.position, type_name
-                        )
+                        // TODO: type name check should happen in type checks not AST parsing
+                        err_collector.syntax_err(
+                            &token,
+                            format!("`{}` is not a valid data type", type_name),
+                        );
+                        err_collector.print_errs();
+                        exit(1);
                     });
                 } else {
-                    panic!(
-                        "{} `{:?}` is not a valid data type",
-                        token.position, token.content
-                    )
+                    err_collector.syntax_err(
+                        &token,
+                        format!("{:?} is not a valid data type", token.content),
+                    );
+                    err_collector.print_errs();
+                    exit(1);
                 }
             } else {
-                panic!(
-                    "{} expecting `:` after variable name, found {:?}",
-                    tokens.look_ahead(0).position,
-                    tokens.look_ahead(0).content
+                err_collector.syntax_err(
+                    &tokens.look_ahead(0),
+                    format!(
+                        "expecting `:` after variable name, found {:?}",
+                        tokens.look_ahead(0).content
+                    ),
                 );
+                err_collector.print_errs();
+                exit(1);
             }
             // make sure there is an `=`
             if tokens.next().content != TokenContent::Equal {
-                panic!(
-                    "{} expecting `=` after variable type, found {:?}",
-                    tokens.look_ahead(0).position,
-                    tokens.look_ahead(0).content
+                err_collector.syntax_err(
+                    &tokens.look_ahead(0),
+                    format!(
+                        "expecting `=` after variable type, found {:?}",
+                        tokens.look_ahead(0).content
+                    ),
                 );
+                err_collector.print_errs();
             }
             // get rhs
-            let i = parse_single_expr(tree, tokens);
+            let i = parse_single_expr(tree, tokens, err_collector);
             tree.new_expr(Expression::VarInit(lhs, var_type, i));
             return tree.nodes.len() - 1;
         }
@@ -348,7 +389,7 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 return tree.nodes.len() - 1;
             }
             _ => {
-                let i = parse_single_expr(tree, tokens);
+                let i = parse_single_expr(tree, tokens, err_collector);
                 tree.new_expr(Expression::ReturnVal(i));
                 return tree.nodes.len() - 1;
             }
@@ -369,23 +410,30 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             return tree.nodes.len() - 1;
         }
         _ => {
-            panic!(
-                "{} unidentified token `{:?}`",
-                token.position, token.content
-            );
+            err_collector.syntax_err(&token, format!("unidentified token `{:?}`", token.content));
+            err_collector.print_errs();
+            exit(1);
         }
     };
 }
 
-fn parse_fn_def(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
+fn parse_fn_def(
+    tokens: &mut TokenStream,
+    err_collector: &mut ErrorCollector,
+) -> Vec<(String, DataType)> {
     let mut token = tokens.next();
 
     // make sure there is a `(`
     if token.content != TokenContent::RoundParenOpen {
-        panic!(
-            "{} expecting `(` after function call, found {:?}",
-            token.position, token.content
+        err_collector.syntax_err(
+            &token,
+            format!(
+                "expecting `(` after function call, found {:?}",
+                token.content
+            ),
         );
+        err_collector.print_errs();
+        exit(1);
     }
 
     // if there is a `)` coming immediately after the `(`, there are no arguments
@@ -405,30 +453,49 @@ fn parse_fn_def(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
             TokenContent::Identifier(id) => {
                 arg_name = id.clone();
             }
-            _ => panic!(
-                "{} expecting an identifier as the name of a function arguments, found {:?}",
-                token.position, token.content
-            ),
+            _ => {
+                err_collector.syntax_err(
+                    &token,
+                    format!(
+                        "expecting an identifier as the name of a function arguments, found {:?}",
+                        token.content
+                    ),
+                );
+                err_collector.print_errs();
+                exit(1);
+            }
         }
 
         token = tokens.next();
         if token.content != TokenContent::Colon {
-            panic!(
-                "{} expecting `:` after name of a function arguments, found {:?}",
-                token.position, token.content
+            err_collector.syntax_err(
+                &token,
+                format!(
+                    "expecting `:` after name of a function arguments, found {:?}",
+                    token.content
+                ),
             );
+            err_collector.print_errs();
+            exit(1);
         }
 
         token = tokens.next();
-        if let TokenContent::Identifier(type_name) = token.content {
+        if let TokenContent::Identifier(ref type_name) = token.content {
             arg_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
-                panic!("{} {} is not a valid data type", token.position, type_name)
+                err_collector.syntax_err(&token, format!("{} is not a valid data type", type_name));
+                err_collector.print_errs();
+                exit(1);
             });
         } else {
-            panic!(
-                "{} expecting an identifier after `:` for argument name, found {:?}",
-                token.position, token.content
+            err_collector.syntax_err(
+                &token,
+                format!(
+                    "expecting an identifier after `:` for argument name, found {:?}",
+                    token.content
+                ),
             );
+            err_collector.print_errs();
+            exit(1);
         }
         args.push((arg_name, arg_type));
 
@@ -436,17 +503,28 @@ fn parse_fn_def(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
         match &token.content {
             TokenContent::Comma => {}
             TokenContent::RoundParenClose => break,
-            _ => panic!(
-                "{} expected `)` or `,` after an argument name, found {:?}",
-                token.position, token.content
-            ),
+            _ => {
+                err_collector.syntax_err(
+                    &token,
+                    format!(
+                        "expected `)` or `,` after an argument name, found {:?}",
+                        token.content
+                    ),
+                );
+                err_collector.print_errs();
+                exit(1);
+            }
         }
     }
 
     args
 }
 
-fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
+fn parse_top_level(
+    tree: &mut AST,
+    tokens: &mut TokenStream,
+    err_collector: &mut ErrorCollector,
+) -> usize {
     let mut token: Token;
     match tokens.look_ahead(1).content {
         TokenContent::Func => {
@@ -457,20 +535,25 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             if let TokenContent::Identifier(id) = token.content {
                 func_name = id;
             } else {
-                panic!(
-                    "{} expected an identifier after `func`, found {:?}",
-                    token.position, token.content
+                err_collector.syntax_err(
+                    &token,
+                    format!(
+                        "expected an identifier after `func`, found {:?}",
+                        token.content
+                    ),
                 );
+                err_collector.print_errs();
+                exit(1);
             }
 
-            let func_args = parse_fn_def(tokens);
+            let func_args = parse_fn_def(tokens, err_collector);
 
             token = tokens.next();
             if token.content != TokenContent::BigParenOpen {
-                panic!(
-                    "{} expected `{{`, found {:?}",
-                    token.position, token.content
-                );
+                err_collector
+                    .syntax_err(&token, format!("expected `{{`, found {:?}", token.content));
+                err_collector.print_errs();
+                exit(1);
             }
             loop {
                 match tokens.look_ahead(1).content {
@@ -480,7 +563,7 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     }
                     _ => (),
                 }
-                let i = parse_expr(tree, tokens);
+                let i = parse_expr(tree, tokens, err_collector);
                 if let Some(node) = tree.nodes.get_mut(i) {
                     if node.is_root {
                         continue;
@@ -495,16 +578,16 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
             tree.nodes.last_mut().unwrap().is_root = true;
         }
         _ => {
-            parse_expr(tree, tokens);
+            parse_expr(tree, tokens, err_collector);
         }
     }
     tree.nodes.len().saturating_sub(1)
 }
 
-pub fn construct_ast(mut tokens: TokenStream) -> AST {
+pub fn construct_ast(mut tokens: TokenStream, err_collector: &mut ErrorCollector) -> AST {
     let mut ast = AST::default();
     loop {
-        parse_top_level(&mut ast, &mut tokens);
+        parse_top_level(&mut ast, &mut tokens, err_collector);
         if !ast.nodes.is_empty() {
             ast.nodes.last_mut().unwrap().is_top_level = true;
         }

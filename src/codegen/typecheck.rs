@@ -65,7 +65,6 @@ impl DataType {
             DataType::Pointer => String::from("ptr"),
         }
     }
-    #[allow(unused_variables)]
     pub fn matches(
         &self,
         context: &TypeCheckContext,

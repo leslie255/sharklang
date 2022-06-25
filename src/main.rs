@@ -17,8 +17,8 @@ fn _input() -> String {
 }
 
 fn compile(src_path: String, output_path: String) {
-    let source = fs::read_to_string(src_path).expect("cannot read file");
-    let output = codegen(source);
+    let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
+    let output = codegen(source, src_path);
 
     if Path::new(&output_path).exists() {
         fs::remove_file(output_path.clone()).unwrap_or_else(|_| {
@@ -36,17 +36,20 @@ fn compile(src_path: String, output_path: String) {
 }
 
 fn print_tree(src_path: String) {
-    let source =
-        fs::read_to_string(src_path).expect("cannot read file");
-    let tokens = codegen::tokens::parse_tokens(source);
-    let ast = codegen::ast::construct_ast(tokens);
-    print_ast!(ast.nodes);
+    let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
+    let tokens = codegen::tokens::parse_tokens(&source);
+    let mut err_collector = codegen::error::ErrorCollector::new(src_path, &source);
+    let ast = codegen::ast::construct_ast(tokens, &mut err_collector);
+    if err_collector.errors.is_empty() {
+        print_ast!(ast.nodes);
+    } else {
+        err_collector.print_errs();
+    }
 }
 
 fn print_tokens(src_path: String) {
-    let source =
-        fs::read_to_string(src_path).expect("cannot read file");
-    let tokens = codegen::tokens::parse_tokens(source).tokens;
+    let source = fs::read_to_string(src_path).expect("cannot read file");
+    let tokens = codegen::tokens::parse_tokens(&source).tokens;
     for token in tokens {
         println!("{}\t{:?}", token.position, token.content);
     }

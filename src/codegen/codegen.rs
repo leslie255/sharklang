@@ -1,5 +1,6 @@
 use super::ast::*;
 use super::builtin_funcs::*;
+use super::error::*;
 use super::ir::*;
 use super::preprocess::*;
 use super::tokens::*;
@@ -145,9 +146,11 @@ fn gen_code_inside_block(
 }
 
 static ARG_REG_NAMES: [Operand; 6] = [rdi!(), rsi!(), rdx!(), rcx!(), r8!(), r9!()];
-pub fn codegen(source: String) -> String {
-    let tokens = preprocess(parse_tokens(source));
-    let ast = construct_ast(tokens);
+pub fn codegen(source: String, src_file: String) -> String {
+
+    let mut err_collector = ErrorCollector::new(src_file, &source);
+    let tokens = preprocess(parse_tokens(&source));
+    let ast = construct_ast(tokens, &mut err_collector);
 
     let mut builtin_fns = BuiltinFuncChecker::new();
 
@@ -203,5 +206,10 @@ pub fn codegen(source: String) -> String {
         }
     }
 
+    if !err_collector.errors.is_empty() {
+        err_collector.print_errs();
+        println!("could not compile due to errors listed above");
+        panic!();
+    }
     program.gen_code()
 }

@@ -126,19 +126,22 @@ impl StringCustomFuncs for String {
 pub struct Token {
     pub content: TokenContent,
     pub position: usize,
+    pub len: usize,
 }
 
 impl Token {
-    fn new(content: TokenContent, position: usize) -> Token {
-        let mut token = Token::default();
-        token.content = content;
-        token.position = position;
-        return token;
+    fn new(content: TokenContent, position: usize, len: usize) -> Token {
+        Token {
+            content,
+            position,
+            len,
+        }
     }
     fn eof() -> Token {
         Token {
             content: TokenContent::EOF,
             position: 0,
+            len: 0,
         }
     }
 }
@@ -147,12 +150,14 @@ impl Token {
 pub struct TokenPrototype {
     source: String,
     position: usize,
+    len: usize,
 }
 impl TokenPrototype {
     fn from(str: &String, position: usize) -> TokenPrototype {
         let mut prototype = TokenPrototype::default();
         prototype.source = str.clone();
-        prototype.position = position;
+        prototype.position = position - str.len();
+        prototype.len = str.len();
 
         prototype
     }
@@ -211,25 +216,31 @@ impl TokenPrototype {
     }
     fn construct_token(&self) -> Token {
         match self.source.as_str() {
-            "(" => return Token::new(TokenContent::RoundParenOpen, self.position),
-            ")" => return Token::new(TokenContent::RoundParenClose, self.position),
-            "[" => return Token::new(TokenContent::RectParenOpen, self.position),
-            "]" => return Token::new(TokenContent::RectParenClose, self.position),
-            "{" => return Token::new(TokenContent::BigParenOpen, self.position),
-            "}" => return Token::new(TokenContent::BigParenClose, self.position),
-            "=" => return Token::new(TokenContent::Equal, self.position),
-            "true" => return Token::new(TokenContent::True, self.position),
-            "false" => return Token::new(TokenContent::False, self.position),
-            "let" => return Token::new(TokenContent::Let, self.position),
-            ";" => return Token::new(TokenContent::Semicolon, self.position),
-            "." => return Token::new(TokenContent::Period, self.position),
-            "," => return Token::new(TokenContent::Comma, self.position),
-            ":" => return Token::new(TokenContent::Colon, self.position),
-            "func" => return Token::new(TokenContent::Func, self.position),
-            "return" => return Token::new(TokenContent::Return, self.position),
-            "->" => return Token::new(TokenContent::ReturnArrow, self.position),
-            "//" => return Token::new(TokenContent::SingleLineCommentStart, self.position),
-            "\n" => return Token::new(TokenContent::NewLine, self.position),
+            "(" => return Token::new(TokenContent::RoundParenOpen, self.position, self.len),
+            ")" => return Token::new(TokenContent::RoundParenClose, self.position, self.len),
+            "[" => return Token::new(TokenContent::RectParenOpen, self.position, self.len),
+            "]" => return Token::new(TokenContent::RectParenClose, self.position, self.len),
+            "{" => return Token::new(TokenContent::BigParenOpen, self.position, self.len),
+            "}" => return Token::new(TokenContent::BigParenClose, self.position, self.len),
+            "=" => return Token::new(TokenContent::Equal, self.position, self.len),
+            "true" => return Token::new(TokenContent::True, self.position, self.len),
+            "false" => return Token::new(TokenContent::False, self.position, self.len),
+            "let" => return Token::new(TokenContent::Let, self.position, self.len),
+            ";" => return Token::new(TokenContent::Semicolon, self.position, self.len),
+            "." => return Token::new(TokenContent::Period, self.position, self.len),
+            "," => return Token::new(TokenContent::Comma, self.position, self.len),
+            ":" => return Token::new(TokenContent::Colon, self.position, self.len),
+            "func" => return Token::new(TokenContent::Func, self.position, self.len),
+            "return" => return Token::new(TokenContent::Return, self.position, self.len),
+            "->" => return Token::new(TokenContent::ReturnArrow, self.position, self.len),
+            "//" => {
+                return Token::new(
+                    TokenContent::SingleLineCommentStart,
+                    self.position,
+                    self.len,
+                )
+            }
+            "\n" => return Token::new(TokenContent::NewLine, self.position, self.len),
             _ => {
                 let first_ch = self.source.chars().nth(0).unwrap();
 
@@ -242,13 +253,13 @@ impl TokenPrototype {
                         }
                         str_content.push(ch);
                     }
-                    return Token::new(TokenContent::String(str_content), self.position);
+                    return Token::new(TokenContent::String(str_content), self.position, self.len);
                 }
 
                 // is a floating point number
                 if (first_ch.is_numeric() || first_ch == '-') && self.source.contains('.') {
                     if let Ok(float) = self.source.parse() {
-                        return Token::new(TokenContent::Float(float), self.position);
+                        return Token::new(TokenContent::Float(float), self.position, self.len);
                     } else {
                         panic!();
                     }
@@ -257,7 +268,7 @@ impl TokenPrototype {
                 // is an unsigned integar
                 if first_ch.is_numeric() {
                     if let Ok(uint) = self.source.parse() {
-                        return Token::new(TokenContent::UInt(uint), self.position);
+                        return Token::new(TokenContent::UInt(uint), self.position, self.len);
                     } else {
                         panic!();
                     }
@@ -266,7 +277,7 @@ impl TokenPrototype {
                 // is a signed integar
                 if first_ch == '-' {
                     if let Ok(int) = self.source.parse() {
-                        return Token::new(TokenContent::SInt(int), self.position);
+                        return Token::new(TokenContent::SInt(int), self.position, self.len);
                     } else {
                         panic!();
                     }
@@ -281,11 +292,16 @@ impl TokenPrototype {
                     first_word.push(ch);
                 }
                 if first_word.is_asm_instruction() {
-                    return Token::new(TokenContent::RawASM(self.source.clone()), self.position);
+                    return Token::new(
+                        TokenContent::RawASM(self.source.clone()),
+                        self.position,
+                        self.len,
+                    );
                 } else {
                     return Token::new(
                         TokenContent::Identifier(self.source.clone()),
                         self.position,
+                        self.len,
                     );
                 }
             }
@@ -294,7 +310,7 @@ impl TokenPrototype {
 }
 
 #[allow(unused, unused_assignments)]
-pub fn parse_tokens(source: String) -> TokenStream {
+pub fn parse_tokens(source: &String) -> TokenStream {
     let mut prototypes: Vec<TokenPrototype> = Vec::new();
 
     let mut current_word = String::new();
@@ -380,10 +396,6 @@ pub fn parse_tokens(source: String) -> TokenStream {
             }
             last_one_is_valid = false;
         }
-    }
-
-    for prototype in &prototypes {
-        println!("{:?}", prototype.source);
     }
 
     TokenStream::from_prototypes(prototypes)
