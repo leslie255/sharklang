@@ -49,7 +49,7 @@ fn print_tokens(src_path: String) {
         codegen::preprocess::preprocess(fs::read_to_string(src_path).expect("cannot read file"));
     let tokens = codegen::tokens::parse_tokens(source).tokens;
     for token in tokens {
-        println!("{}:{}\t{:?}", token.line, token.column, token.content);
+        println!("{}\t{:?}", token.position, token.content);
     }
 }
 

@@ -163,8 +163,8 @@ fn parse_fn_call_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
     // make sure there is a `(`
     if TokenContent::RoundParenOpen != token.content {
         panic!(
-            "{}:{} expected a `(` for function call",
-            token.line, token.column
+            "{} expected a `(` for function call",
+            token.position
         );
     }
 
@@ -196,21 +196,19 @@ fn parse_fn_call_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
                         tree.new_expr(Expression::FuncCall(id.clone(), args));
                     }
                     TokenContent::Equal => panic!(
-                        "{}:{} variable assignment cannot be used as an argument for a function",
-                        tokens.look_ahead(1).line,
-                        tokens.look_ahead(1).column
+                        "{} variable assignment cannot be used as an argument for a function",
+                        tokens.look_ahead(1).position,
                     ),
                     _ => panic!(
-                        "{}:{} expecting `(`, `,` or `)`, found {:?}",
-                        tokens.look_ahead(1).line,
-                        tokens.look_ahead(1).column,
+                        "{} expecting `(`, `,` or `)`, found {:?}",
+                        tokens.look_ahead(1).position,
                         tokens.look_ahead(1).content
                     ),
                 }
             }
             _ => panic!(
-                "{}:{} cannot use {:?} as an argument for function",
-                token.line, token.column, token.content
+                "{} cannot use {:?} as an argument for function",
+                token.position, token.content
             ),
         }
         args.push(tree.nodes.len() - 1);
@@ -221,8 +219,8 @@ fn parse_fn_call_args(tokens: &mut TokenStream, tree: &mut AST) -> Vec<usize> {
             TokenContent::Comma => {}
             TokenContent::RoundParenClose => break,
             _ => panic!(
-                "{}:{} expected `)` or `,` after a function argument, found {:?}",
-                token.line, token.column, token.content
+                "{} expected `)` or `,` after a function argument, found {:?}",
+                token.position, token.content
             ),
         }
     }
@@ -251,15 +249,14 @@ fn parse_single_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 tree.new_expr(Expression::Identifier(id));
             }
             _ => panic!(
-                "{}:{} expecting `(` or `;`, found {:?}",
-                tokens.look_ahead(1).line,
-                tokens.look_ahead(1).column,
+                "{} expecting `(` or `;`, found {:?}",
+                tokens.look_ahead(1).position,
                 tokens.look_ahead(1).content
             ),
         },
         _ => panic!(
-            "{}:{} `{:?}` is not a valid rhs for variable assignment",
-            token.line, token.column, token.content
+            "{} `{:?}` is not a valid rhs for variable assignment",
+            token.position, token.content
         ),
     }
     tree.nodes.len() - 1
@@ -294,8 +291,8 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                     return tree.nodes.len() - 1;
                 }
                 _ => panic!(
-                    "{}:{} expecting `=` or `(` after {}",
-                    token.line, token.column, id
+                    "{} expecting `=` or `(` after {}",
+                    token.position, id
                 ),
             }
         }
@@ -310,8 +307,8 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 lhs = var_name;
             } else {
                 panic!(
-                    "{}:{} expecting an identifier following `let`, found {:?}",
-                    token.line, token.column, token.content
+                    "{} expecting an identifier following `let`, found {:?}",
+                    token.position, token.content
                 );
             }
             // get type
@@ -320,30 +317,28 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 if let TokenContent::Identifier(type_name) = token.content {
                     var_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
                         panic!(
-                            "{}:{} `{}` is not a valid data type",
-                            token.line, token.column, type_name
+                            "{} `{}` is not a valid data type",
+                            token.position, type_name
                         )
                     });
                 } else {
                     panic!(
-                        "{}:{} `{:?}` is not a valid data type",
-                        token.line, token.column, token.content
+                        "{} `{:?}` is not a valid data type",
+                        token.position, token.content
                     )
                 }
             } else {
                 panic!(
-                    "{}:{} expecting `:` after variable name, found {:?}",
-                    tokens.look_ahead(0).line,
-                    tokens.look_ahead(0).column,
+                    "{} expecting `:` after variable name, found {:?}",
+                    tokens.look_ahead(0).position,
                     tokens.look_ahead(0).content
                 );
             }
             // make sure there is an `=`
             if tokens.next().content != TokenContent::Equal {
                 panic!(
-                    "{}:{} expecting `=` after variable type, found {:?}",
-                    tokens.look_ahead(0).line,
-                    tokens.look_ahead(0).column,
+                    "{} expecting `=` after variable type, found {:?}",
+                    tokens.look_ahead(0).position,
                     tokens.look_ahead(0).content
                 );
             }
@@ -380,21 +375,21 @@ fn parse_expr(tree: &mut AST, tokens: &mut TokenStream) -> usize {
         }
         _ => {
             panic!(
-                "{}:{} unidentified token `{:?}`",
-                token.line, token.column, token.content
+                "{} unidentified token `{:?}`",
+                token.position, token.content
             );
         }
     };
 }
 
-fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
+fn parse_fn_def(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
     let mut token = tokens.next();
 
     // make sure there is a `(`
     if token.content != TokenContent::RoundParenOpen {
         panic!(
-            "{}:{} expecting `(` after function call, found {:?}",
-            token.line, token.column, token.content
+            "{} expecting `(` after function call, found {:?}",
+            token.position, token.content
         );
     }
 
@@ -416,16 +411,16 @@ fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
                 arg_name = id.clone();
             }
             _ => panic!(
-                "{}:{} expecting an identifier as the name of a function arguments, found {:?}",
-                token.line, token.column, token.content
+                "{} expecting an identifier as the name of a function arguments, found {:?}",
+                token.position, token.content
             ),
         }
 
         token = tokens.next();
         if token.content != TokenContent::Colon {
             panic!(
-                "{}:{} expecting `:` after name of a function arguments, found {:?}",
-                token.line, token.column, token.content
+                "{} expecting `:` after name of a function arguments, found {:?}",
+                token.position, token.content
             );
         }
 
@@ -433,14 +428,14 @@ fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
         if let TokenContent::Identifier(type_name) = token.content {
             arg_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
                 panic!(
-                    "{}:{} {} is not a valid data type",
-                    token.line, token.column, type_name
+                    "{} {} is not a valid data type",
+                    token.position, type_name
                 )
             });
         } else {
             panic!(
-                "{}:{} expecting an identifier after `:` for argument name, found {:?}",
-                token.line, token.column, token.content
+                "{} expecting an identifier after `:` for argument name, found {:?}",
+                token.position, token.content
             );
         }
         args.push((arg_name, arg_type));
@@ -450,8 +445,8 @@ fn parse_fn_def_args(tokens: &mut TokenStream) -> Vec<(String, DataType)> {
             TokenContent::Comma => {}
             TokenContent::RoundParenClose => break,
             _ => panic!(
-                "{}:{} expected `)` or `,` after an argument name, found {:?}",
-                token.line, token.column, token.content
+                "{} expected `)` or `,` after an argument name, found {:?}",
+                token.position, token.content
             ),
         }
     }
@@ -471,18 +466,18 @@ fn parse_top_level(tree: &mut AST, tokens: &mut TokenStream) -> usize {
                 func_name = id;
             } else {
                 panic!(
-                    "{}:{} expected an identifier after `func`, found {:?}",
-                    token.line, token.column, token.content
+                    "{} expected an identifier after `func`, found {:?}",
+                    token.position, token.content
                 );
             }
 
-            let func_args = parse_fn_def_args(tokens);
+            let func_args = parse_fn_def(tokens);
 
             token = tokens.next();
             if token.content != TokenContent::BigParenOpen {
                 panic!(
-                    "{}:{} expected `{{`, found {:?}",
-                    token.line, token.column, token.content
+                    "{} expected `{{`, found {:?}",
+                    token.position, token.content
                 );
             }
             loop {

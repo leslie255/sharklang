@@ -1,15 +1,5 @@
-func main() {
-	// math functions
-	let a: uint64 = addint(3, 4);
-	let b: uint64 = subint(a, 1);
-	let c: uint64 = mulint(a, b);
-	let d: uint64 = divint(c, subint(15, 12));
-
-	// printing integars using `print_int`
-	print_int(a);
-	print_int(b);
-	print_int(c);
-	print_int(d);
-
+func main() -> uint64 {
+	"hello";
 	return 0;
 }
+
