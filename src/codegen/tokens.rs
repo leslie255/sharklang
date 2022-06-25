@@ -1,4 +1,3 @@
-#[allow(unused)]
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenContent {
     RoundParenOpen,
@@ -98,7 +97,9 @@ impl TokenStream {
         };
 
         for protytype in prototypes {
-            stream.tokens.push(protytype.construct_token());
+            if !protytype.source.is_empty() {
+                stream.tokens.push(protytype.construct_token());
+            }
         }
 
         stream
@@ -165,6 +166,18 @@ impl TokenPrototype {
                 }
                 let first_ch = str.chars().nth(0).unwrap();
 
+                // is it an assembly instruction?
+                let mut first_word = String::new();
+                for ch in str.chars() {
+                    if !ch.is_whitespace() {
+                        break;
+                    }
+                    first_word.push(ch);
+                }
+                if first_word.is_asm_instruction() {
+                    return true;
+                }
+
                 // is it a number?
                 if first_ch.is_numeric() || first_ch == '-' {
                     let mut dot_count: usize = 0; // number of `.`
@@ -224,7 +237,9 @@ impl TokenPrototype {
                 if first_ch == '\"' {
                     let mut str_content = String::new();
                     for ch in self.source.chars().skip(1) {
-                        if ch == '\"' { break;}
+                        if ch == '\"' {
+                            break;
+                        }
                         str_content.push(ch);
                     }
                     return Token::new(TokenContent::String(str_content), self.position);
@@ -257,12 +272,22 @@ impl TokenPrototype {
                     }
                 }
 
+                // is an identifier or asm instruction
+                let mut first_word = String::new();
                 for ch in self.source.chars() {
-                    if !ch.is_alphanumeric_or_underscore() {
-                        panic!();
+                    if ch.is_whitespace() {
+                        break;
                     }
+                    first_word.push(ch);
                 }
-                return Token::new(TokenContent::Identifier(self.source.clone()), self.position);
+                if first_word.is_asm_instruction() {
+                    return Token::new(TokenContent::RawASM(self.source.clone()), self.position);
+                } else {
+                    return Token::new(
+                        TokenContent::Identifier(self.source.clone()),
+                        self.position,
+                    );
+                }
             }
         }
     }
@@ -292,6 +317,18 @@ pub fn parse_tokens(source: String) -> TokenStream {
     }
 
     loop {
+        // is it a comment?
+        if current_word == "//" {
+            loop {
+                next!();
+                current_word.push(ch);
+                if ch == '\n' {
+                    break;
+                }
+            }
+        }
+
+        // is it a string literal?
         if current_word == "\"" {
             // TODO: string escape codes
             loop {
@@ -302,16 +339,28 @@ pub fn parse_tokens(source: String) -> TokenStream {
                 }
             }
             prototypes.push(TokenPrototype::from(&current_word, i));
+            next!();
+            last_one_is_valid = true;
+            current_word = String::from(ch);
         }
-        if current_word == "//" {
-            loop {
-                next!();
-                current_word.push(ch);
-                if ch == '\n' {
-                    break;
+
+        // is it assembly instruction?
+        if let Some(peek) = iter.peek() {
+            if current_word.is_asm_instruction() && peek.1.is_whitespace() {
+                loop {
+                    next!();
+                    current_word.push(ch);
+                    if ch == '\n' {
+                        break;
+                    }
                 }
+                prototypes.push(TokenPrototype::from(&current_word, i));
+                next!();
+                last_one_is_valid = true;
+                current_word = String::from(ch);
             }
         }
+
         if TokenPrototype::is_valid(&current_word) {
             next!();
             current_word.push(ch);
@@ -331,6 +380,10 @@ pub fn parse_tokens(source: String) -> TokenStream {
             }
             last_one_is_valid = false;
         }
+    }
+
+    for prototype in &prototypes {
+        println!("{:?}", prototype.source);
     }
 
     TokenStream::from_prototypes(prototypes)
