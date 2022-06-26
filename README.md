@@ -70,24 +70,8 @@ u64print(c);
 u64print(d);
 ```
 
-You can also write Assembly instructions directly among the Shark code:
+Defining a custom function is also supported
 
-(They have to be in x86_64 NASM)
-
-``` Swift
-let a: uint64 = 2;
-
-// add 40 to `a`
-mov rax, qword [rbp - 8]
-add rax, 40
-mov qword [rbp - 8], rax
-
-u64print(a);
-```
-
-These three lines of assembly added 40 to `a`, so the program will output `42` instaed of `2`
-
-Defining a function:
 ``` Swift
 func square(a: uint64) -> uint64 {
     return umul(a, a);
@@ -97,6 +81,44 @@ func main() -> int32 {
     "the square of 16 is...";
     let a: uint64 = square(16);
     u64print(a);
+
+    return 0;
+}
+```
+
+You can also write Assembly instructions directly among the Shark code:
+
+(They have to be in x86_64 NASM)
+
+``` Swift
+func main() -> int32 {
+    let a: uint64 = 2;
+
+    // add 40 to `a`
+    mov rax, qword [rbp - 8]
+    add rax, 40
+    mov qword [rbp - 8], rax
+
+    u64print(a);
+	
+	return 0;
+}
+```
+
+These three lines of assembly added 40 to `a`, so the program will output `42` instaed of `2`
+
+For the `return` statement, sharkc will check if the following value matches the return type of the function, and refuse to compile it they don't match.
+But in the case of inline assembly, functions return values by storing them in the register `rax`, so for this Shark has another keyword `_return` that skips the type check and return whatever is in `rax` register.
+
+``` Swift
+func unsafe_return_test() -> uint64 {
+	mov	rax, 255
+
+	_return;
+}
+
+func main() -> int32 {
+    u64print(unsafe_return_test());
 
     return 0;
 }
