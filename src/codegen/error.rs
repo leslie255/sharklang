@@ -111,10 +111,13 @@ impl<'a> ErrorCollector<'a> {
         let err_count = self.errors.len();
         if err_count != 0 {
             println!(
-                "failed to compile {} due to {} error{} listed above",
+                "failed to compile {} due to {}",
                 self.file_name,
-                err_count,
-                if err_count == 1 { "" } else { "s" }
+                if err_count == 1 {
+                    "this error".to_string()
+                } else {
+                    format!("{} errors listed above", err_count)
+                }
             );
             std::process::exit(1);
         }
