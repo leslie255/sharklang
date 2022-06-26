@@ -11,7 +11,7 @@ Hello World:
 
 ``` Swift
 // the main function is the entry point of the program
-func main() {
+func main() -> i32 {
     // if encountered a string literal with no further context,
     // sharkc automatically knows that you want to print it
     "hello, world";
@@ -89,11 +89,11 @@ These three lines of assembly added 40 to `a`, so the program will output `42` i
 
 Defining a function:
 ``` Swift
-func square(a: uint64) {
+func square(a: uint64) -> uint64 {
     return umul(a, a);
 }
 
-func main() {
+func main() -> int32 {
     "the square of 16 is...";
     let a: uint64 = square(16);
     u64print(a);

@@ -1,8 +1,8 @@
-func square(a: uint64) {
+func square(a: uint64) -> uint64 {
 	return mulint(a, a);
 }
 
-func main() {
+func main() -> int32 {
 	let a: uint64 = lmao(5, 6);
 	
 	let b: uint64 = square(a, 4);

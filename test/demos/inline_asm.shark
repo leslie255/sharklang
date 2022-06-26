@@ -1,4 +1,4 @@
-func main() {
+func main() -> int32 {
 	let a: uint64 = 2;
 
 	// add 40 to `a`

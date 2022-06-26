@@ -1,4 +1,4 @@
-func main() {
+func main() -> int32 {
 	// math functions
 	let a: uint64 = uadd(3, 4);
 	let b: uint64 = usub(a, 1);

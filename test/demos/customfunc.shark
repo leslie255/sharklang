@@ -1,8 +1,8 @@
-func square(a: uint64) {
+func square(a: uint64) -> uint64 {
     return umul(a, a);
 }
 
-func main() {
+func main() -> int32 {
     "the square of 16 is...";
     let a: uint64 = square(16);
     u64print(a);

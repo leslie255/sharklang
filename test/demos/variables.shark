@@ -1,4 +1,4 @@
-func main() {
+func main() -> int32 {
 	// the following also have to be inside the main function,
 	// same with other examples below
 
