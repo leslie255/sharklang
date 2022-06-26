@@ -49,7 +49,7 @@ let a: uint64 = 10;
 let b: uint64 = a;
 // assigning values to a variable
 a = 20;	
-let c: uint64 = u64add(a, b);
+let c: uint64 = uadd(a, b);
 
 u64print(c);
 ```
