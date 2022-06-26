@@ -97,7 +97,15 @@ impl<'a> ErrorCollector<'a> {
                 column + 1,
                 err.message,
             );
-            println!("{}", line_str);
+            for ch in line_str.chars() {
+                if ch == '\t' {
+                    print!("    ");
+                    column += 3;
+                } else {
+                    print!("{}", ch);
+                }
+            }
+            println!();
             for _ in 0..column - 1 {
                 print!(" ");
             }
