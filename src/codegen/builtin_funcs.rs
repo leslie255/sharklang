@@ -81,15 +81,15 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
-            String::from("print_int"),
+            String::from("u64print"),
             BuiltinFunc {
                 externs: vec![String::from("printf")],
-                data_sect: vec![asm!(data_str, "printint_fmt", "%llu\n")],
+                data_sect: vec![asm!(data_str, "u64_print_fmt", "%llu\n")],
                 text_sect: vec![
-                    asm!(func_def, "print_int"),
+                    asm!(func_def, "u64print"),
                     asm!(mov, rax!(), rdi!()),
                     asm!(func_call, "printf")
-                        .arg(addr!("printint_fmt"))
+                        .arg(addr!("u64_print_fmt"))
                         .arg(rax!())
                         .asm
                         .clone(),
@@ -98,12 +98,12 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
-            String::from("addint"),
+            String::from("uadd"),
             BuiltinFunc {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
                 text_sect: vec![
-                    asm!(func_def, "addint"),
+                    asm!(func_def, "uadd"),
                     asm!(mov, rax!(), rdi!()),
                     asm!(add, rax!(), rsi!()),
                     asm!(func_ret),
@@ -111,12 +111,12 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
-            String::from("subint"),
+            String::from("usub"),
             BuiltinFunc {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
                 text_sect: vec![
-                    asm!(func_def, "subint"),
+                    asm!(func_def, "usub"),
                     asm!(mov, rax!(), rdi!()),
                     asm!(sub, rax!(), rsi!()),
                     asm!(func_ret),
@@ -124,12 +124,12 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
-            String::from("mulint"),
+            String::from("umul"),
             BuiltinFunc {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
                 text_sect: vec![
-                    asm!(func_def, "mulint"),
+                    asm!(func_def, "umul"),
                     asm!(mov, rax!(), rdi!()),
                     asm!(mul, rsi!()),
                     asm!(func_ret),
@@ -137,12 +137,12 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
-            String::from("divint"),
+            String::from("udiv"),
             BuiltinFunc {
                 externs: Vec::new(),
                 data_sect: Vec::new(),
                 text_sect: vec![
-                    asm!(func_def, "divint"),
+                    asm!(func_def, "udiv"),
                     asm!(mov, rax!(), rdi!()),
                     asm!(div, rsi!()),
                     asm!(func_ret),

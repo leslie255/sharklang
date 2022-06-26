@@ -115,7 +115,7 @@ impl<'a> ErrorCollector<'a> {
                     print!("~");
                 }
             }
-            println!("\n");
+            println!("\n\n-------------------------------\n");
         }
 
         let err_count = self.errors.len();

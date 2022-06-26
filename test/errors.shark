@@ -7,7 +7,7 @@ func main() {
 	
 	let b: uint64 = square(a, 4);
 
-	print_int(c);
+	u64print(c);
 
 	return 0;
 }

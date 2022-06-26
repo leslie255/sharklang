@@ -1,15 +1,15 @@
 func main() {
 	// math functions
-	let a: uint64 = addint(3, 4);
-	let b: uint64 = subint(a, 1);
-	let c: uint64 = mulint(a, b);
-	let d: uint64 = divint(c, subint(15, 12)); // Nested function calls are also supported
+	let a: uint64 = uadd(3, 4);
+	let b: uint64 = usub(a, 1);
+	let c: uint64 = umul(a, b);
+	let d: uint64 = udiv(c, usub(15, 12)); // Nested function calls are also supported
 
 	// printing integars using `print_int`
-	print_int(a);
-	print_int(b);
-	print_int(c);
-	print_int(d);
+	u64print(a);
+	u64print(b);
+	u64print(c);
+	u64print(d);
 
 	return 0;
 }

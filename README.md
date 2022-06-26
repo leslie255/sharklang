@@ -17,7 +17,7 @@ func main() {
     "hello, world";
 
     // printing an integar requires the `print_int` function
-    print_int(42);
+    u64print(42);
 
     // like C the return value of `main` will be used as program exit code
     return 0;
@@ -49,25 +49,25 @@ let a: uint64 = 10;
 let b: uint64 = a;
 // assigning values to a variable
 a = 20;	
-let c: uint64 = addint(a, b);
+let c: uint64 = u64add(a, b);
 
-print_int(c);
+u64print(c);
 ```
 
 There are five builtin functions right now: `print_int`, `addint`, `subint`, `mulint`, `divint`
 
 ``` Swift
 // math functions
-let a: uint64 = addint(3, 4);
-let b: uint64 = subint(a, 1);
-let c: uint64 = mulint(a, b);
-let d: uint64 = divint(c, subint(15, 12)); // Nested function calls are also supported
+let a: uint64 = uadd(3, 4);
+let b: uint64 = usub(a, 1);
+let c: uint64 = umul(a, b);
+let d: uint64 = udiv(c, usub(15, 12)); // Nested function calls are also supported
 
 // printing integars using `print_int`
-print_int(a);
-print_int(b);
-print_int(c);
-print_int(d);
+u64print(a);
+u64print(b);
+u64print(c);
+u64print(d);
 ```
 
 You can also write Assembly instructions directly among the Shark code:
@@ -82,7 +82,7 @@ mov rax, qword [rbp - 8]
 add rax, 40
 mov qword [rbp - 8], rax
 
-print_int(a);
+u64print(a);
 ```
 
 These three lines of assembly added 40 to `a`, so the program will output `42` instaed of `2`
@@ -90,13 +90,13 @@ These three lines of assembly added 40 to `a`, so the program will output `42` i
 Defining a function:
 ``` Swift
 func square(a: uint64) {
-    return mulint(a, a);
+    return umul(a, a);
 }
 
 func main() {
     "the square of 16 is...";
     let a: uint64 = square(16);
-    print_int(a);
+    u64print(a);
 
     return 0;
 }

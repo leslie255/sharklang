@@ -280,6 +280,16 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                                 });
                             }
                         }
+                        Expression::ReturnVal(i) => match ast.expr(*i) {
+                            Expression::Identifier(var_name) => {
+                                var_exist_check(&mut context, err_collector, var_name);
+                            }
+                            Expression::FuncCall(fn_name, args) => {
+                                fn_exist_check(&mut context, err_collector, fn_name);
+                                fn_args_check(&mut context, err_collector, fn_name, args);
+                            }
+                            _ => (),
+                        },
                         _ => (),
                     }
                 }

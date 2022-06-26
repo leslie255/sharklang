@@ -7,9 +7,9 @@ func main() {
 	let b: uint64 = a;
 	// assigning values to a variable
 	a = 20;	
-	let c: uint64 = addint(a, b);
+	let c: uint64 = uadd(a, b);
 
-	print_int(c);
+	u64print(c);
 
 	return 0;
 }

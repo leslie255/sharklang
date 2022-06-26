@@ -6,7 +6,7 @@ func main() {
 	add rax, 40
 	mov qword [rbp - 8], rax
 
-	print_int(a);
+	u64print(a);
 
 	return 0;
 }
