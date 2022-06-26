@@ -28,13 +28,26 @@ impl VarInfo {
         info
     }
 }
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CodeBlock {
     pub body: Vec<usize>,
     pub vars: HashMap<String, VarInfo>,
     pub stack_depth: u64,
     pub arg_types: Vec<DataType>,
     pub has_vars: bool,
+    pub return_type: DataType,
+}
+impl Default for CodeBlock {
+    fn default() -> Self {
+        CodeBlock {
+            body: Vec::default(),
+            vars: HashMap::default(),
+            stack_depth: u64::default(),
+            arg_types: Vec::default(),
+            has_vars: bool::default(),
+            return_type: DataType::Void,
+        }
+    }
 }
 impl CodeBlock {
     pub fn gen_vars_with_args(&mut self, nodes: &Vec<ASTNode>, args: Vec<(String, DataType)>) {
@@ -145,8 +158,7 @@ impl AST {
     pub fn new_expr(&mut self, expr: Expression, position: usize) {
         match expr {
             Expression::FuncDef(ref func_name, _) => {
-                self.func_defs
-                    .insert(func_name.clone(), self.nodes.len());
+                self.func_defs.insert(func_name.clone(), self.nodes.len());
             }
             _ => (),
         }
@@ -365,7 +377,7 @@ fn parse_expr(
             if tokens.next().content == TokenContent::Colon {
                 token = tokens.next();
                 if let TokenContent::Identifier(ref type_name) = token.content {
-                    var_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
+                    var_type = DataType::from_str(type_name).unwrap_or_else(|| {
                         // TODO: type name check should happen in type checks not AST parsing
                         err_collector.syntax_err(
                             &token,
@@ -443,7 +455,7 @@ fn parse_expr(
     };
 }
 
-fn parse_fn_def(
+fn parse_fn_def_args(
     tokens: &mut TokenStream,
     err_collector: &mut ErrorCollector,
 ) -> Vec<(String, DataType)> {
@@ -507,7 +519,7 @@ fn parse_fn_def(
 
         token = tokens.next();
         if let TokenContent::Identifier(ref type_name) = token.content {
-            arg_type = DataType::from_str(type_name.clone()).unwrap_or_else(|| {
+            arg_type = DataType::from_str(type_name).unwrap_or_else(|| {
                 err_collector.syntax_err(&token, format!("{} is not a valid data type", type_name));
                 err_collector.print_errs();
                 exit(1);
@@ -572,14 +584,43 @@ fn parse_top_level(
                 exit(1);
             }
 
-            let func_args = parse_fn_def(tokens, err_collector);
+            let func_args = parse_fn_def_args(tokens, err_collector);
 
             token = tokens.next();
-            if token.content != TokenContent::BigParenOpen {
-                err_collector
-                    .syntax_err(&token, format!("expected `{{`, found {:?}", token.content));
-                err_collector.print_errs();
-                exit(1);
+            // if it's `->` then there is a return type, otherwise it's `void`
+            match token.content {
+                TokenContent::BigParenOpen => (),
+                TokenContent::ReturnArrow => {
+                    token = tokens.next();
+                    if let TokenContent::Identifier(ref type_name) = token.content {
+                        code_block.return_type =
+                            DataType::from_str(type_name).unwrap_or_else(|| {
+                                err_collector.syntax_err(
+                                    &token,
+                                    format!("`{}` is not a valid data type", type_name),
+                                );
+                                err_collector.print_errs();
+                                exit(1);
+                            });
+                    }
+                    token = tokens.next();
+                    if token.content != TokenContent::BigParenOpen {
+                        err_collector.syntax_err(
+                            &token,
+                            format!("expected `{{` or `->`, found {:?}", token.content),
+                        );
+                        err_collector.print_errs();
+                        exit(1);
+                    }
+                }
+                _ => {
+                    err_collector.syntax_err(
+                        &token,
+                        format!("expected `{{` or `->`, found {:?}", token.content),
+                    );
+                    err_collector.print_errs();
+                    exit(1);
+                }
             }
             loop {
                 match tokens.look_ahead(1).content {

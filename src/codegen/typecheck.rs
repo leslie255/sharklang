@@ -16,10 +16,11 @@ pub enum DataType {
     Float32,
     Float64,
     Pointer,
+    Void,
 }
 
 impl DataType {
-    pub fn from_str(str: String) -> Option<DataType> {
+    pub fn from_str(str: &String) -> Option<DataType> {
         match str.as_str() {
             "uint8" => Some(DataType::UInt8),
             "uint16" => Some(DataType::UInt16),
@@ -32,6 +33,7 @@ impl DataType {
             "float32" => Some(DataType::Float32),
             "float64" => Some(DataType::Float64),
             "ptr" => Some(DataType::Pointer),
+            "void" => Some(DataType::Pointer),
             _ => None,
         }
     }
@@ -49,6 +51,7 @@ impl DataType {
             DataType::Float32 => 1,
             DataType::Float64 => 2,
             DataType::Pointer => 8,
+            DataType::Void => 0,
         }
     }
     pub fn description(&self) -> String {
@@ -64,18 +67,34 @@ impl DataType {
             DataType::Float32 => String::from("float32"),
             DataType::Float64 => String::from("float64"),
             DataType::Pointer => String::from("ptr"),
+            DataType::Void => String::from("void"),
         }
     }
     pub fn matches(&self, context: &TypeCheckContext, expr: &Expression) -> bool {
         match expr {
             Expression::NumberLiteral(_) => match self {
-                DataType::UInt8 | DataType::UInt64 | DataType::UInt32 | DataType::UInt16 => true,
+                DataType::UInt8
+                | DataType::UInt64
+                | DataType::UInt32
+                | DataType::UInt16
+                | DataType::Int8
+                | DataType::Int64
+                | DataType::Int32
+                | DataType::Int16 => true,
                 _ => false,
             },
             Expression::StringLiteral(_) => self == &DataType::Pointer,
-            Expression::FuncCall(name, _) => {
-                println!("type check is not implemented for function return values, assuming that the function `{}` returns value of type `{}`", name, self.description());
-                true
+            Expression::FuncCall(fn_name, _) => {
+                if let Some(i) = context.ast.func_defs.get(fn_name) {
+                    if let Expression::FuncDef(_, fn_block) = context.ast.expr(*i) {
+                        return self == &fn_block.return_type;
+                    } else {
+                        return false;
+                    }
+                } else {
+                    // is a builtin function
+                    return self == &context.builtin_fns.funcs.get(fn_name).unwrap().return_type;
+                };
             }
             Expression::Identifier(var_name) => {
                 if let Some(var_info) = context.parent_block.vars.get(var_name) {
@@ -233,8 +252,9 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                     let mut context = TypeCheckContext::new(ast, block, builtin_fns, *i);
                     match &node.expr {
                         Expression::FuncCall(fn_name, args) => {
-                            fn_exist_check(&mut context, err_collector, fn_name);
-                            fn_args_check(&mut context, err_collector, fn_name, args);
+                            if fn_exist_check(&mut context, err_collector, fn_name) {
+                                fn_args_check(&mut context, err_collector, fn_name, args);
+                            }
                         }
                         Expression::VarAssign(var_name, rhs) => {
                             let rhs_expr = ast.expr(*rhs);
@@ -242,17 +262,17 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                                 continue;
                             }
                             if let Expression::FuncCall(fn_name, args) = rhs_expr {
-                                fn_exist_check(&mut context, err_collector, fn_name);
-                                fn_args_check(&mut context, err_collector, fn_name, args);
+                                if fn_exist_check(&mut context, err_collector, fn_name) {
+                                    fn_args_check(&mut context, err_collector, fn_name, args);
+                                }
                             }
                             let lhs_type = &block.vars.get(var_name).unwrap().data_type;
                             if !lhs_type.matches(&context, rhs_expr) {
                                 err_collector.errors.push(CompileError {
                                     err_type: ErrorType::Type,
                                     message: format!(
-                                        "expecting expression of type `{}` as rhs, found {:?}",
-                                        lhs_type.description(),
-                                        rhs_expr
+                                        "expecting expression of type `{}` as rhs",
+                                        lhs_type.description()
                                     ),
                                     position: ast.node(*rhs).position,
                                     length: usize::MAX,
@@ -264,32 +284,56 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                             if let Expression::Identifier(id) = rhs_expr {
                                 var_exist_check(&mut context, err_collector, id);
                             } else if let Expression::FuncCall(fn_name, args) = rhs_expr {
-                                fn_exist_check(&mut context, err_collector, fn_name);
-                                fn_args_check(&mut context, err_collector, fn_name, args);
+                                if fn_exist_check(&mut context, err_collector, fn_name) {
+                                    fn_args_check(&mut context, err_collector, fn_name, args);
+                                }
                             }
                             if !var_type.matches(&context, rhs_expr) {
                                 err_collector.errors.push(CompileError {
                                     err_type: ErrorType::Type,
                                     message: format!(
-                                        "expecting expression of type `{}` as rhs, found {:?}",
-                                        var_type.description(),
-                                        rhs_expr
+                                        "expecting expression of type `{}` as rhs",
+                                        var_type.description()
                                     ),
                                     position: ast.node(*rhs).position,
                                     length: usize::MAX,
                                 });
                             }
                         }
-                        Expression::ReturnVal(i) => match ast.expr(*i) {
-                            Expression::Identifier(var_name) => {
-                                var_exist_check(&mut context, err_collector, var_name);
+                        Expression::ReturnVal(i) => {
+                            let expr = ast.expr(*i);
+                            match expr {
+                                Expression::Identifier(var_name) => {
+                                    var_exist_check(&mut context, err_collector, var_name);
+                                }
+                                Expression::FuncCall(fn_name, args) => {
+                                    fn_exist_check(&mut context, err_collector, fn_name);
+                                    fn_args_check(&mut context, err_collector, fn_name, args);
+                                }
+                                _ => (),
                             }
-                            Expression::FuncCall(fn_name, args) => {
-                                fn_exist_check(&mut context, err_collector, fn_name);
-                                fn_args_check(&mut context, err_collector, fn_name, args);
+                            if !block.return_type.matches(&context, expr) {
+                                err_collector.errors.push(CompileError {
+                                    err_type: ErrorType::Type,
+                                    message: format!(
+                                        "expecting expression of type `{}` after `return`",
+                                        block.return_type.description()
+                                    ),
+                                    position: ast.node(*i).position,
+                                    length: usize::MAX,
+                                });
                             }
-                            _ => (),
-                        },
+                        }
+                        Expression::ReturnVoid => {
+                            if block.return_type != DataType::Void {
+                                err_collector.errors.push(CompileError {
+                                    err_type: ErrorType::Type,
+                                    message: format!("this function does not have a return type"),
+                                    position: ast.node(*i).position,
+                                    length: usize::MAX,
+                                });
+                            }
+                        }
                         _ => (),
                     }
                 }

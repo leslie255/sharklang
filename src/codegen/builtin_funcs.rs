@@ -1,20 +1,22 @@
 use super::ir::*;
+use super::typecheck::*;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-struct BuiltinFunc {
-    externs: Vec<String>,
-    data_sect: Vec<ASMStatement>,
-    text_sect: Vec<ASMStatement>,
+pub struct BuiltinFunc {
+    pub externs: Vec<String>,
+    pub data_sect: Vec<ASMStatement>,
+    pub text_sect: Vec<ASMStatement>,
+    pub return_type: DataType,
 }
 
 pub struct BuiltinFuncChecker {
-    existing_funcs: HashSet<String>,
-    existing_externs: HashSet<String>,
-    existing_data: HashSet<ASMStatement>,
+    pub existing_funcs: HashSet<String>,
+    pub existing_externs: HashSet<String>,
+    pub existing_data: HashSet<ASMStatement>,
 
-    funcs: HashMap<String, BuiltinFunc>,
+    pub funcs: HashMap<String, BuiltinFunc>,
 }
 impl BuiltinFuncChecker {
     pub fn is_builtin_func(&self, name: &String) -> bool {
@@ -61,6 +63,7 @@ impl BuiltinFuncChecker {
                     asm!(func_call, "printf").asm,
                     asm!(func_ret),
                 ],
+                return_type: DataType::Void,
             },
         );
         checker.funcs.insert(
@@ -78,6 +81,7 @@ impl BuiltinFuncChecker {
                         .clone(),
                     asm!(func_ret),
                 ],
+                return_type: DataType::Void,
             },
         );
         checker.funcs.insert(
@@ -95,6 +99,7 @@ impl BuiltinFuncChecker {
                         .clone(),
                     asm!(func_ret),
                 ],
+                return_type: DataType::Void,
             },
         );
         checker.funcs.insert(
@@ -108,6 +113,7 @@ impl BuiltinFuncChecker {
                     asm!(add, rax!(), rsi!()),
                     asm!(func_ret),
                 ],
+                return_type: DataType::UInt64,
             },
         );
         checker.funcs.insert(
@@ -121,6 +127,7 @@ impl BuiltinFuncChecker {
                     asm!(sub, rax!(), rsi!()),
                     asm!(func_ret),
                 ],
+                return_type: DataType::UInt64,
             },
         );
         checker.funcs.insert(
@@ -134,6 +141,7 @@ impl BuiltinFuncChecker {
                     asm!(mul, rsi!()),
                     asm!(func_ret),
                 ],
+                return_type: DataType::UInt64,
             },
         );
         checker.funcs.insert(
@@ -147,6 +155,7 @@ impl BuiltinFuncChecker {
                     asm!(div, rsi!()),
                     asm!(func_ret),
                 ],
+                return_type: DataType::UInt64,
             },
         );
         checker

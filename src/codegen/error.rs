@@ -1,6 +1,5 @@
 use super::tokens::*;
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub enum ErrorType {
     Syntax,
