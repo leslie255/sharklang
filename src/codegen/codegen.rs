@@ -113,6 +113,12 @@ fn gen_code_inside_block(
                 codegen_for_fn_call(block, program, &ast, node, target);
             }
         }
+        Expression::UnsafeReturn => {
+            if block.has_vars {
+                target.push(asm!(add, rsp!(), Operand::Int(block.stack_depth)));
+            }
+            target.push(asm!(func_ret));
+        }
         Expression::ReturnVoid => {
             if block.has_vars {
                 target.push(asm!(add, rsp!(), Operand::Int(block.stack_depth)));
@@ -147,7 +153,6 @@ fn gen_code_inside_block(
 
 static ARG_REG_NAMES: [Operand; 6] = [rdi!(), rsi!(), rdx!(), rcx!(), r8!(), r9!()];
 pub fn codegen(source: String, src_file: String) -> String {
-
     let mut err_collector = ErrorCollector::new(src_file, &source);
     let tokens = preprocess(parse_tokens(&source));
     let ast = construct_ast(tokens, &mut err_collector);

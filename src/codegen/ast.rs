@@ -111,6 +111,7 @@ pub enum Expression {
     FuncDef(String, CodeBlock),
     ReturnVoid,
     ReturnVal(usize),
+    UnsafeReturn,
 
     Unknown,
 }
@@ -432,6 +433,10 @@ fn parse_expr(
                 return tree.nodes.len() - 1;
             }
         },
+        TokenContent::UnsafeReturn => {
+            tree.new_expr(Expression::UnsafeReturn, token.position);
+            return tree.nodes.len() - 1;
+        }
         TokenContent::Semicolon => {
             return usize::MAX;
         }

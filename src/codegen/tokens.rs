@@ -21,6 +21,7 @@ pub enum TokenContent {
     Let,
     Func,
     Return,
+    UnsafeReturn,
     ReturnArrow,
 
     SingleLineCommentStart,
@@ -164,7 +165,7 @@ impl TokenPrototype {
     fn is_valid(str: &String) -> bool {
         match str.as_str() {
             "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "let"
-            | "func" | "true" | "false" | "return" | "//" | "\n" => return true,
+            | "func" | "true" | "false" | "return" | "_return" | "//" | "\n" => return true,
             _ => {
                 if str.is_empty() {
                     return false;
@@ -232,6 +233,7 @@ impl TokenPrototype {
             ":" => return Token::new(TokenContent::Colon, self.position, self.len),
             "func" => return Token::new(TokenContent::Func, self.position, self.len),
             "return" => return Token::new(TokenContent::Return, self.position, self.len),
+            "_return" => return Token::new(TokenContent::UnsafeReturn, self.position, self.len),
             "->" => return Token::new(TokenContent::ReturnArrow, self.position, self.len),
             "//" => {
                 return Token::new(
