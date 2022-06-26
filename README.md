@@ -11,7 +11,7 @@ Hello World:
 
 ``` Swift
 // the main function is the entry point of the program
-func main() -> i32 {
+func main() -> int32 {
     // if encountered a string literal with no further context,
     // sharkc automatically knows that you want to print it
     "hello, world";
