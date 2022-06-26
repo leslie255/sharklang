@@ -112,14 +112,12 @@ But in the case of inline assembly, functions return values by storing them in t
 
 ``` Swift
 func unsafe_return_test() -> uint64 {
-	mov	rax, 255
-
-	_return;
+    mov	rax, 255
+    _return;
 }
 
 func main() -> int32 {
     u64print(unsafe_return_test());
-
     return 0;
 }
 ```
