@@ -12,7 +12,7 @@ pub struct CompileError {
     pub err_type: ErrorType,
     pub message: String,
     pub position: usize,
-    pub length: usize,
+    pub length: usize, // use usize::MAX for just displaying one line
 }
 
 impl CompileError {
@@ -105,13 +105,15 @@ impl<'a> ErrorCollector<'a> {
                     print!("{}", ch);
                 }
             }
-            println!();
-            for _ in 0..column - 1 {
-                print!(" ");
-            }
-            print!("^");
-            for _ in 1..err.length {
-                print!("~");
+            if err.length != usize::MAX {
+                println!();
+                for _ in 0..column - 1 {
+                    print!(" ");
+                }
+                print!("^");
+                for _ in 1..err.length {
+                    print!("~");
+                }
             }
             println!("\n");
         }

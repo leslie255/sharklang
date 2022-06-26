@@ -146,7 +146,7 @@ impl AST {
         match expr {
             Expression::FuncDef(ref func_name, _) => {
                 self.func_defs
-                    .insert(func_name.clone(), self.nodes.len() - 1);
+                    .insert(func_name.clone(), self.nodes.len());
             }
             _ => (),
         }

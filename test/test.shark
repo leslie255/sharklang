@@ -1,15 +1,14 @@
-func main() {
-	let a: uint64 = 2;
-	
-	// add 40 to `a`
-	mov rax, qword [rbp - 8]
-	add rax, 40
-	mov qword [rbp - 8], rax
-	
-	"hello";
+func square(a: uint64) {
+	return mulint(a, a);
+}
 
-	print_int(a);
-	
+func main() {
+	"the square of 16 is...";
+
+	let num: uint64 = 16;
+	print_int(square(num));
+	lol;
+
 	return 0;
 }
 

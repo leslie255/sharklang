@@ -37,7 +37,7 @@ fn compile(src_path: String, output_path: String) {
 
 fn print_tree(src_path: String) {
     let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
-    let tokens = codegen::tokens::parse_tokens(&source);
+    let tokens = codegen::preprocess::preprocess(codegen::tokens::parse_tokens(&source));
     let mut err_collector = codegen::error::ErrorCollector::new(src_path, &source);
     let ast = codegen::ast::construct_ast(tokens, &mut err_collector);
     if err_collector.errors.is_empty() {

@@ -154,11 +154,8 @@ pub fn codegen(source: String, src_file: String) -> String {
 
     let mut builtin_fns = BuiltinFuncChecker::new();
 
-    let err_count = type_check(&ast, &builtin_fns);
-    if err_count != 0 {
-        println!("{} errors found by type checker, aborting...", err_count);
-        panic!();
-    }
+    type_check(&ast, &builtin_fns, &mut err_collector);
+    err_collector.print_errs();
 
     let mut program = Program::new();
 
