@@ -1,12 +1,12 @@
 extern _printf
 
+_fmt:
+db "lol %llu", 0x0a, 0
+
 func main() -> int32 {
-	let a: ptr = "lol";
-	let str: ptr = "hello, world";
-	str = a;
-
-	println(str);
-
+	mov	rdi, _fmt
+	mov	rsi, 255
+	call	_printf
 	return 0;
 }
 

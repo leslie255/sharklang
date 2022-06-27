@@ -75,17 +75,10 @@ fn gen_code_inside_block(
                     target.push(asm!(mov, Operand::LocalVar(addr_lhs), Operand::Int(*num)));
                 }
                 Expression::StringLiteral(str) => {
-                    let strliteral_id = format!("strliteral_{}", program.strliterals_ids.get(str).unwrap());
-                    target.push(asm!(
-                        mov,
-                        rax!(),
-                        Operand::Label(strliteral_id)
-                    ));
-                    target.push(asm!(
-                        mov,
-                        Operand::LocalVar(addr_lhs),
-                        rax!()
-                    ));
+                    let strliteral_id =
+                        format!("strliteral_{}", program.strliterals_ids.get(str).unwrap());
+                    target.push(asm!(mov, rax!(), Operand::Label(strliteral_id)));
+                    target.push(asm!(mov, Operand::LocalVar(addr_lhs), rax!()));
                 }
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(block, program, &ast, ast.node(*rhs), target);
@@ -184,36 +177,42 @@ pub fn codegen(source: String, src_file: String) -> String {
     }
 
     for node in &ast.nodes {
-        if let Expression::FuncCall(name, _) = &node.expr {
-            builtin_fns.add_if_needed(name, &mut program);
-        }
-        if let Expression::FuncDef(name, block) = &node.expr {
-            let mut func: Vec<ASMStatement> = vec![asm!(func_def, name)];
-            if block.has_vars {
-                func.push(asm!(sub, rsp!(), Operand::Int(block.stack_depth)));
+        match &node.expr {
+            Expression::FuncCall(name, _) => {
+                builtin_fns.add_if_needed(name, &mut program);
             }
-            for (i, (_, var_info)) in block.vars.iter().enumerate() {
-                if !var_info.is_arg {
-                    // arguments always come before other variables
-                    break;
+            Expression::FuncDef(name, block) => {
+                let mut func: Vec<ASMStatement> = vec![asm!(func_def, name)];
+                if block.has_vars {
+                    func.push(asm!(sub, rsp!(), Operand::Int(block.stack_depth)));
                 }
-                func.push(asm!(
+                for (i, (_, var_info)) in block.vars.iter().enumerate() {
+                    if !var_info.is_arg {
+                        // arguments always come before other variables
+                        break;
+                    }
+                    func.push(asm!(
                     mov,
                     Operand::LocalVar(var_info.addr).clone(),
                     ARG_REG_NAMES.get(i)
                         .expect("passing more than 6 arguments into a function haven't been implemented yet")
                         .clone()
                 ));
+                }
+                for i in &block.body {
+                    gen_code_inside_block(&block, &ast, ast.node(*i), &mut program, &mut func);
+                }
+                program.funcs.push(func);
             }
-            for i in &block.body {
-                gen_code_inside_block(&block, &ast, ast.node(*i), &mut program, &mut func);
+            Expression::RawASM(code) => {
+                if node.is_top_level {
+                    program.data_sect.push(asm!(code));
+                }
             }
-            program.funcs.push(func);
-        }
-        if let Expression::RawASM(code) = &node.expr {
-            if node.is_top_level {
-                program.data_sect.push(asm!(code));
+            Expression::Label(name) => {
+                program.data_sect.push(asm!(label, name));
             }
+            _ => (),
         }
     }
 

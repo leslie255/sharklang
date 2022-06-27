@@ -117,7 +117,7 @@ impl StringCustomFuncs for String {
             | "extern" | "inc" | "dec" | "jmp" | "jo" | "jno" | "js" | "jns" | "je" | "jz"
             | "jne" | "jnz" | "jp" | "jpe" | "jnp" | "jpo" | "jcxz" | "jecxz" | "jb" | "jnae"
             | "jc" | "jnb" | "jae" | "jnc" | "jbe" | "jna" | "ja" | "jnbe" | "jl" | "jnge"
-            | "jge" | "jnl" | "jle" | "jng" | "jg" | "jnle" => true,
+            | "jge" | "jnl" | "jle" | "jng" | "jg" | "jnle" | "db" | "dw" | "dq" => true,
             _ => false,
         }
     }

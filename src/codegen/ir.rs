@@ -134,7 +134,66 @@ pub enum Register {
     r13,
     r14,
     r15,
+
+    eax,
+    ebx,
+    ecx,
+    edx,
+    esi,
+    edi,
+    esp,
+    ebp,
+
+    ax,
+    bx,
+    cx,
+    dx,
+    si,
+    di,
+    sp,
+    bp,
 }
+impl Register {
+    pub fn name(&self) -> String {
+        match self {
+            Self::rax => String::from("rax"),
+            Self::rbx => String::from("rbx"),
+            Self::rcx => String::from("rcx"),
+            Self::rdx => String::from("rdx"),
+            Self::rsi => String::from("rsi"),
+            Self::rdi => String::from("rdi"),
+            Self::rsp => String::from("rsp"),
+            Self::rbp => String::from("rbp"),
+            Self::r8 => String::from("r8"),
+            Self::r9 => String::from("r9"),
+            Self::r10 => String::from("r10"),
+            Self::r11 => String::from("r11"),
+            Self::r12 => String::from("r12"),
+            Self::r13 => String::from("r13"),
+            Self::r14 => String::from("r14"),
+            Self::r15 => String::from("r15"),
+
+            Self::eax => String::from("eax"),
+            Self::ebx => String::from("ebx"),
+            Self::ecx => String::from("ecx"),
+            Self::edx => String::from("edx"),
+            Self::esi => String::from("esi"),
+            Self::edi => String::from("edi"),
+            Self::esp => String::from("esp"),
+            Self::ebp => String::from("ebp"),
+
+            Self::ax => String::from("ax"),
+            Self::bx => String::from("bx"),
+            Self::cx => String::from("cx"),
+            Self::dx => String::from("dx"),
+            Self::si => String::from("si"),
+            Self::di => String::from("di"),
+            Self::sp => String::from("sp"),
+            Self::bp => String::from("bp"),
+        }
+    }
+}
+
 #[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Operand {
@@ -197,6 +256,12 @@ impl ASMStatement {
                     format!("\tmov\trax, {}\n\tmov\t{}, rax", oper1.text(), oper0.text())
                 } else if let Operand::StaticVar(_) = oper1 {
                     format!("\tmov\trax, {}\n\tmov\t{}, rax", oper1.text(), oper0.text())
+                } else if oper1 == &Operand::Int(0) {
+                    if let Operand::Reg(_) = oper0 {
+                        format!("\txor\t{}, {}", oper0.text(), oper0.text())
+                    } else {
+                        format!("\tmov\t{}, {}", oper0.text(), oper1.text())
+                    }
                 } else {
                     format!("\tmov\t{}, {}", oper0.text(), oper1.text())
                 }
@@ -229,28 +294,6 @@ impl ASMStatement {
 }
 pub struct ASMFuncCallConstructor {
     pub asm: ASMStatement,
-}
-impl Register {
-    pub fn name(&self) -> String {
-        match &self {
-            Self::rax => String::from("rax"),
-            Self::rbx => String::from("rbx"),
-            Self::rcx => String::from("rcx"),
-            Self::rdx => String::from("rdx"),
-            Self::rsi => String::from("rsi"),
-            Self::rdi => String::from("rdi"),
-            Self::rsp => String::from("rsp"),
-            Self::rbp => String::from("rbp"),
-            Self::r8 => String::from("r8"),
-            Self::r9 => String::from("r9"),
-            Self::r10 => String::from("r10"),
-            Self::r11 => String::from("r11"),
-            Self::r12 => String::from("r12"),
-            Self::r13 => String::from("r13"),
-            Self::r14 => String::from("r14"),
-            Self::r15 => String::from("r15"),
-        }
-    }
 }
 
 impl ASMFuncCallConstructor {
