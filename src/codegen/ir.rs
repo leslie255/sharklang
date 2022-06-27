@@ -140,7 +140,7 @@ pub enum Register {
 pub enum Operand {
     Reg(Register),     // rax, rbx, ...
     StaticVar(String), // [rel _label]
-    LocalVar(u64),   // qword [rbp - addr]
+    LocalVar(u64),     // qword [rbp - addr]
     Label(String),     // _label
     Int(u64),          // just data
     Raw(String),
@@ -192,12 +192,15 @@ impl ASMStatement {
             Self::Extern(name) => format!("\textern _{}", name),
             Self::DataInt(name, value) => format!("_{}:\tdq {}", name, value),
             Self::DataStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
-            Self::Mov(oper0, oper1) => match oper0 {
-                Operand::StaticVar(_) => {
+            Self::Mov(oper0, oper1) => {
+                if let Operand::StaticVar(_) = oper0 {
                     format!("\tmov\trax, {}\n\tmov\t{}, rax", oper1.text(), oper0.text())
+                } else if let Operand::StaticVar(_) = oper1 {
+                    format!("\tmov\trax, {}\n\tmov\t{}, rax", oper1.text(), oper0.text())
+                } else {
+                    format!("\tmov\t{}, {}", oper0.text(), oper1.text())
                 }
-                _ => format!("\tmov\t{}, {}", oper0.text(), oper1.text()),
-            },
+            }
             Self::FuncCall(name, args) => {
                 let mut result = String::new();
                 args.iter().enumerate().for_each(|(i, arg)| {

@@ -1,14 +1,11 @@
-func u64square(x: uint64) -> uint64 {
-	return umul(x, x);
-}
+extern _printf
 
 func main() -> int32 {
-	"the square of 16 is..."
+	let a: ptr = "lol";
+	let str: ptr = "hello, world";
+	str = a;
 
-	let a: uint64 = 16;
-	let b: uint64 = u64square(16);
-
-	u64print(b);
+	println(str);
 
 	return 0;
 }

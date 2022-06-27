@@ -157,7 +157,7 @@ impl TokenPrototype {
     fn from(str: &String, position: usize) -> TokenPrototype {
         let mut prototype = TokenPrototype::default();
         prototype.source = str.clone();
-        prototype.position = position - str.len();
+        prototype.position = position.saturating_sub(str.len());
         prototype.len = str.len();
 
         prototype

@@ -74,9 +74,18 @@ fn gen_code_inside_block(
                 Expression::NumberLiteral(num) => {
                     target.push(asm!(mov, Operand::LocalVar(addr_lhs), Operand::Int(*num)));
                 }
-                Expression::StringLiteral(_) => {
-                    println!("using string literal as the rhs of variable declaration has not been implemented yet");
-                    todo!();
+                Expression::StringLiteral(str) => {
+                    let strliteral_id = format!("strliteral_{}", program.strliterals_ids.get(str).unwrap());
+                    target.push(asm!(
+                        mov,
+                        rax!(),
+                        Operand::Label(strliteral_id)
+                    ));
+                    target.push(asm!(
+                        mov,
+                        Operand::LocalVar(addr_lhs),
+                        rax!()
+                    ));
                 }
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(block, program, &ast, ast.node(*rhs), target);
