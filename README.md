@@ -14,9 +14,12 @@ Hello World:
 func main() -> int32 {
     // if encountered a string literal with no further context,
     // sharkc automatically knows that you want to print it
-    "hello, world";
+    "hello";
+    // additionally, you can also use the `print` and `println` function to print a string
+    print("wo");
+    println("rld");
 
-    // printing an integar requires the `print_int` function
+    // printing an integar requires the `u64print` function
     u64print(42);
 
     // like C the return value of `main` will be used as program exit code
@@ -52,6 +55,10 @@ a = 20;
 let c: uint64 = uadd(a, b);
 
 u64print(c);
+
+// strings variables are stored as pointer type `ptr`
+let message: ptr = "hello";
+println(message);
 ```
 
 There are five builtin functions right now: `print_int`, `addint`, `subint`, `mulint`, `divint`
@@ -70,7 +77,7 @@ u64print(c);
 u64print(d);
 ```
 
-Defining a custom function is also supported
+Defining a custom function:
 
 ``` Swift
 func square(a: uint64) -> uint64 {
@@ -101,14 +108,14 @@ func main() -> int32 {
 
     u64print(a);
 	
-	return 0;
+    return 0;
 }
 ```
 
 These three lines of assembly added 40 to `a`, so the program will output `42` instaed of `2`
 
 For the `return` statement, sharkc will check if the following value matches the return type of the function, and refuse to compile it they don't match.
-But in the case of inline assembly, functions return values by storing them in the register `rax`, so for this Shark has another keyword `_return` that skips the type check and return whatever is in `rax` register.
+But in the case of inline assembly, functions return values by storing them in the register `rax`, so for this Shark has another keyword `_return` that skips the type check and return whatever is in the `rax` register.
 
 ``` Swift
 func unsafe_return_test() -> uint64 {
@@ -131,10 +138,11 @@ LICENSED UNDER GPLv3
 
 ### TODO
 - 32, 16, 8 bit types
-- floating point numbers and signed integars
 - characters
-- pointers
+- pointer operations
 - loops
 - if statement
 - type infer
-- standard library
+- type cast
+- math expressions
+....
