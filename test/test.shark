@@ -1,12 +1,11 @@
-extern _printf
-
-_fmt:
-db "lol %llu", 0x0a, 0
+func test(a: uint64, b: uint64) -> uint64 {
+	return 64;
+}
 
 func main() -> int32 {
-	mov	rdi, _fmt
-	mov	rsi, 255
-	call	_printf
-	return 0;
+	let a: int32 = 0;
+	let c: uint64 = 5;
+	let b: uint64 = test(3, c);
+	return a;
 }
 
