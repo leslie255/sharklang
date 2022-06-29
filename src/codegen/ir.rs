@@ -6,7 +6,7 @@ use std::collections::HashMap;
 static ARG_REG_NAMES: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
 
 #[macro_export]
-macro_rules! asm {
+macro_rules! ir {
     (sect, $sect_name: expr) => {
         ASMStatement::SectionHead(String::from($sect_name))
     };
@@ -105,7 +105,7 @@ impl Program {
         for asm in &self.data_sect {
             result.push_str(&asm.description());
         }
-        result.push_str(&asm!(sect, "text").description());
+        result.push_str(&ir!(sect, "text").description());
         for func in &self.funcs {
             for asm in func {
                 result.push_str(&asm.description());
@@ -121,7 +121,7 @@ impl Program {
         for asm in &self.data_sect {
             result.push_str(&asm.gen_code());
         }
-        result.push_str(&asm!(sect, "text").gen_code());
+        result.push_str(&ir!(sect, "text").gen_code());
         for func in &self.funcs {
             for asm in func {
                 result.push_str(&asm.gen_code());
@@ -402,6 +402,15 @@ impl Register {
             Self::r15w => Self::r15w,
         }
     }
+    pub fn of_size(self, size: usize) -> Register {
+        match size {
+            8 => self._64bit(),
+            4 => self._32bit(),
+            2 => self._16bit(),
+            1 => todo!(),
+            _ => panic!(),
+        }
+    }
 }
 
 #[allow(unused)]
@@ -414,6 +423,7 @@ pub enum OperandContent {
     Int(u64),          //
     Raw(String),
 }
+#[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AddrMode {
     Direct,
@@ -426,15 +436,40 @@ pub struct Operand {
     pub content: OperandContent,
 }
 impl Operand {
-    #[allow(unused)]
     pub fn text(&self) -> String {
-        match &self.content {
-            OperandContent::Reg(reg) => format!(""),
-            OperandContent::StaticVar(name) => format!(""),
-            OperandContent::LocalVar(var_addr) => format!(""),
-            OperandContent::Label(name) => format!(""),
-            OperandContent::Int(number) => format!(""),
-            OperandContent::Raw(code) => format!(""),
+        match self.addr_mode {
+            AddrMode::Direct => {
+                match &self.content {
+                    OperandContent::Reg(reg) => match self.len {
+                        8 => reg._64bit(),
+                        4 => reg._32bit(),
+                        2 => reg._16bit(),
+                        //1 => reg._8bit().name(),
+                        _ => panic!(),
+                    }
+                    .name(),
+                    OperandContent::StaticVar(name) => format!("_{}", name),
+                    OperandContent::LocalVar(var_addr) => format!("{} [rbp - {}]", match self.len {
+                        8 => "qword",
+                        4 => "dword",
+                        2 => "bword",
+                        1 => "word",
+                        _ => panic!(),
+                    }, var_addr),
+                    OperandContent::Label(name) => format!("{}:", name),
+                    OperandContent::Int(number) => format!("{}", number),
+                    OperandContent::Raw(code) => format!(
+                        "{}{}",
+                        code,
+                        if code.chars().last().unwrap() == '\n' {
+                            ""
+                        } else {
+                            "\n"
+                        }
+                    ),
+                }
+            }
+            AddrMode::Indirect => todo!(),
         }
     }
     pub fn description(&self) -> String {
@@ -483,7 +518,9 @@ impl ASMStatement {
             Self::Extern(name) => format!("extern\t_{}\n", name),
             Self::DataInt(name, value) => format!("data\t{}\t{}\n", name, value),
             Self::DataStr(name, value) => format!("data\t{}\t{:?}\n", name, value),
-            Self::Mov(oper0, oper1) => format!("mov\t{}, {}\n", oper0.description(), oper1.description()),
+            Self::Mov(oper0, oper1) => {
+                format!("mov\t{}, {}\n", oper0.description(), oper1.description())
+            }
             Self::FuncCall(name, args) => {
                 let mut result = format!("call\t{}", name);
                 for arg in args {
@@ -495,8 +532,12 @@ impl ASMStatement {
             Self::FuncDef(name) => format!("fndef\t{}\n", name),
             Self::FuncRetVoid => format!("return\n"),
             Self::FuncRet(oper) => format!("ret\t{}\n", oper.description()),
-            Self::Add(oper0, oper1) => format!("add\t{}, {}\n", oper0.description(), oper1.description()),
-            Self::Sub(oper0, oper1) => format!("sub\t{}, {}\n", oper0.description(), oper1.description()),
+            Self::Add(oper0, oper1) => {
+                format!("add\t{}, {}\n", oper0.description(), oper1.description())
+            }
+            Self::Sub(oper0, oper1) => {
+                format!("sub\t{}, {}\n", oper0.description(), oper1.description())
+            }
             Self::Mul(oper) => format!("mul\t{}\n", oper.description()),
             Self::Div(oper) => format!("div\t{}\n", oper.description()),
             Self::Raw(code) => format!("raw\t{}", code),
@@ -551,145 +592,152 @@ impl ASMFuncCallConstructor {
 }
 #[allow(unused_macros)]
 #[macro_export]
-macro_rules! operand8 {
-    (label, $x: expr) => {
+macro_rules! operand {
+    (label, $l: expr, $x: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
             content: OperandContent::Label(asm_fmt_str!($x)),
         }
     };
-    (int, $x: expr) => {
+    (int, $l: expr, $x: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
             content: OperandContent::Int($x),
         }
     };
-    (var, $x: expr) => {
+    (var, $l: expr,$x: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
             content: OperandContent::LocalVar($x),
         }
     };
-    (var, ptr, $x: expr) => {
+    (var, ptr, $l: expr, $x: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Indirect,
             content: OperandContent::LocalVar($x),
         }
     };
-    (rax) => {
+    (rax, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rax),
+            content: OperandContent::Reg(Register::rax.of_size($l as usize)),
         }
     };
-    (rbx) => {
+    (rbx, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rbx),
+            content: OperandContent::Reg(Register::rbx.of_size($l as usize)),
         }
     };
-    (rcx) => {
+    (rcx, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rcx),
+            content: OperandContent::Reg(Register::rcx.of_size($l as usize)),
         }
     };
-    (rdx) => {
+    (rdx, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rdx),
+            content: OperandContent::Reg(Register::rdx.of_size($l as usize)),
         }
     };
-    (rsi) => {
+    (rsi, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rsi),
+            content: OperandContent::Reg(Register::rsi.of_size($l as usize)),
         }
     };
-    (rdi) => {
+    (rdi, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rdi),
+            content: OperandContent::Reg(Register::rdi.of_size($l as usize)),
         }
     };
-    (rsp) => {
+    (rsp, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rsp),
+            content: OperandContent::Reg(Register::rsp.of_size($l as usize)),
         }
     };
-    (rbp) => {
+    (rbp, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rbp),
+            content: OperandContent::Reg(Register::rbp.of_size($l as usize)),
         }
     };
-    (r8) => {
+    (r8, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r8),
+            content: OperandContent::Reg(Register::r8.of_size($l as usize)),
         }
     };
-    (r9) => {
+    (r9, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r9),
+            content: OperandContent::Reg(Register::r9.of_size($l as usize)),
         }
     };
-    (r10) => {
+    (r10, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r10),
+            content: OperandContent::Reg(Register::r10.of_size($l as usize)),
         }
     };
-    (r11) => {
+    (r11, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r11),
+            content: OperandContent::Reg(Register::r11.of_size($l as usize)),
         }
     };
-    (r12) => {
+    (r12, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r12),
+            content: OperandContent::Reg(Register::r12.of_size($l as usize)),
         }
     };
-    (r13) => {
+    (r13, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r13),
+            content: OperandContent::Reg(Register::r13.of_size($l as usize)),
         }
     };
-    (r14) => {
+    (r14, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r14),
+            content: OperandContent::Reg(Register::r14.of_size($l as usize)),
         }
     };
-    (r15) => {
+    (r15, $l: expr) => {
         Operand {
-            len: 8,
+            len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r15),
+            content: OperandContent::Reg(Register::r15.of_size($l as usize)),
+        }
+    };
+    (reg, $reg: expr, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg($reg.of_size($l as usize)),
         }
     };
 }

@@ -4,8 +4,6 @@ func test(a: uint64, b: uint64) -> uint64 {
 
 func main() -> int32 {
 	let a: int32 = 0;
-	let c: uint64 = 5;
-	let b: uint64 = test(3, c);
 	return a;
 }
 

@@ -33,7 +33,7 @@ impl BuiltinFuncChecker {
         let func = self.funcs.get(name).unwrap();
         for func_extern in &func.externs {
             if !self.existing_externs.contains(func_extern) {
-                program.externs.push(asm!(extern, func_extern));
+                program.externs.push(ir!(extern, func_extern));
                 self.existing_externs.insert(func_extern.clone());
             }
         }
