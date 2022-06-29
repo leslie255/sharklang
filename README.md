@@ -61,7 +61,7 @@ let message: ptr = "hello";
 println(message);
 ```
 
-There are five builtin functions right now: `print_int`, `addint`, `subint`, `mulint`, `divint`
+There are five builtin functions right now: `u64print`, `uadd`, `usub`, `umul`, `udiv`
 
 ``` Swift
 // math functions
@@ -137,8 +137,7 @@ Just open up a new PR and I'll review it as soon as possible. All issues and PR'
 LICENSED UNDER GPLv3
 
 ### TODO
-- 32, 16, 8 bit types
-- characters
+- characters & 8 bit types
 - pointer operations
 - loops
 - if statement
