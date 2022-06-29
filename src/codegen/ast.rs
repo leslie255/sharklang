@@ -50,6 +50,9 @@ impl Default for CodeBlock {
     }
 }
 impl CodeBlock {
+    pub fn var_type(&self, var_name: &String) -> DataType {
+        self.vars.get(var_name).unwrap().data_type.clone()
+    }
     pub fn gen_vars_with_args(&mut self, nodes: &Vec<ASTNode>, args: Vec<(String, DataType)>) {
         self.has_vars = false; // has at least one variable
         for (arg_name, arg_type) in &args {
@@ -169,6 +172,13 @@ impl AST {
             is_top_level: false,
             position,
         });
+    }
+    pub fn fn_arg_types(&self, fn_name: &String) -> Option<&Vec<DataType>> {
+        if let Expression::FuncDef(_, block) = &self.node(*self.func_defs.get(fn_name)?).expr {
+            Some(&block.arg_types)
+        } else {
+            None
+        }
     }
 }
 

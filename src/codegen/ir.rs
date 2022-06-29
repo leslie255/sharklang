@@ -6,7 +6,7 @@ use std::collections::HashMap;
 static ARG_REG_NAMES: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
 
 #[macro_export]
-macro_rules! asm {
+macro_rules! ir {
     (sect, $sect_name: expr) => {
         ASMStatement::SectionHead(String::from($sect_name))
     };
@@ -97,6 +97,22 @@ impl Program {
             strliterals_ids: HashMap::new(),
         }
     }
+    pub fn description(&self) -> String {
+        let mut result = String::new();
+        for asm in &self.externs {
+            result.push_str(&asm.description());
+        }
+        for asm in &self.data_sect {
+            result.push_str(&asm.description());
+        }
+        result.push_str(&ir!(sect, "text").description());
+        for func in &self.funcs {
+            for asm in func {
+                result.push_str(&asm.description());
+            }
+        }
+        result
+    }
     pub fn gen_code(&self) -> String {
         let mut result = String::new();
         for asm in &self.externs {
@@ -105,7 +121,7 @@ impl Program {
         for asm in &self.data_sect {
             result.push_str(&asm.gen_code());
         }
-        result.push_str(&asm!(sect, "text").gen_code());
+        result.push_str(&ir!(sect, "text").gen_code());
         for func in &self.funcs {
             for asm in func {
                 result.push_str(&asm.gen_code());
@@ -134,26 +150,336 @@ pub enum Register {
     r13,
     r14,
     r15,
+
+    eax,
+    ebx,
+    ecx,
+    edx,
+    esi,
+    edi,
+    esp,
+    ebp,
+    r8d,
+    r9d,
+    r10d,
+    r11d,
+    r12d,
+    r13d,
+    r14d,
+    r15d,
+
+    ax,
+    bx,
+    cx,
+    dx,
+    si,
+    di,
+    sp,
+    bp,
+    r8w,
+    r9w,
+    r10w,
+    r11w,
+    r12w,
+    r13w,
+    r14w,
+    r15w,
 }
+impl Register {
+    pub fn name(&self) -> String {
+        match self {
+            Self::rax => String::from("rax"),
+            Self::rbx => String::from("rbx"),
+            Self::rcx => String::from("rcx"),
+            Self::rdx => String::from("rdx"),
+            Self::rsi => String::from("rsi"),
+            Self::rdi => String::from("rdi"),
+            Self::rsp => String::from("rsp"),
+            Self::rbp => String::from("rbp"),
+            Self::r8 => String::from("r8"),
+            Self::r9 => String::from("r9"),
+            Self::r10 => String::from("r10"),
+            Self::r11 => String::from("r11"),
+            Self::r12 => String::from("r12"),
+            Self::r13 => String::from("r13"),
+            Self::r14 => String::from("r14"),
+            Self::r15 => String::from("r15"),
+
+            Self::eax => String::from("eax"),
+            Self::ebx => String::from("ebx"),
+            Self::ecx => String::from("ecx"),
+            Self::edx => String::from("edx"),
+            Self::esi => String::from("esi"),
+            Self::edi => String::from("edi"),
+            Self::esp => String::from("esp"),
+            Self::ebp => String::from("ebp"),
+            Self::r8d => String::from("r8d"),
+            Self::r9d => String::from("r9d"),
+            Self::r10d => String::from("r10d"),
+            Self::r11d => String::from("r11d"),
+            Self::r12d => String::from("r12d"),
+            Self::r13d => String::from("r13d"),
+            Self::r14d => String::from("r14d"),
+            Self::r15d => String::from("r15d"),
+
+            Self::ax => String::from("ax"),
+            Self::bx => String::from("bx"),
+            Self::cx => String::from("cx"),
+            Self::dx => String::from("dx"),
+            Self::si => String::from("si"),
+            Self::di => String::from("di"),
+            Self::sp => String::from("sp"),
+            Self::bp => String::from("bp"),
+            Self::r8w => String::from("r8w"),
+            Self::r9w => String::from("r9w"),
+            Self::r10w => String::from("r10w"),
+            Self::r11w => String::from("r11w"),
+            Self::r12w => String::from("r12w"),
+            Self::r13w => String::from("r13w"),
+            Self::r14w => String::from("r14w"),
+            Self::r15w => String::from("r15w"),
+        }
+    }
+    pub fn _64bit(self) -> Register {
+        match self {
+            Self::rax => Self::rax,
+            Self::rbx => Self::rbx,
+            Self::rcx => Self::rcx,
+            Self::rdx => Self::rdx,
+            Self::rsi => Self::rsi,
+            Self::rdi => Self::rdi,
+            Self::rsp => Self::rsp,
+            Self::rbp => Self::rbp,
+            Self::r8 => Self::r8,
+            Self::r9 => Self::r9,
+            Self::r10 => Self::r10,
+            Self::r11 => Self::r11,
+            Self::r12 => Self::r12,
+            Self::r13 => Self::r13,
+            Self::r14 => Self::r14,
+            Self::r15 => Self::r15,
+
+            Self::eax => Self::rax,
+            Self::ebx => Self::rbx,
+            Self::ecx => Self::rcx,
+            Self::edx => Self::rdx,
+            Self::esi => Self::rsi,
+            Self::edi => Self::rdi,
+            Self::esp => Self::rsp,
+            Self::ebp => Self::rbp,
+            Self::r8d => Self::r8,
+            Self::r9d => Self::r9,
+            Self::r10d => Self::r10,
+            Self::r11d => Self::r11,
+            Self::r12d => Self::r12,
+            Self::r13d => Self::r13,
+            Self::r14d => Self::r14,
+            Self::r15d => Self::r15,
+
+            Self::ax => Self::rax,
+            Self::bx => Self::rbx,
+            Self::cx => Self::rcx,
+            Self::dx => Self::rdx,
+            Self::si => Self::rsi,
+            Self::di => Self::rdi,
+            Self::sp => Self::rsp,
+            Self::bp => Self::rbp,
+            Self::r8w => Self::r8,
+            Self::r9w => Self::r9,
+            Self::r10w => Self::r10,
+            Self::r11w => Self::r11,
+            Self::r12w => Self::r12,
+            Self::r13w => Self::r13,
+            Self::r14w => Self::r14,
+            Self::r15w => Self::r15,
+        }
+    }
+    pub fn _32bit(self) -> Register {
+        match self {
+            Self::rax => Self::eax,
+            Self::rbx => Self::ebx,
+            Self::rcx => Self::ecx,
+            Self::rdx => Self::edx,
+            Self::rsi => Self::esi,
+            Self::rdi => Self::edi,
+            Self::rsp => Self::esp,
+            Self::rbp => Self::ebp,
+            Self::r8 => Self::r8d,
+            Self::r9 => Self::r9d,
+            Self::r10 => Self::r10d,
+            Self::r11 => Self::r11d,
+            Self::r12 => Self::r12d,
+            Self::r13 => Self::r13d,
+            Self::r14 => Self::r14d,
+            Self::r15 => Self::r15d,
+
+            Self::eax => Self::eax,
+            Self::ebx => Self::ebx,
+            Self::ecx => Self::ecx,
+            Self::edx => Self::edx,
+            Self::esi => Self::esi,
+            Self::edi => Self::edi,
+            Self::esp => Self::esp,
+            Self::ebp => Self::ebp,
+            Self::r8d => Self::r8d,
+            Self::r9d => Self::r9d,
+            Self::r10d => Self::r10d,
+            Self::r11d => Self::r11d,
+            Self::r12d => Self::r12d,
+            Self::r13d => Self::r13d,
+            Self::r14d => Self::r14d,
+            Self::r15d => Self::r15d,
+
+            Self::ax => Self::eax,
+            Self::bx => Self::ebx,
+            Self::cx => Self::ecx,
+            Self::dx => Self::edx,
+            Self::si => Self::esi,
+            Self::di => Self::edi,
+            Self::sp => Self::esp,
+            Self::bp => Self::ebp,
+            Self::r8w => Self::r8d,
+            Self::r9w => Self::r9d,
+            Self::r10w => Self::r10d,
+            Self::r11w => Self::r11d,
+            Self::r12w => Self::r12d,
+            Self::r13w => Self::r13d,
+            Self::r14w => Self::r14d,
+            Self::r15w => Self::r15d,
+        }
+    }
+    pub fn _16bit(self) -> Register {
+        match self {
+            Self::rax => Self::ax,
+            Self::rbx => Self::bx,
+            Self::rcx => Self::cx,
+            Self::rdx => Self::dx,
+            Self::rsi => Self::si,
+            Self::rdi => Self::di,
+            Self::rsp => Self::sp,
+            Self::rbp => Self::bp,
+            Self::r8 => Self::r8w,
+            Self::r9 => Self::r9w,
+            Self::r10 => Self::r10w,
+            Self::r11 => Self::r11w,
+            Self::r12 => Self::r12w,
+            Self::r13 => Self::r13w,
+            Self::r14 => Self::r14w,
+            Self::r15 => Self::r15w,
+
+            Self::eax => Self::ax,
+            Self::ebx => Self::bx,
+            Self::ecx => Self::cx,
+            Self::edx => Self::dx,
+            Self::esi => Self::si,
+            Self::edi => Self::di,
+            Self::esp => Self::sp,
+            Self::ebp => Self::bp,
+            Self::r8d => Self::r8w,
+            Self::r9d => Self::r9w,
+            Self::r10d => Self::r10w,
+            Self::r11d => Self::r11w,
+            Self::r12d => Self::r12w,
+            Self::r13d => Self::r13w,
+            Self::r14d => Self::r14w,
+            Self::r15d => Self::r15w,
+
+            Self::ax => Self::ax,
+            Self::bx => Self::bx,
+            Self::cx => Self::cx,
+            Self::dx => Self::dx,
+            Self::si => Self::si,
+            Self::di => Self::di,
+            Self::sp => Self::sp,
+            Self::bp => Self::bp,
+            Self::r8w => Self::r8w,
+            Self::r9w => Self::r9w,
+            Self::r10w => Self::r10w,
+            Self::r11w => Self::r11w,
+            Self::r12w => Self::r12w,
+            Self::r13w => Self::r13w,
+            Self::r14w => Self::r14w,
+            Self::r15w => Self::r15w,
+        }
+    }
+    pub fn of_size(self, size: usize) -> Register {
+        match size {
+            8 => self._64bit(),
+            4 => self._32bit(),
+            2 => self._16bit(),
+            1 => todo!(),
+            _ => panic!(),
+        }
+    }
+}
+
 #[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Operand {
+pub enum OperandContent {
     Reg(Register),     // rax, rbx, ...
     StaticVar(String), // [rel _label]
     LocalVar(u64),     // qword [rbp - addr]
     Label(String),     // _label
-    Int(u64),          // just data
+    Int(u64),          //
     Raw(String),
+}
+#[allow(unused)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AddrMode {
+    Direct,
+    Indirect,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Operand {
+    pub len: usize, // 8, 4, 2, 1
+    pub addr_mode: AddrMode,
+    pub content: OperandContent,
 }
 impl Operand {
     pub fn text(&self) -> String {
-        match self {
-            Self::Reg(reg) => reg.name(),
-            Self::StaticVar(name) => format!("[rel _{}]", name),
-            Self::LocalVar(addr) => format!("qword [rbp - {}]", addr),
-            Self::Label(label) => format!("_{}", label),
-            Self::Int(int) => format!("{}", int),
-            Self::Raw(str) => str.clone(),
+        match self.addr_mode {
+            AddrMode::Direct => {
+                match &self.content {
+                    OperandContent::Reg(reg) => match self.len {
+                        8 => reg._64bit(),
+                        4 => reg._32bit(),
+                        2 => reg._16bit(),
+                        //1 => reg._8bit().name(),
+                        _ => panic!(),
+                    }
+                    .name(),
+                    OperandContent::StaticVar(name) => format!("_{}", name),
+                    OperandContent::LocalVar(var_addr) => format!("{} [rbp - {}]", match self.len {
+                        8 => "qword",
+                        4 => "dword",
+                        2 => "bword",
+                        1 => "word",
+                        _ => panic!(),
+                    }, var_addr),
+                    OperandContent::Label(name) => format!("{}", name),
+                    OperandContent::Int(number) => format!("{}", number),
+                    OperandContent::Raw(code) => format!(
+                        "{}{}",
+                        code,
+                        if code.chars().last().unwrap() == '\n' {
+                            ""
+                        } else {
+                            "\n"
+                        }
+                    ),
+                }
+            }
+            AddrMode::Indirect => todo!(),
+        }
+    }
+    pub fn description(&self) -> String {
+        match &self.content {
+            OperandContent::Reg(reg) => reg.name(),
+            OperandContent::StaticVar(name) => format!("static var {}", name),
+            OperandContent::LocalVar(var_addr) => format!("local var {}", var_addr),
+            OperandContent::Label(name) => format!("label{}", name),
+            OperandContent::Int(number) => format!("{}", number),
+            OperandContent::Raw(code) => format!("raw {:?}", code),
         }
     }
 }
@@ -185,6 +511,38 @@ pub enum ASMStatement {
     Raw(String),
 }
 impl ASMStatement {
+    pub fn description(&self) -> String {
+        match self {
+            Self::SectionHead(name) => format!("section\t{}\n", name),
+            Self::Label(name) => format!("label\t{}\n", name),
+            Self::Extern(name) => format!("extern\t_{}\n", name),
+            Self::DataInt(name, value) => format!("data\t{}\t{}\n", name, value),
+            Self::DataStr(name, value) => format!("data\t{}\t{:?}\n", name, value),
+            Self::Mov(oper0, oper1) => {
+                format!("mov\t{}, {}\n", oper0.description(), oper1.description())
+            }
+            Self::FuncCall(name, args) => {
+                let mut result = format!("call\t{}", name);
+                for arg in args {
+                    result.push_str(format!("\n\t{}", arg.description()).as_str());
+                }
+                result.push('\n');
+                result
+            }
+            Self::FuncDef(name) => format!("fndef\t{}\n", name),
+            Self::FuncRetVoid => format!("return\n"),
+            Self::FuncRet(oper) => format!("ret\t{}\n", oper.description()),
+            Self::Add(oper0, oper1) => {
+                format!("add\t{}, {}\n", oper0.description(), oper1.description())
+            }
+            Self::Sub(oper0, oper1) => {
+                format!("sub\t{}, {}\n", oper0.description(), oper1.description())
+            }
+            Self::Mul(oper) => format!("mul\t{}\n", oper.description()),
+            Self::Div(oper) => format!("div\t{}\n", oper.description()),
+            Self::Raw(code) => format!("raw\t{}", code),
+        }
+    }
     pub fn gen_code(&self) -> String {
         let mut code = match self {
             Self::SectionHead(name) => format!("\n\tsection .{}", name),
@@ -192,15 +550,7 @@ impl ASMStatement {
             Self::Extern(name) => format!("\textern _{}", name),
             Self::DataInt(name, value) => format!("_{}:\tdq {}", name, value),
             Self::DataStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
-            Self::Mov(oper0, oper1) => {
-                if let Operand::StaticVar(_) = oper0 {
-                    format!("\tmov\trax, {}\n\tmov\t{}, rax", oper1.text(), oper0.text())
-                } else if let Operand::StaticVar(_) = oper1 {
-                    format!("\tmov\trax, {}\n\tmov\t{}, rax", oper1.text(), oper0.text())
-                } else {
-                    format!("\tmov\t{}, {}", oper0.text(), oper1.text())
-                }
-            }
+            Self::Mov(oper0, oper1) => format!("\tmov\t{}, {}", oper0.text(), oper1.text()),
             Self::FuncCall(name, args) => {
                 let mut result = String::new();
                 args.iter().enumerate().for_each(|(i, arg)| {
@@ -230,28 +580,6 @@ impl ASMStatement {
 pub struct ASMFuncCallConstructor {
     pub asm: ASMStatement,
 }
-impl Register {
-    pub fn name(&self) -> String {
-        match &self {
-            Self::rax => String::from("rax"),
-            Self::rbx => String::from("rbx"),
-            Self::rcx => String::from("rcx"),
-            Self::rdx => String::from("rdx"),
-            Self::rsi => String::from("rsi"),
-            Self::rdi => String::from("rdi"),
-            Self::rsp => String::from("rsp"),
-            Self::rbp => String::from("rbp"),
-            Self::r8 => String::from("r8"),
-            Self::r9 => String::from("r9"),
-            Self::r10 => String::from("r10"),
-            Self::r11 => String::from("r11"),
-            Self::r12 => String::from("r12"),
-            Self::r13 => String::from("r13"),
-            Self::r14 => String::from("r14"),
-            Self::r15 => String::from("r15"),
-        }
-    }
-}
 
 impl ASMFuncCallConstructor {
     pub fn arg(&mut self, arg: Operand) -> &mut ASMFuncCallConstructor {
@@ -264,120 +592,152 @@ impl ASMFuncCallConstructor {
 }
 #[allow(unused_macros)]
 #[macro_export]
-macro_rules! addr {
-    ($name: expr) => {
-        Operand::Label($name.to_string())
+macro_rules! operand {
+    (label, $l: expr, $x: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Label($x),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! rax {
-    () => {
-        Operand::Reg(Register::rax)
+    (int, $l: expr, $x: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Int($x),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! rbx {
-    () => {
-        Operand::Reg(Register::rbx)
+    (var, $l: expr,$x: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::LocalVar($x),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! rcx {
-    () => {
-        Operand::Reg(Register::rcx)
+    (var, ptr, $l: expr, $x: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Indirect,
+            content: OperandContent::LocalVar($x),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! rsi {
-    () => {
-        Operand::Reg(Register::rsi)
+    (rax, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rax.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! rdx {
-    () => {
-        Operand::Reg(Register::rdx)
+    (rbx, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rbx.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! rdi {
-    () => {
-        Operand::Reg(Register::rdi)
+    (rcx, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rcx.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! rsp {
-    () => {
-        Operand::Reg(Register::rsp)
+    (rdx, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rdx.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! rbp {
-    () => {
-        Operand::Reg(Register::rbp)
+    (rsi, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rsi.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! r8 {
-    () => {
-        Operand::Reg(Register::r8)
+    (rdi, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rdi.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! r9 {
-    () => {
-        Operand::Reg(Register::r9)
+    (rsp, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rsp.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! r10 {
-    () => {
-        Operand::Reg(Register::r10)
+    (rbp, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rbp.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! r11 {
-    () => {
-        Operand::Reg(Register::r11)
+    (r8, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r8.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! r12 {
-    () => {
-        Operand::Reg(Register::r12)
+    (r9, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r9.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! r13 {
-    () => {
-        Operand::Reg(Register::r13)
+    (r10, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r10.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! r14 {
-    () => {
-        Operand::Reg(Register::r14)
+    (r11, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r11.of_size($l as usize)),
+        }
     };
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! r15 {
-    () => {
-        Operand::Reg(Register::r15)
+    (r12, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r12.of_size($l as usize)),
+        }
+    };
+    (r13, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r13.of_size($l as usize)),
+        }
+    };
+    (r14, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r14.of_size($l as usize)),
+        }
+    };
+    (r15, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r15.of_size($l as usize)),
+        }
+    };
+    (reg, $reg: expr, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg($reg.of_size($l as usize)),
+        }
     };
 }

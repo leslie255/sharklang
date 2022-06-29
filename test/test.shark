@@ -1,12 +1,6 @@
-extern _printf
-
 func main() -> int32 {
-	let a: ptr = "lol";
-	let str: ptr = "hello, world";
-	str = a;
-
-	println(str);
-
+	let a: uint64 = 5;
+	u64print(a);
 	return 0;
 }
 

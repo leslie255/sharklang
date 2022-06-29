@@ -22,26 +22,38 @@ fn codegen_for_fn_call(
     target: &mut Vec<ASMStatement>,
 ) {
     if let Expression::FuncCall(func_name, args) = &node.expr {
-        let mut func_call = asm!(func_call, func_name);
+        let mut func_call = ir!(func_call, func_name);
+        // TODO: promote size smaller than 32 bit to 32 bit in function call args
+        let arg_types = ast.fn_arg_types(func_name);
         for (i, arg) in args.iter().enumerate() {
+            let size = if arg_types.is_some() {
+                arg_types.unwrap()[i].size()
+            } else {
+                8
+            };
             match ast.expr(*arg) {
                 Expression::Identifier(id) => {
-                    func_call.arg(Operand::LocalVar(block.var_addr(id).unwrap()));
+                    func_call.arg(operand!(var, size, block.var_addr(id).unwrap()));
                 }
                 Expression::NumberLiteral(num) => {
-                    func_call.arg(Operand::Int(*num));
+                    func_call.arg(operand!(int, size, *num));
                 }
                 Expression::StringLiteral(str) => {
-                    func_call.arg(Operand::Label(format!(
-                        "strliteral_{}",
-                        program.strliterals_ids.get(str).unwrap()
-                    )));
+                    func_call.arg(operand!(
+                        label,
+                        size,
+                        format!("_strliteral_{}", program.strliterals_ids.get(str).unwrap())
+                    ));
                 }
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(block, program, ast, ast.node(*arg), target);
-                    let reg = NESTED_FUNC_CALL_BUFFER_REGS[i];
-                    target.push(asm!(mov, Operand::Reg(reg), rax!()));
-                    func_call.arg(Operand::Reg(reg));
+                    let reg = Operand {
+                        len: size as usize,
+                        addr_mode: AddrMode::Direct,
+                        content: OperandContent::Reg(NESTED_FUNC_CALL_BUFFER_REGS[i]),
+                    };
+                    target.push(ir!(mov, reg.clone(), operand!(rax, size)));
+                    func_call.arg(reg);
                 }
                 _ => panic!("{:?} is not a valid argument for function", ast.expr(*arg)),
             }
@@ -61,35 +73,37 @@ fn gen_code_inside_block(
         Expression::Identifier(_) => {}
         Expression::NumberLiteral(_) => {}
         Expression::StringLiteral(_) => {}
-        Expression::RawASM(text) => target.push(asm!(format!("\t{}", text))),
-        Expression::Label(name) => target.push(asm!(label, name)),
-        Expression::VarInit(var_name, _, rhs) => {
+        Expression::RawASM(text) => target.push(ir!(format!("\t{}", text))),
+        Expression::Label(name) => target.push(ir!(label, name)),
+        Expression::VarInit(var_name, var_type, rhs) => {
             let addr_lhs = block.var_addr(var_name).unwrap();
+            let size = var_type.size();
             match ast.expr(*rhs) {
                 Expression::Identifier(id) => {
                     let addr_rhs = block.var_addr(id).unwrap();
-                    target.push(asm!(mov, rax!(), Operand::LocalVar(addr_rhs)));
-                    target.push(asm!(mov, Operand::LocalVar(addr_lhs), rax!()));
+                    target.push(ir!(mov, operand!(rax, size), operand!(var, size, addr_rhs)));
+                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
                 }
                 Expression::NumberLiteral(num) => {
-                    target.push(asm!(mov, Operand::LocalVar(addr_lhs), Operand::Int(*num)));
+                    target.push(ir!(
+                        mov,
+                        operand!(var, size, addr_lhs),
+                        operand!(int, size, *num)
+                    ));
                 }
                 Expression::StringLiteral(str) => {
-                    let strliteral_id = format!("strliteral_{}", program.strliterals_ids.get(str).unwrap());
-                    target.push(asm!(
+                    let strliteral_id =
+                        format!("strliteral_{}", program.strliterals_ids.get(str).unwrap());
+                    target.push(ir!(
                         mov,
-                        rax!(),
-                        Operand::Label(strliteral_id)
+                        operand!(rax, size),
+                        operand!(label, size, strliteral_id)
                     ));
-                    target.push(asm!(
-                        mov,
-                        Operand::LocalVar(addr_lhs),
-                        rax!()
-                    ));
+                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
                 }
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(block, program, &ast, ast.node(*rhs), target);
-                    target.push(asm!(mov, Operand::LocalVar(addr_lhs), rax!()));
+                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
                 }
                 _ => {
                     panic!();
@@ -98,21 +112,26 @@ fn gen_code_inside_block(
         }
         Expression::VarAssign(var_name, rhs) => {
             let addr_lhs = block.var_addr(var_name).unwrap();
+            let size = block.var_type(var_name).size();
             match ast.expr(*rhs) {
                 Expression::Identifier(id) => {
-                    target.push(asm!(
+                    target.push(ir!(
                         mov,
-                        rax!(),
-                        Operand::LocalVar(block.var_addr(id).unwrap())
+                        operand!(rax, size),
+                        operand!(var, size, block.var_addr(id).unwrap())
                     ));
-                    target.push(asm!(mov, Operand::LocalVar(addr_lhs), rax!()));
+                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
                 }
                 Expression::NumberLiteral(num) => {
-                    target.push(asm!(mov, Operand::LocalVar(addr_lhs), Operand::Int(*num)));
+                    target.push(ir!(
+                        mov,
+                        operand!(var, size, addr_lhs),
+                        operand!(int, size, *num)
+                    ));
                 }
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(block, program, &ast, &ast.node(*rhs), target);
-                    target.push(asm!(mov, Operand::LocalVar(addr_lhs), rax!()));
+                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
                 }
                 _ => panic!("{:?} is not a valid expression", ast.expr(*rhs)),
             }
@@ -124,27 +143,36 @@ fn gen_code_inside_block(
         }
         Expression::UnsafeReturn => {
             if block.has_vars {
-                target.push(asm!(add, rsp!(), Operand::Int(block.stack_depth)));
+                target.push(ir!(
+                    add,
+                    operand!(rsp, 8),
+                    operand!(int, 8, block.stack_depth)
+                ));
             }
-            target.push(asm!(func_ret));
+            target.push(ir!(func_ret));
         }
         Expression::ReturnVoid => {
             if block.has_vars {
-                target.push(asm!(add, rsp!(), Operand::Int(block.stack_depth)));
+                target.push(ir!(
+                    add,
+                    operand!(rsp, 8),
+                    operand!(int, 8, block.stack_depth)
+                ));
             }
-            target.push(asm!(func_ret));
+            target.push(ir!(func_ret));
         }
         Expression::ReturnVal(val) => {
+            let size = block.return_type.size();
             match ast.expr(*val) {
                 Expression::Identifier(id) => {
-                    target.push(asm!(
+                    target.push(ir!(
                         mov,
-                        rax!(),
-                        Operand::LocalVar(block.var_addr(id).unwrap())
+                        operand!(rax, size),
+                        operand!(var, size, block.var_addr(id).unwrap())
                     ));
                 }
                 Expression::NumberLiteral(num) => {
-                    target.push(asm!(mov, rax!(), Operand::Int(*num)));
+                    target.push(ir!(mov, operand!(rax, size), operand!(int, size, *num)));
                 }
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(block, program, &ast, &ast.node(*val), target);
@@ -152,15 +180,26 @@ fn gen_code_inside_block(
                 _ => panic!("{:?} is not a valid expression", ast.expr(*val)),
             }
             if block.has_vars {
-                target.push(asm!(add, rsp!(), Operand::Int(block.stack_depth)));
+                target.push(ir!(
+                    add,
+                    operand!(rsp, 8),
+                    operand!(int, 8, block.stack_depth)
+                ));
             }
-            target.push(asm!(func_ret));
+            target.push(ir!(func_ret));
         }
         _ => {}
     }
 }
 
-static ARG_REG_NAMES: [Operand; 6] = [rdi!(), rsi!(), rdx!(), rcx!(), r8!(), r9!()];
+static ARG_REGS: [Register; 6] = [
+    Register::rdi,
+    Register::rsi,
+    Register::rdx,
+    Register::rcx,
+    Register::r8,
+    Register::r9,
+];
 pub fn codegen(source: String, src_file: String) -> String {
     let mut err_collector = ErrorCollector::new(src_file, &source);
     let tokens = preprocess(parse_tokens(&source));
@@ -179,48 +218,56 @@ pub fn codegen(source: String, src_file: String) -> String {
             program.strliterals_ids.insert(str.clone(), i as u64);
             program
                 .data_sect
-                .push(asm!(data_str, format!("strliteral_{}", i), str));
+                .push(ir!(data_str, format!("strliteral_{}", i), str));
         }
     }
 
     for node in &ast.nodes {
-        if let Expression::FuncCall(name, _) = &node.expr {
-            builtin_fns.add_if_needed(name, &mut program);
-        }
-        if let Expression::FuncDef(name, block) = &node.expr {
-            let mut func: Vec<ASMStatement> = vec![asm!(func_def, name)];
-            if block.has_vars {
-                func.push(asm!(sub, rsp!(), Operand::Int(block.stack_depth)));
+        match &node.expr {
+            Expression::FuncCall(name, _) => {
+                builtin_fns.add_if_needed(name, &mut program);
             }
-            for (i, (_, var_info)) in block.vars.iter().enumerate() {
-                if !var_info.is_arg {
-                    // arguments always come before other variables
-                    break;
+            Expression::FuncDef(name, block) => {
+                let mut func: Vec<ASMStatement> = vec![ir!(func_def, name)];
+                if block.has_vars {
+                    func.push(ir!(
+                        sub,
+                        operand!(rsp, 8),
+                        operand!(int, 8, block.stack_depth)
+                    ));
                 }
-                func.push(asm!(
+                for (i, (_, var_info)) in block.vars.iter().enumerate() {
+                    if !var_info.is_arg {
+                        // arguments always come before other variables
+                        break;
+                    }
+                    func.push(ir!(
                     mov,
-                    Operand::LocalVar(var_info.addr).clone(),
-                    ARG_REG_NAMES.get(i)
+                    operand!(var, var_info.data_type.size(), var_info.addr).clone(),
+                    operand!(reg, ARG_REGS.get(i)
                         .expect("passing more than 6 arguments into a function haven't been implemented yet")
-                        .clone()
+                        .clone(), var_info.data_type.size())
                 ));
+                }
+                for i in &block.body {
+                    gen_code_inside_block(&block, &ast, ast.node(*i), &mut program, &mut func);
+                }
+                program.funcs.push(func);
             }
-            for i in &block.body {
-                gen_code_inside_block(&block, &ast, ast.node(*i), &mut program, &mut func);
+            Expression::RawASM(code) => {
+                if node.is_top_level {
+                    program.data_sect.push(ir!(code));
+                }
             }
-            program.funcs.push(func);
-        }
-        if let Expression::RawASM(code) = &node.expr {
-            if node.is_top_level {
-                program.data_sect.push(asm!(code));
+            Expression::Label(name) => {
+                program.data_sect.push(ir!(label, name));
             }
+            _ => (),
         }
     }
 
-    if !err_collector.errors.is_empty() {
-        err_collector.print_errs();
-        println!("could not compile due to errors listed above");
-        panic!();
-    }
-    program.gen_code()
+    err_collector.print_errs();
+
+    let generated = program.gen_code();
+    generated
 }
