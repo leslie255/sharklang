@@ -1,6 +1,5 @@
 func main() -> int32 {
-	let a: uint64 = 5;
-	u64print(a);
+	"hello world\nasd;kfj";
 	return 0;
 }
 

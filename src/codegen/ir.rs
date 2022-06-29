@@ -63,12 +63,25 @@ macro_rules! asm_fmt_str {
         let mut is_outside_quote = false;
         for ch in $string.chars() {
             if ch == '\n' {
-                result.push_str("\", 0x0A");
+                if is_outside_quote {
+                    result.push_str(", 0x0A");
+                } else {
+                    result.push_str("\", 0x0A");
+                }
+                is_outside_quote = true;
+                continue;
+            }
+            if ch == '\"' {
+                if is_outside_quote {
+                    result.push_str(", 0x22");
+                } else {
+                    result.push_str("\", 0x22");
+                }
                 is_outside_quote = true;
                 continue;
             }
             if is_outside_quote {
-                result.push_str("\", ");
+                result.push_str(", \"");
                 is_outside_quote = false;
             }
             result.push(ch);
@@ -97,6 +110,7 @@ impl Program {
             strliterals_ids: HashMap::new(),
         }
     }
+    #[allow(dead_code)]
     pub fn description(&self) -> String {
         let mut result = String::new();
         for asm in &self.externs {
@@ -449,13 +463,17 @@ impl Operand {
                     }
                     .name(),
                     OperandContent::StaticVar(name) => format!("_{}", name),
-                    OperandContent::LocalVar(var_addr) => format!("{} [rbp - {}]", match self.len {
-                        8 => "qword",
-                        4 => "dword",
-                        2 => "bword",
-                        1 => "word",
-                        _ => panic!(),
-                    }, var_addr),
+                    OperandContent::LocalVar(var_addr) => format!(
+                        "{} [rbp - {}]",
+                        match self.len {
+                            8 => "qword",
+                            4 => "dword",
+                            2 => "bword",
+                            1 => "word",
+                            _ => panic!(),
+                        },
+                        var_addr
+                    ),
                     OperandContent::Label(name) => format!("{}", name),
                     OperandContent::Int(number) => format!("{}", number),
                     OperandContent::Raw(code) => format!(

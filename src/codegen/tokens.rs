@@ -248,14 +248,10 @@ impl TokenPrototype {
 
                 // is a string
                 if first_ch == '\"' {
-                    let mut str_content = String::new();
-                    for ch in self.source.chars().skip(1) {
-                        if ch == '\"' {
-                            break;
-                        }
-                        str_content.push(ch);
-                    }
-                    return Token::new(TokenContent::String(str_content), self.position, self.len);
+                    let mut str_content = self.source.chars();
+                    str_content.next();
+                    str_content.next_back();
+                    return Token::new(TokenContent::String(str_content.as_str().to_string()), self.position, self.len);
                 }
 
                 // is a floating point number
@@ -351,6 +347,14 @@ pub fn parse_tokens(source: &String) -> TokenStream {
             // TODO: string escape codes
             loop {
                 next!();
+                if ch == '\\' {
+                    next!();
+                    match ch {
+                        'n' => current_word.push('\n'),
+                        _ => current_word.push(ch),
+                    }
+                    continue;
+                }
                 current_word.push(ch);
                 if ch == '\"' {
                     break;
