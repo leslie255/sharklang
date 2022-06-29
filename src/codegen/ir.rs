@@ -456,7 +456,7 @@ impl Operand {
                         1 => "word",
                         _ => panic!(),
                     }, var_addr),
-                    OperandContent::Label(name) => format!("{}:", name),
+                    OperandContent::Label(name) => format!("{}", name),
                     OperandContent::Int(number) => format!("{}", number),
                     OperandContent::Raw(code) => format!(
                         "{}{}",
@@ -597,7 +597,7 @@ macro_rules! operand {
         Operand {
             len: $l as usize,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Label(asm_fmt_str!($x)),
+            content: OperandContent::Label($x),
         }
     };
     (int, $l: expr, $x: expr) => {

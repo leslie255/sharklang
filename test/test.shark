@@ -4,6 +4,7 @@ func test(a: uint64, b: uint64) -> uint64 {
 
 func main() -> int32 {
 	let a: int32 = 0;
+	print("hello");
 	return a;
 }
 

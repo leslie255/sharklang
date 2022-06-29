@@ -53,33 +53,26 @@ impl BuiltinFuncChecker {
             funcs: HashMap::new(),
         };
 
-        //checker.funcs.insert(
-        //    String::from("print"),
-        //    BuiltinFunc {
-        //        externs: vec![String::from("printf")],
-        //        data_sect: Vec::new(),
-        //        text_sect: vec![
-        //            asm!(func_def, "print"),
-        //            asm!(func_call, "printf").asm,
-        //            asm!(func_ret),
-        //        ],
-        //        return_type: DataType::Void,
-        //    },
-        //);
+        checker.funcs.insert(
+            String::from("print"),
+            BuiltinFunc {
+                externs: vec![String::from("printf")],
+                data_sect: Vec::new(),
+                text_sect: vec![
+                    ir!(func_def, "print"),
+                    ir!(func_call, "printf").asm,
+                    ir!(func_ret),
+                ],
+                return_type: DataType::Void,
+            },
+        );
         //checker.funcs.insert(
         //    String::from("println"),
         //    BuiltinFunc {
         //        externs: vec![String::from("printf")],
-        //        data_sect: vec![asm!(data_str, "println_fmt", "%s\n")],
+        //        data_sect: vec![ir!(data_str, "println_fmt", "%s\n")],
         //        text_sect: vec![
-        //            asm!(func_def, "println"),
-        //            asm!(mov, reg!(rax), reg!(rdi)),
-        //            asm!(func_call, "printf")
-        //                .arg(addr!("println_fmt"))
-        //                .arg(reg!(rax))
-        //                .asm
-        //                .clone(),
-        //            asm!(func_ret),
+        //            ir!(""),
         //        ],
         //        return_type: DataType::Void,
         //    },
@@ -88,16 +81,16 @@ impl BuiltinFuncChecker {
         //    String::from("u64print"),
         //    BuiltinFunc {
         //        externs: vec![String::from("printf")],
-        //        data_sect: vec![asm!(data_str, "u64_print_fmt", "%llu\n")],
+        //        data_sect: vec![ir!(data_str, "u64_print_fmt", "%llu\n")],
         //        text_sect: vec![
-        //            asm!(func_def, "u64print"),
-        //            asm!(mov, reg!(rax), reg!(rdi)),
-        //            asm!(func_call, "printf")
+        //            ir!(func_def, "u64print"),
+        //            ir!(mov, reg!(rax), reg!(rdi)),
+        //            ir!(func_call, "printf")
         //                .arg(addr!("u64_print_fmt"))
         //                .arg(reg!(rax))
-        //                .asm
+        //                .ir
         //                .clone(),
-        //            asm!(func_ret),
+        //            ir!(func_ret),
         //        ],
         //        return_type: DataType::Void,
         //    },
@@ -108,10 +101,10 @@ impl BuiltinFuncChecker {
         //        externs: Vec::new(),
         //        data_sect: Vec::new(),
         //        text_sect: vec![
-        //            asm!(func_def, "uadd"),
-        //            asm!(mov, reg!(rax), reg!(rdi)),
-        //            asm!(add, reg!(rax), reg!(rsi)),
-        //            asm!(func_ret),
+        //            ir!(func_def, "uadd"),
+        //            ir!(mov, reg!(rax), reg!(rdi)),
+        //            ir!(add, reg!(rax), reg!(rsi)),
+        //            ir!(func_ret),
         //        ],
         //        return_type: DataType::UInt64,
         //    },
@@ -122,10 +115,10 @@ impl BuiltinFuncChecker {
         //        externs: Vec::new(),
         //        data_sect: Vec::new(),
         //        text_sect: vec![
-        //            asm!(func_def, "usub"),
-        //            asm!(mov, reg!(rax), reg!(rdi)),
-        //            asm!(sub, reg!(rax), reg!(rsi)),
-        //            asm!(func_ret),
+        //            ir!(func_def, "usub"),
+        //            ir!(mov, reg!(rax), reg!(rdi)),
+        //            ir!(sub, reg!(rax), reg!(rsi)),
+        //            ir!(func_ret),
         //        ],
         //        return_type: DataType::UInt64,
         //    },
@@ -136,10 +129,10 @@ impl BuiltinFuncChecker {
         //        externs: Vec::new(),
         //        data_sect: Vec::new(),
         //        text_sect: vec![
-        //            asm!(func_def, "umul"),
-        //            asm!(mov, reg!(rax), reg!(rdi)),
-        //            asm!(mul, reg!(rsi)),
-        //            asm!(func_ret),
+        //            ir!(func_def, "umul"),
+        //            ir!(mov, reg!(rax), reg!(rdi)),
+        //            ir!(mul, reg!(rsi)),
+        //            ir!(func_ret),
         //        ],
         //        return_type: DataType::UInt64,
         //    },
@@ -150,10 +143,10 @@ impl BuiltinFuncChecker {
         //        externs: Vec::new(),
         //        data_sect: Vec::new(),
         //        text_sect: vec![
-        //            asm!(func_def, "udiv"),
-        //            asm!(mov, reg!(rax), reg!(rdi)),
-        //            asm!(div, reg!(rsi)),
-        //            asm!(func_ret),
+        //            ir!(func_def, "udiv"),
+        //            ir!(mov, reg!(rax), reg!(rdi)),
+        //            ir!(div, reg!(rsi)),
+        //            ir!(func_ret),
         //        ],
         //        return_type: DataType::UInt64,
         //    },

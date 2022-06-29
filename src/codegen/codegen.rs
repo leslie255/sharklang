@@ -23,34 +23,36 @@ fn codegen_for_fn_call(
 ) {
     if let Expression::FuncCall(func_name, args) = &node.expr {
         let mut func_call = ir!(func_call, func_name);
-        let arg_types = ast.fn_arg_types(func_name); // TODO: promote size smaller than 32 bit to 32 bit in function call args
+        // TODO: promote size smaller than 32 bit to 32 bit in function call args
+        let arg_types = ast.fn_arg_types(func_name);
         for (i, arg) in args.iter().enumerate() {
+            let size = if arg_types.is_some() {
+                arg_types.unwrap()[i].size()
+            } else {
+                8
+            };
             match ast.expr(*arg) {
                 Expression::Identifier(id) => {
-                    func_call.arg(operand!(
-                        var,
-                        arg_types[i].size(),
-                        block.var_addr(id).unwrap()
-                    ));
+                    func_call.arg(operand!(var, size, block.var_addr(id).unwrap()));
                 }
                 Expression::NumberLiteral(num) => {
-                    func_call.arg(operand!(int, arg_types[i].size(), *num));
+                    func_call.arg(operand!(int, size, *num));
                 }
                 Expression::StringLiteral(str) => {
                     func_call.arg(operand!(
                         label,
-                        arg_types[i].size(),
-                        format!("strliteral_{}", program.strliterals_ids.get(str).unwrap())
+                        size,
+                        format!("_strliteral_{}", program.strliterals_ids.get(str).unwrap())
                     ));
                 }
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(block, program, ast, ast.node(*arg), target);
                     let reg = Operand {
-                        len: arg_types[i].size() as usize,
+                        len: size as usize,
                         addr_mode: AddrMode::Direct,
                         content: OperandContent::Reg(NESTED_FUNC_CALL_BUFFER_REGS[i]),
                     };
-                    target.push(ir!(mov, reg.clone(), operand!(rax, arg_types[i].size())));
+                    target.push(ir!(mov, reg.clone(), operand!(rax, size)));
                     func_call.arg(reg);
                 }
                 _ => panic!("{:?} is not a valid argument for function", ast.expr(*arg)),
@@ -83,7 +85,11 @@ fn gen_code_inside_block(
                     target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
                 }
                 Expression::NumberLiteral(num) => {
-                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(int, size, *num)));
+                    target.push(ir!(
+                        mov,
+                        operand!(var, size, addr_lhs),
+                        operand!(int, size, *num)
+                    ));
                 }
                 Expression::StringLiteral(str) => {
                     let strliteral_id =
@@ -117,7 +123,11 @@ fn gen_code_inside_block(
                     target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
                 }
                 Expression::NumberLiteral(num) => {
-                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(int, size, *num)));
+                    target.push(ir!(
+                        mov,
+                        operand!(var, size, addr_lhs),
+                        operand!(int, size, *num)
+                    ));
                 }
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(block, program, &ast, &ast.node(*rhs), target);

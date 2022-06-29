@@ -175,9 +175,9 @@ impl AST {
     }
     pub fn fn_arg_types(&self, fn_name: &String) -> Option<&Vec<DataType>> {
         if let Expression::FuncDef(_, block) = &self.node(*self.func_defs.get(fn_name)?).expr {
-            Some(&block.arg_types)
+            &block.arg_types
         } else {
-            None
+            panic!()
         }
     }
 }
