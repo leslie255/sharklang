@@ -1,10 +1,6 @@
-func test(a: uint64, b: uint64) -> uint64 {
-	return 64;
-}
-
 func main() -> int32 {
-	let a: int32 = 0;
-	print("hello");
-	return a;
+	let a: uint64 = 5;
+	u64print(a);
+	return 0;
 }
 

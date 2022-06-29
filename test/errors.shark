@@ -1,5 +1,5 @@
 func square(a: uint64) -> uint64 {
-	return mulint(a, a);
+	return umul(a, a);
 }
 
 func main() -> int32 {

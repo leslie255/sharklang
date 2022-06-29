@@ -93,7 +93,7 @@ impl DataType {
                     }
                 } else {
                     // is a builtin function
-                    return self == &context.builtin_fns.funcs.get(fn_name).unwrap().return_type;
+                    return true;
                 };
             }
             Expression::Identifier(var_name) => {

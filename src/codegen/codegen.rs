@@ -266,15 +266,8 @@ pub fn codegen(source: String, src_file: String) -> String {
         }
     }
 
-    if !err_collector.errors.is_empty() {
-        err_collector.print_errs();
-        println!("could not compile due to errors listed above");
-        panic!();
-    }
-
-    println!("{}", program.description());
+    err_collector.print_errs();
 
     let generated = program.gen_code();
-    println!("\n----------\n{}", generated);
     generated
 }
