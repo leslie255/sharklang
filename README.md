@@ -93,6 +93,20 @@ func main() -> int32 {
 }
 ```
 
+Use the `loop` keyword for loops
+
+``` Swift
+func main() -> int32 {
+    let a: uint64 = 0;
+    loop {
+        a = uadd(a, 1);
+        u64print(a);
+    }
+    
+    return 0;
+}
+```
+
 You can also write Assembly instructions directly among the Shark code:
 
 (They have to be in x86_64 NASM)
@@ -102,12 +116,32 @@ func main() -> int32 {
     let a: uint64 = 2;
 
     // add 40 to `a`
-    mov rax, qword [rbp - 8]
-    add rax, 40
-    mov qword [rbp - 8], rax
+    mov     rax, qword [rbp - 8]
+    add     rax, 40
+    mov     qword [rbp - 8], rax
 
     u64print(a);
 	
+    return 0;
+}
+```
+
+Note that the break statement and if statement hasn't been implemented yet, so for now you can only use inline assembly to break out of a loop:
+``` Swift
+func main() -> int32 {
+    let a: uint64 = 0;
+    loop {
+        a = uadd(a, 1);
+        u64print(a);
+        
+        // if `a` equals 100, break out of the loop
+        mov     rdi, 100
+        mov     rax, [rbp - 8]
+        cmp     rax, rdi
+        je      _break_loop
+    }
+    _break_loop:
+    
     return 0;
 }
 ```
@@ -139,7 +173,6 @@ LICENSED UNDER GPLv3
 ### TODO
 - characters & 8 bit types
 - pointer operations
-- loops
 - if statement
 - type infer
 - type cast
