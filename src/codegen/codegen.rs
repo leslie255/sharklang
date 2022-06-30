@@ -33,7 +33,7 @@ fn codegen_for_fn_call(
             };
             match ast.expr(*arg) {
                 Expression::Identifier(id) => {
-                    func_call.arg(operand!(var, size, block.var_addr(id).unwrap()));
+                    func_call.arg(operand!(var, size, block.var_addr(id, ast).unwrap()));
                 }
                 Expression::NumberLiteral(num) => {
                     func_call.arg(operand!(int, size, *num));
@@ -76,11 +76,11 @@ fn gen_code_inside_block(
         Expression::RawASM(text) => target.push(ir!(format!("\t{}", text))),
         Expression::Label(name) => target.push(ir!(label, name)),
         Expression::VarInit(var_name, var_type, rhs) => {
-            let addr_lhs = block.var_addr(var_name).unwrap();
+            let addr_lhs = block.var_addr(var_name, ast).unwrap();
             let size = var_type.size();
             match ast.expr(*rhs) {
                 Expression::Identifier(id) => {
-                    let addr_rhs = block.var_addr(id).unwrap();
+                    let addr_rhs = block.var_addr(id, ast).unwrap();
                     target.push(ir!(mov, operand!(rax, size), operand!(var, size, addr_rhs)));
                     target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
                 }
@@ -111,14 +111,14 @@ fn gen_code_inside_block(
             };
         }
         Expression::VarAssign(var_name, rhs) => {
-            let addr_lhs = block.var_addr(var_name).unwrap();
-            let size = block.var_type(var_name).size();
+            let addr_lhs = block.var_addr(var_name, ast).unwrap();
+            let size = block.var_type(var_name, ast).size();
             match ast.expr(*rhs) {
                 Expression::Identifier(id) => {
                     target.push(ir!(
                         mov,
                         operand!(rax, size),
-                        operand!(var, size, block.var_addr(id).unwrap())
+                        operand!(var, size, block.var_addr(id, ast).unwrap())
                     ));
                     target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
                 }
@@ -137,9 +137,7 @@ fn gen_code_inside_block(
             }
         }
         Expression::FuncCall(_, _) => {
-            if node.is_root {
-                codegen_for_fn_call(block, program, &ast, node, target);
-            }
+            codegen_for_fn_call(block, program, &ast, node, target);
         }
         Expression::UnsafeReturn => {
             if block.has_vars {
@@ -168,7 +166,7 @@ fn gen_code_inside_block(
                     target.push(ir!(
                         mov,
                         operand!(rax, size),
-                        operand!(var, size, block.var_addr(id).unwrap())
+                        operand!(var, size, block.var_addr(id, ast).unwrap())
                     ));
                 }
                 Expression::NumberLiteral(num) => {
@@ -187,6 +185,21 @@ fn gen_code_inside_block(
                 ));
             }
             target.push(ir!(func_ret));
+        }
+        Expression::Loop(block_i) => {
+            let label = format!("loop_{}", block_i);
+            target.push(ir!(label, label.clone()));
+            let loop_block = if let Expression::Block(b) = ast.expr(*block_i) {
+                b
+            } else {
+                panic!();
+            };
+            let mut inside_loop: Vec<ASMStatement> = Vec::new();
+            for i in &loop_block.body {
+                gen_code_inside_block(loop_block, ast, ast.node(*i), program, &mut inside_loop);
+            }
+            target.append(&mut inside_loop);
+            target.push(ir!(jmp, label));
         }
         _ => {}
     }
@@ -227,8 +240,9 @@ pub fn codegen(source: String, src_file: String) -> String {
             Expression::FuncCall(name, _) => {
                 builtin_fns.add_if_needed(name, &mut program);
             }
-            Expression::FuncDef(name, block) => {
+            Expression::FuncDef(name, _) => {
                 let mut func: Vec<ASMStatement> = vec![ir!(func_def, name)];
+                let block = ast.fn_block(name).unwrap();
                 if block.has_vars {
                     func.push(ir!(
                         sub,
@@ -260,7 +274,9 @@ pub fn codegen(source: String, src_file: String) -> String {
                 }
             }
             Expression::Label(name) => {
-                program.data_sect.push(ir!(label, name));
+                if node.is_top_level {
+                    program.data_sect.push(ir!(label, name));
+                }
             }
             _ => (),
         }

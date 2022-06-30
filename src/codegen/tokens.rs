@@ -19,6 +19,7 @@ pub enum TokenContent {
     String(String),
     Identifier(String),
     Let,
+    Loop,
     Func,
     Return,
     UnsafeReturn,
@@ -165,7 +166,9 @@ impl TokenPrototype {
     fn is_valid(str: &String) -> bool {
         match str.as_str() {
             "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "let"
-            | "func" | "true" | "false" | "return" | "_return" | "//" | "\n" => return true,
+            | "loop" | "func" | "true" | "false" | "return" | "_return" | "//" | "\n" => {
+                return true
+            }
             _ => {
                 if str.is_empty() {
                     return false;
@@ -227,6 +230,7 @@ impl TokenPrototype {
             "true" => return Token::new(TokenContent::True, self.position, self.len),
             "false" => return Token::new(TokenContent::False, self.position, self.len),
             "let" => return Token::new(TokenContent::Let, self.position, self.len),
+            "loop" => return Token::new(TokenContent::Loop, self.position, self.len),
             ";" => return Token::new(TokenContent::Semicolon, self.position, self.len),
             "." => return Token::new(TokenContent::Period, self.position, self.len),
             "," => return Token::new(TokenContent::Comma, self.position, self.len),
@@ -251,7 +255,11 @@ impl TokenPrototype {
                     let mut str_content = self.source.chars();
                     str_content.next();
                     str_content.next_back();
-                    return Token::new(TokenContent::String(str_content.as_str().to_string()), self.position, self.len);
+                    return Token::new(
+                        TokenContent::String(str_content.as_str().to_string()),
+                        self.position,
+                        self.len,
+                    );
                 }
 
                 // is a floating point number

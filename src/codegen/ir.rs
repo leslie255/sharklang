@@ -13,6 +13,9 @@ macro_rules! ir {
     (label, $label_name: expr) => {
         ASMStatement::Label(String::from($label_name))
     };
+    (jmp, $label_name: expr) => {
+        ASMStatement::Jump(String::from($label_name))
+    };
     (extern, $name: expr) => {
         ASMStatement::Extern($name.to_string())
     };
@@ -509,6 +512,7 @@ pub enum ASMStatement {
     Extern(String),
 
     Label(String),
+    Jump(String),
 
     DataInt(String, u64),
     DataStr(String, String),
@@ -533,6 +537,7 @@ impl ASMStatement {
         match self {
             Self::SectionHead(name) => format!("section\t{}\n", name),
             Self::Label(name) => format!("label\t{}\n", name),
+            Self::Jump(name) => format!("jump\t{}\n", name),
             Self::Extern(name) => format!("extern\t_{}\n", name),
             Self::DataInt(name, value) => format!("data\t{}\t{}\n", name, value),
             Self::DataStr(name, value) => format!("data\t{}\t{:?}\n", name, value),
@@ -565,6 +570,7 @@ impl ASMStatement {
         let mut code = match self {
             Self::SectionHead(name) => format!("\n\tsection .{}", name),
             Self::Label(name) => format!("{}:", name),
+            Self::Jump(name) => format!("\tjmp\t{}", name),
             Self::Extern(name) => format!("\textern _{}", name),
             Self::DataInt(name, value) => format!("_{}:\tdq {}", name, value),
             Self::DataStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),

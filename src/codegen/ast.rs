@@ -36,6 +36,7 @@ pub struct CodeBlock {
     pub arg_types: Vec<DataType>,
     pub has_vars: bool,
     pub return_type: DataType,
+    pub parent: usize,
 }
 impl Default for CodeBlock {
     fn default() -> Self {
@@ -46,14 +47,58 @@ impl Default for CodeBlock {
             arg_types: Vec::default(),
             has_vars: bool::default(),
             return_type: DataType::Void,
+            parent: usize::MAX,
         }
     }
 }
 impl CodeBlock {
-    pub fn var_type(&self, var_name: &String) -> DataType {
-        self.vars.get(var_name).unwrap().data_type.clone()
+    pub fn var_type(&self, var_name: &String, ast: &AST) -> DataType {
+        match self.vars.get(var_name) {
+            Some(x) => x.data_type.clone(),
+            None => {
+                if self.parent == usize::MAX {
+                    panic!();
+                }
+                let parent_block = if let Expression::Block(b) = ast.expr(self.parent) {
+                    b
+                } else {
+                    panic!();
+                };
+                parent_block.var_type(var_name, ast)
+            }
+        }
+    }
+    pub fn var_addr(&self, var_name: &String, ast: &AST) -> Option<u64> {
+        match self.vars.get(var_name) {
+            Some(x) => Some(x.addr),
+            None => {
+                let parent_block = if let Expression::Block(b) = ast.expr(self.parent) {
+                    b
+                } else {
+                    return None;
+                };
+                parent_block.var_addr(var_name, ast)
+            }
+        }
+    }
+    pub fn var_info<'a>(&'a self, var_name: &String, ast: &'a AST) -> Option<&'a VarInfo> {
+        match self.vars.get(var_name) {
+            Some(x) => Some(x),
+            None => {
+                if self.parent == usize::MAX {
+                    return None;
+                }
+                let parent_block = if let Expression::Block(b) = ast.expr(self.parent) {
+                    b
+                } else {
+                    return None;
+                };
+                parent_block.var_info(var_name, ast)
+            }
+        }
     }
     pub fn gen_vars_with_args(&mut self, nodes: &Vec<ASTNode>, args: Vec<(String, DataType)>) {
+        // this should technically be in the codegen part but i have no idea how to move it there
         self.has_vars = false; // has at least one variable
         for (arg_name, arg_type) in &args {
             self.has_vars = true;
@@ -88,12 +133,6 @@ impl CodeBlock {
             }
         }
     }
-    pub fn var_addr(&self, var_name: &String) -> Option<u64> {
-        match self.vars.get(var_name) {
-            Some(x) => Some(x.addr),
-            None => None,
-        }
-    }
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
@@ -111,7 +150,9 @@ pub enum Expression {
     RawASM(String),
 
     // Control flows
-    FuncDef(String, CodeBlock),
+    Block(CodeBlock),
+    FuncDef(String, usize), // name, code block
+    Loop(usize),            // code block
     ReturnVoid,
     ReturnVal(usize),
     UnsafeReturn,
@@ -174,11 +215,20 @@ impl AST {
         });
     }
     pub fn fn_arg_types(&self, fn_name: &String) -> Option<&Vec<DataType>> {
-        if let Expression::FuncDef(_, block) = &self.node(*self.func_defs.get(fn_name)?).expr {
-            Some(&block.arg_types)
-        } else {
-            None
+        if let Expression::FuncDef(_, block_i) = &self.node(*self.func_defs.get(fn_name)?).expr {
+            if let Expression::Block(block) = self.expr(*block_i) {
+                return Some(&block.arg_types);
+            }
         }
+        None
+    }
+    pub fn fn_block(&self, fn_name: &String) -> Option<&CodeBlock> {
+        if let Expression::FuncDef(_, block_i) = &self.node(*self.func_defs.get(fn_name)?).expr {
+            if let Expression::Block(block) = self.expr(*block_i) {
+                return Some(&block);
+            }
+        }
+        None
     }
 }
 
@@ -262,10 +312,7 @@ fn parse_fn_call_args(
             _ => {
                 err_collector.syntax_err(
                     &token,
-                    format!(
-                        "expected `)` or `,` after a function argument, found {:?}",
-                        token.content
-                    ),
+                    format!("expected `)` or `,` after a function argument"),
                 );
                 err_collector.print_errs();
                 exit(1);
@@ -302,10 +349,7 @@ fn parse_single_expr(
             }
             _ => {
                 let token = tokens.next();
-                err_collector.syntax_err(
-                    &token,
-                    format!("expecting `(` or `;`, found {:?}", token.content),
-                );
+                err_collector.syntax_err(&token, format!("expecting `(` or `;`"));
                 err_collector.print_errs();
                 exit(1);
             }
@@ -325,7 +369,7 @@ fn parse_single_expr(
     tree.nodes.len() - 1
 }
 
-fn parse_expr(
+fn parse_inside_fn(
     tree: &mut AST,
     tokens: &mut TokenStream,
     err_collector: &mut ErrorCollector,
@@ -366,7 +410,7 @@ fn parse_expr(
         }
         TokenContent::Let => {
             // let var_name: type = rhs;
-            // rhs could be: number literal, identifier, function call
+            // rhs could be: number literal, string literal, identifier, function call
             // get lhs
             token = tokens.next();
             let lhs: String;
@@ -374,13 +418,8 @@ fn parse_expr(
             if let TokenContent::Identifier(var_name) = token.content {
                 lhs = var_name;
             } else {
-                err_collector.syntax_err(
-                    &token,
-                    format!(
-                        "expecting an identifier following `let`, found {:?}",
-                        token.content
-                    ),
-                );
+                err_collector
+                    .syntax_err(&token, format!("expecting an identifier following `let`"));
                 err_collector.print_errs();
                 exit(1);
             }
@@ -408,28 +447,44 @@ fn parse_expr(
             } else {
                 err_collector.syntax_err(
                     &tokens.look_ahead(0),
-                    format!(
-                        "expecting `:` after variable name, found {:?}",
-                        tokens.look_ahead(0).content
-                    ),
+                    format!("expecting `:` after variable name"),
                 );
                 err_collector.print_errs();
                 exit(1);
             }
             // make sure there is an `=`
             if tokens.next().content != TokenContent::Equal {
-                err_collector.syntax_err(
-                    &tokens.look_ahead(0),
-                    format!(
-                        "expecting `=` after variable type, found {:?}",
-                        tokens.look_ahead(0).content
-                    ),
-                );
+                err_collector.syntax_err(&token, format!("expecting `=` after variable type",));
                 err_collector.print_errs();
             }
             // get rhs
             let i = parse_single_expr(tree, tokens, err_collector);
             tree.new_expr(Expression::VarInit(lhs, var_type, i), token.position);
+            return tree.nodes.len() - 1;
+        }
+        TokenContent::Loop => {
+            token = tokens.next();
+            if token.content != TokenContent::BigParenOpen {
+                err_collector.syntax_err(&token, format!("expecting `{{` after `loop`"));
+                err_collector.print_errs();
+                exit(1);
+            }
+            let mut block = CodeBlock::default();
+            loop {
+                match tokens.look_ahead(1).content {
+                    TokenContent::EOF | TokenContent::BigParenClose => {
+                        tokens.next();
+                        break;
+                    }
+                    _ => (),
+                }
+                let i = parse_inside_fn(tree, tokens, err_collector);
+                if i != usize::MAX {
+                    block.body.push(i);
+                }
+            }
+            tree.new_expr(Expression::Block(block), token.position);
+            tree.new_expr(Expression::Loop(tree.nodes.len() - 1), token.position);
             return tree.nodes.len() - 1;
         }
         TokenContent::Return => match tokens.look_ahead(1).content {
@@ -478,13 +533,7 @@ fn parse_fn_def_args(
 
     // make sure there is a `(`
     if token.content != TokenContent::RoundParenOpen {
-        err_collector.syntax_err(
-            &token,
-            format!(
-                "expecting `(` after function call, found {:?}",
-                token.content
-            ),
-        );
+        err_collector.syntax_err(&token, format!("expecting `(` after function call"));
         err_collector.print_errs();
         exit(1);
     }
@@ -509,10 +558,7 @@ fn parse_fn_def_args(
             _ => {
                 err_collector.syntax_err(
                     &token,
-                    format!(
-                        "expecting an identifier as the name of a function arguments, found {:?}",
-                        token.content
-                    ),
+                    format!("expecting an identifier as the name of a function arguments"),
                 );
                 err_collector.print_errs();
                 exit(1);
@@ -523,10 +569,7 @@ fn parse_fn_def_args(
         if token.content != TokenContent::Colon {
             err_collector.syntax_err(
                 &token,
-                format!(
-                    "expecting `:` after name of a function arguments, found {:?}",
-                    token.content
-                ),
+                format!("expecting `:` after name of a function arguments"),
             );
             err_collector.print_errs();
             exit(1);
@@ -542,10 +585,7 @@ fn parse_fn_def_args(
         } else {
             err_collector.syntax_err(
                 &token,
-                format!(
-                    "expecting an identifier after `:` for argument name, found {:?}",
-                    token.content
-                ),
+                format!("expecting an identifier after `:` for argument name"),
             );
             err_collector.print_errs();
             exit(1);
@@ -559,10 +599,7 @@ fn parse_fn_def_args(
             _ => {
                 err_collector.syntax_err(
                     &token,
-                    format!(
-                        "expected `)` or `,` after an argument name, found {:?}",
-                        token.content
-                    ),
+                    format!("expected `)` or `,` after an argument name"),
                 );
                 err_collector.print_errs();
                 exit(1);
@@ -588,13 +625,7 @@ fn parse_top_level(
             if let TokenContent::Identifier(id) = token.content {
                 func_name = id;
             } else {
-                err_collector.syntax_err(
-                    &token,
-                    format!(
-                        "expected an identifier after `func`, found {:?}",
-                        token.content
-                    ),
-                );
+                err_collector.syntax_err(&token, format!("expected an identifier after `func`"));
                 err_collector.print_errs();
                 exit(1);
             }
@@ -620,19 +651,13 @@ fn parse_top_level(
                     }
                     token = tokens.next();
                     if token.content != TokenContent::BigParenOpen {
-                        err_collector.syntax_err(
-                            &token,
-                            format!("expected `{{` or `->`, found {:?}", token.content),
-                        );
+                        err_collector.syntax_err(&token, format!("expected `{{` or `->`"));
                         err_collector.print_errs();
                         exit(1);
                     }
                 }
                 _ => {
-                    err_collector.syntax_err(
-                        &token,
-                        format!("expected `{{` or `->`, found {:?}", token.content),
-                    );
+                    err_collector.syntax_err(&token, format!("expected `{{` or `->`"));
                     err_collector.print_errs();
                     exit(1);
                 }
@@ -645,7 +670,7 @@ fn parse_top_level(
                     }
                     _ => (),
                 }
-                let i = parse_expr(tree, tokens, err_collector);
+                let i = parse_inside_fn(tree, tokens, err_collector);
                 if let Some(node) = tree.nodes.get_mut(i) {
                     if node.is_root {
                         continue;
@@ -655,14 +680,30 @@ fn parse_top_level(
                 }
             }
             code_block.gen_vars_with_args(&tree.nodes, func_args);
-            let expr = Expression::FuncDef(func_name, code_block);
-            tree.new_expr(expr, token.position);
+            let parent = tree.nodes.len();
+            for i in &code_block.body {
+                match tree.nodes.get_mut(*i).unwrap().expr {
+                    Expression::Loop(block_i) => {
+                        match &mut tree.nodes.get_mut(block_i).unwrap().expr {
+                            Expression::Block(block) => block.parent = parent,
+                            _ => panic!(),
+                        }
+                    }
+                    _ => (),
+                }
+            }
+            tree.new_expr(Expression::Block(code_block), token.position);
+            tree.new_expr(
+                Expression::FuncDef(func_name, tree.nodes.len() - 1),
+                token.position,
+            );
             tree.nodes.last_mut().unwrap().is_root = true;
         }
         _ => {
-            parse_expr(tree, tokens, err_collector);
+            parse_inside_fn(tree, tokens, err_collector);
         }
     }
+
     tree.nodes.len().saturating_sub(1)
 }
 

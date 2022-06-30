@@ -85,19 +85,14 @@ impl DataType {
             },
             Expression::StringLiteral(_) => self == &DataType::Pointer,
             Expression::FuncCall(fn_name, _) => {
-                if let Some(i) = context.ast.func_defs.get(fn_name) {
-                    if let Expression::FuncDef(_, fn_block) = context.ast.expr(*i) {
-                        return self == &fn_block.return_type;
-                    } else {
-                        return false;
-                    }
+                if let Some(fn_block) = context.ast.fn_block(fn_name) {
+                    return self == &fn_block.return_type;
                 } else {
-                    // is a builtin function
-                    return true;
-                };
+                    return true; // is a builtin function
+                }
             }
             Expression::Identifier(var_name) => {
-                if let Some(var_info) = context.parent_block.vars.get(var_name) {
+                if let Some(var_info) = context.parent_block.var_info(var_name, context.ast) {
                     &var_info.data_type == self
                 } else {
                     false
@@ -135,7 +130,7 @@ fn var_exist_check(
     err_collector: &mut ErrorCollector,
     var_name: &String,
 ) -> bool {
-    if let Some(var_info) = context.parent_block.vars.get(var_name) {
+    if let Some(var_info) = context.parent_block.var_info(var_name, context.ast) {
         if var_info.def_i > context.i {
             err_collector.errors.push(CompileError {
                 err_type: ErrorType::Type,
@@ -197,10 +192,7 @@ pub fn fn_args_check(
         }
         return;
     }
-    if let Expression::FuncDef(_, fn_block) = context
-        .ast
-        .expr(*context.ast.func_defs.get(fn_name).unwrap())
-    {
+    if let Some(fn_block) = context.ast.fn_block(fn_name) {
         // check number of arguments
         if input_args.len() != fn_block.arg_types.len() {
             err_collector.errors.push(CompileError {
@@ -246,7 +238,12 @@ pub fn fn_args_check(
 pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &mut ErrorCollector) {
     for node in &ast.nodes {
         match &node.expr {
-            Expression::FuncDef(_, block) => {
+            Expression::FuncDef(_, block_i) => {
+                let block = if let Expression::Block(b) = ast.expr(*block_i) {
+                    b
+                } else {
+                    panic!()
+                };
                 for i in &block.body {
                     let node = ast.node(*i);
                     let mut context = TypeCheckContext::new(ast, block, builtin_fns, *i);
@@ -266,7 +263,7 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                                     fn_args_check(&mut context, err_collector, fn_name, args);
                                 }
                             }
-                            let lhs_type = &block.vars.get(var_name).unwrap().data_type;
+                            let lhs_type = &block.var_type(var_name, context.ast);
                             if !lhs_type.matches(&context, rhs_expr) {
                                 err_collector.errors.push(CompileError {
                                     err_type: ErrorType::Type,
