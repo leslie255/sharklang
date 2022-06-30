@@ -331,8 +331,39 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                                 });
                             }
                         }
+                        Expression::Loop(i) => {
+                            let body = if let Expression::Block(b) = context.ast.expr(*i) {
+                                b
+                            } else {
+                                panic!();
+                            };
+                            for i in &body.body {
+                                if let Expression::VarInit(_, _, _) = context.ast.expr(*i) {
+                                    err_collector.errors.push(CompileError {
+                                        err_type: ErrorType::Type,
+                                        message: format!(
+                                            "variable declaration inside loop hasn't been implemented yet"
+                                        ),
+                                        position: context.ast.node(*i).position,
+                                        length: usize::MAX,
+                                    });
+                                    continue;
+                                }
+                            }
+                        }
                         _ => (),
                     }
+                }
+            }
+            Expression::Loop(_) => {
+                if node.is_top_level {
+                    err_collector.errors.push(CompileError {
+                        err_type: ErrorType::Type,
+                        message: format!("loop statement is not allowed at top level"),
+                        position: node.position,
+                        length: usize::MAX,
+                    });
+                    continue;
                 }
             }
             Expression::VarAssign(_, _) => {
