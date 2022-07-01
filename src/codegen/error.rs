@@ -92,8 +92,8 @@ impl<'a> ErrorCollector<'a> {
                 "{:?} error at {}:{}:{}\n{}",
                 err.err_type,
                 self.file_name,
-                line + 1,
-                column + 1,
+                line,
+                column,
                 err.message,
             );
             for ch in line_str.chars() {

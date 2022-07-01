@@ -248,19 +248,66 @@ fn parse_fn_call_args(
         exit(1);
     }
 
-    // if there is a `)` coming immediately after the `(`, there are no arguments
-    match &tokens.look_ahead(1).content {
-        TokenContent::RoundParenClose => {
-            tokens.next();
-            return args;
-        }
-        _ => (),
-    }
-
     loop {
         // get the next argument
+        token = tokens.next();
+
+        // if there is a `)` coming immediately after the `(`, there are no arguments
+        match &token.content {
+            TokenContent::RoundParenClose => break,
+            _ => (),
+        }
+
         let i = parse_single_expr(tree, tokens, err_collector);
-        args.push(i);
+        //match &token.content {
+        //    TokenContent::UInt(num) => {
+        //        tree.new_expr(Expression::NumberLiteral(*num), token.position);
+        //    }
+        //    TokenContent::String(str) => {
+        //        tree.new_expr(Expression::StringLiteral(str.clone()), token.position);
+        //    }
+        //    TokenContent::Identifier(id) => {
+        //        match tokens.look_ahead(1).content {
+        //            TokenContent::Comma | TokenContent::RoundParenClose => {
+        //                // is a variable
+        //                tree.new_expr(Expression::Identifier(id.clone()), token.position);
+        //            }
+        //            TokenContent::RoundParenOpen => {
+        //                // is a function call
+        //                let args = parse_fn_call_args(tokens, tree, err_collector);
+        //                tree.new_expr(Expression::FuncCall(id.clone(), args), token.position);
+        //            }
+        //            TokenContent::Equal => {
+        //                err_collector.syntax_err(
+        //                    &tokens.look_ahead(1),
+        //                    "variable assignment cannot be used as an argument for a function"
+        //                        .to_string(),
+        //                );
+        //                err_collector.print_errs();
+        //                exit(1);
+        //            }
+        //            _ => {
+        //                err_collector.syntax_err(
+        //                    &tokens.look_ahead(1),
+        //                    "expecting `(`, `,` or `)`".to_string(),
+        //                );
+        //                err_collector.print_errs();
+        //                exit(1);
+        //            }
+        //        }
+        //    }
+        //    _ => {
+        //        err_collector.syntax_err(
+        //            &token,
+        //            format!("cannot use {:?} as an argument for function", token.content),
+        //        );
+        //        err_collector.print_errs();
+        //        exit(1);
+        //    }
+        //}
+        //args.push(tree.nodes.len() - 1);
+        // if next token is `,` it means there's another argument
+        // if it's `)` then it means function call should end
         token = tokens.next();
         match &token.content {
             TokenContent::Comma => {}

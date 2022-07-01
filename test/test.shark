@@ -1,9 +1,4 @@
-func test() -> uint8 {
-	return 0;
-}
-
 func main() -> int32 {
-	let b: uint8 = test();
-	return 0;
+	return a ~ int32;
 }
 

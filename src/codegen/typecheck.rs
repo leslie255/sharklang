@@ -101,6 +101,9 @@ impl DataType {
                     hash_set.insert(var_info.data_type.clone());
                 }
             }
+            Expression::TypeCast(_, data_type) => {
+                hash_set.insert(data_type.clone());
+            }
             _ => (),
         }
         hash_set
@@ -270,7 +273,9 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                             let lhs_type = &block.var_type(var_name, context.ast);
                             if !lhs_type.matches(&context, rhs_expr) {
                                 if *lhs_type == DataType::Int8 {
-                                    if DataType::possible_types(&context, rhs_expr).contains(&DataType::UInt8) {
+                                    if DataType::possible_types(&context, rhs_expr)
+                                        .contains(&DataType::UInt8)
+                                    {
                                         println!("Reminder that SHARKC is intended to be used with thigh highs and skirts");
                                     }
                                 }
