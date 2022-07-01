@@ -1,21 +1,9 @@
+func test() -> uint8 {
+	return 0;
+}
+
 func main() -> int32 {
-	let a: uint64 = 1;
-	let b: uint64 = 0;
-
-	loop {
-		a = umul(a, 2);
-
-		u64print(a);
-
-		mov rdi, 63
-		mov	rsi, qword [rbp - 16]
-		inc rsi
-		mov	qword [rbp - 16], rsi
-		cmp rdi, rsi
-		je	_break
-	}
-	_break:
-
+	let b: uint8 = test();
 	return 0;
 }
 

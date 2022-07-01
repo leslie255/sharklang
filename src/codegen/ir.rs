@@ -201,6 +201,23 @@ pub enum Register {
     r13w,
     r14w,
     r15w,
+
+    al,
+    bl,
+    cl,
+    dl,
+    sil,
+    dil,
+    spl,
+    bpl,
+    r8b,
+    r9b,
+    r10b,
+    r11b,
+    r12b,
+    r13b,
+    r14b,
+    r15b,
 }
 impl Register {
     pub fn name(&self) -> String {
@@ -255,6 +272,23 @@ impl Register {
             Self::r13w => String::from("r13w"),
             Self::r14w => String::from("r14w"),
             Self::r15w => String::from("r15w"),
+
+            Self::al => String::from("al"),
+            Self::bl => String::from("bl"),
+            Self::cl => String::from("cl"),
+            Self::dl => String::from("dl"),
+            Self::sil => String::from("sil"),
+            Self::dil => String::from("dil"),
+            Self::spl => String::from("spl"),
+            Self::bpl => String::from("bpl"),
+            Self::r8b => String::from("r8b"),
+            Self::r9b => String::from("r9b"),
+            Self::r10b => String::from("r10b"),
+            Self::r11b => String::from("r11b"),
+            Self::r12b => String::from("r12b"),
+            Self::r13b => String::from("r13b"),
+            Self::r14b => String::from("r14b"),
+            Self::r15b => String::from("r15b"),
         }
     }
     pub fn _64bit(self) -> Register {
@@ -309,6 +343,23 @@ impl Register {
             Self::r13w => Self::r13,
             Self::r14w => Self::r14,
             Self::r15w => Self::r15,
+
+            Self::al => Self::rax,
+            Self::bl => Self::rbx,
+            Self::cl => Self::rcx,
+            Self::dl => Self::rdx,
+            Self::sil => Self::rsi,
+            Self::dil => Self::rdi,
+            Self::spl => Self::rsp,
+            Self::bpl => Self::rbp,
+            Self::r8b => Self::r8,
+            Self::r9b => Self::r9,
+            Self::r10b => Self::r10,
+            Self::r11b => Self::r11,
+            Self::r12b => Self::r12,
+            Self::r13b => Self::r13,
+            Self::r14b => Self::r14,
+            Self::r15b => Self::r15,
         }
     }
     pub fn _32bit(self) -> Register {
@@ -363,6 +414,23 @@ impl Register {
             Self::r13w => Self::r13d,
             Self::r14w => Self::r14d,
             Self::r15w => Self::r15d,
+
+            Self::al => Self::eax,
+            Self::bl => Self::ebx,
+            Self::cl => Self::ecx,
+            Self::dl => Self::edx,
+            Self::sil => Self::esi,
+            Self::dil => Self::edi,
+            Self::spl => Self::esp,
+            Self::bpl => Self::ebp,
+            Self::r8b => Self::r8d,
+            Self::r9b => Self::r9d,
+            Self::r10b => Self::r10d,
+            Self::r11b => Self::r11d,
+            Self::r12b => Self::r12d,
+            Self::r13b => Self::r13d,
+            Self::r14b => Self::r14d,
+            Self::r15b => Self::r15d,
         }
     }
     pub fn _16bit(self) -> Register {
@@ -417,6 +485,94 @@ impl Register {
             Self::r13w => Self::r13w,
             Self::r14w => Self::r14w,
             Self::r15w => Self::r15w,
+
+            Self::al => Self::ax,
+            Self::bl => Self::bx,
+            Self::cl => Self::cx,
+            Self::dl => Self::dx,
+            Self::sil => Self::si,
+            Self::dil => Self::di,
+            Self::spl => Self::sp,
+            Self::bpl => Self::bp,
+            Self::r8b => Self::r8w,
+            Self::r9b => Self::r9w,
+            Self::r10b => Self::r10w,
+            Self::r11b => Self::r11w,
+            Self::r12b => Self::r12w,
+            Self::r13b => Self::r13w,
+            Self::r14b => Self::r14w,
+            Self::r15b => Self::r15w,
+        }
+    }
+    pub fn _8bit(self) -> Register {
+        match self {
+            Self::rax => Self::al,
+            Self::rbx => Self::bl,
+            Self::rcx => Self::cl,
+            Self::rdx => Self::dl,
+            Self::rsi => Self::sil,
+            Self::rdi => Self::dil,
+            Self::rsp => Self::spl,
+            Self::rbp => Self::bpl,
+            Self::r8 => Self::r8b,
+            Self::r9 => Self::r9b,
+            Self::r10 => Self::r10b,
+            Self::r11 => Self::r11b,
+            Self::r12 => Self::r12b,
+            Self::r13 => Self::r13b,
+            Self::r14 => Self::r14b,
+            Self::r15 => Self::r15b,
+
+            Self::eax => Self::al,
+            Self::ebx => Self::bl,
+            Self::ecx => Self::cl,
+            Self::edx => Self::dl,
+            Self::esi => Self::sil,
+            Self::edi => Self::dil,
+            Self::esp => Self::spl,
+            Self::ebp => Self::bpl,
+            Self::r8d => Self::r8b,
+            Self::r9d => Self::r9b,
+            Self::r10d => Self::r10b,
+            Self::r11d => Self::r11b,
+            Self::r12d => Self::r12b,
+            Self::r13d => Self::r13b,
+            Self::r14d => Self::r14b,
+            Self::r15d => Self::r15b,
+
+            Self::ax => Self::al,
+            Self::bx => Self::bl,
+            Self::cx => Self::cl,
+            Self::dx => Self::dl,
+            Self::si => Self::sil,
+            Self::di => Self::dil,
+            Self::sp => Self::spl,
+            Self::bp => Self::bpl,
+            Self::r8w => Self::r8b,
+            Self::r9w => Self::r9b,
+            Self::r10w => Self::r10b,
+            Self::r11w => Self::r11b,
+            Self::r12w => Self::r12b,
+            Self::r13w => Self::r13b,
+            Self::r14w => Self::r14b,
+            Self::r15w => Self::r15b,
+
+            Self::al => Self::al,
+            Self::bl => Self::bl,
+            Self::cl => Self::cl,
+            Self::dl => Self::dl,
+            Self::sil => Self::sil,
+            Self::dil => Self::dil,
+            Self::spl => Self::spl,
+            Self::bpl => Self::bpl,
+            Self::r8b => Self::r8b,
+            Self::r9b => Self::r9b,
+            Self::r10b => Self::r10b,
+            Self::r11b => Self::r11b,
+            Self::r12b => Self::r12b,
+            Self::r13b => Self::r13b,
+            Self::r14b => Self::r14b,
+            Self::r15b => Self::r15b,
         }
     }
     pub fn of_size(self, size: usize) -> Register {
@@ -424,7 +580,7 @@ impl Register {
             8 => self._64bit(),
             4 => self._32bit(),
             2 => self._16bit(),
-            1 => todo!(),
+            1 => self._8bit(),
             _ => panic!(),
         }
     }
@@ -455,41 +611,39 @@ pub struct Operand {
 impl Operand {
     pub fn text(&self) -> String {
         match self.addr_mode {
-            AddrMode::Direct => {
-                match &self.content {
-                    OperandContent::Reg(reg) => match self.len {
-                        8 => reg._64bit(),
-                        4 => reg._32bit(),
-                        2 => reg._16bit(),
-                        //1 => reg._8bit().name(),
-                        _ => panic!(),
-                    }
-                    .name(),
-                    OperandContent::StaticVar(name) => format!("_{}", name),
-                    OperandContent::LocalVar(var_addr) => format!(
-                        "{} [rbp - {}]",
-                        match self.len {
-                            8 => "qword",
-                            4 => "dword",
-                            2 => "bword",
-                            1 => "word",
-                            _ => panic!(),
-                        },
-                        var_addr
-                    ),
-                    OperandContent::Label(name) => format!("{}", name),
-                    OperandContent::Int(number) => format!("{}", number),
-                    OperandContent::Raw(code) => format!(
-                        "{}{}",
-                        code,
-                        if code.chars().last().unwrap() == '\n' {
-                            ""
-                        } else {
-                            "\n"
-                        }
-                    ),
+            AddrMode::Direct => match &self.content {
+                OperandContent::Reg(reg) => match self.len {
+                    8 => reg._64bit(),
+                    4 => reg._32bit(),
+                    2 => reg._16bit(),
+                    1 => reg._8bit(),
+                    _ => panic!(),
                 }
-            }
+                .name(),
+                OperandContent::StaticVar(name) => format!("_{}", name),
+                OperandContent::LocalVar(var_addr) => format!(
+                    "{} [rbp - {}]",
+                    match self.len {
+                        8 => "qword",
+                        4 => "dword",
+                        2 => "bword",
+                        1 => "byte",
+                        _ => panic!(),
+                    },
+                    var_addr
+                ),
+                OperandContent::Label(name) => format!("{}", name),
+                OperandContent::Int(number) => format!("{}", number),
+                OperandContent::Raw(code) => format!(
+                    "{}{}",
+                    code,
+                    if code.chars().next_back().unwrap() == '\n' {
+                        ""
+                    } else {
+                        "\n"
+                    }
+                ),
+            },
             AddrMode::Indirect => todo!(),
         }
     }
