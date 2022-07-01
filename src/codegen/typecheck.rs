@@ -2,8 +2,10 @@ use super::ast::*;
 use super::builtin_funcs::*;
 use super::error::*;
 
+use std::collections::HashSet;
+
 #[allow(unused)]
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub enum DataType {
     UInt8,
     UInt16,
@@ -71,35 +73,37 @@ impl DataType {
         }
     }
     pub fn matches(&self, context: &TypeCheckContext, expr: &Expression) -> bool {
+        DataType::possible_types(context, expr).contains(self)
+    }
+    pub fn possible_types(context: &TypeCheckContext, expr: &Expression) -> HashSet<DataType> {
+        let mut hash_set: HashSet<DataType> = HashSet::new();
         match expr {
-            Expression::NumberLiteral(_) => match self {
-                DataType::UInt8
-                | DataType::UInt64
-                | DataType::UInt32
-                | DataType::UInt16
-                | DataType::Int8
-                | DataType::Int64
-                | DataType::Int32
-                | DataType::Int16 => true,
-                _ => false,
-            },
-            Expression::StringLiteral(_) => self == &DataType::Pointer,
+            Expression::NumberLiteral(_) => {
+                hash_set.insert(DataType::UInt8);
+                hash_set.insert(DataType::UInt64);
+                hash_set.insert(DataType::UInt32);
+                hash_set.insert(DataType::UInt16);
+                hash_set.insert(DataType::Int8);
+                hash_set.insert(DataType::Int64);
+                hash_set.insert(DataType::Int32);
+                hash_set.insert(DataType::Int16);
+            }
+            Expression::StringLiteral(_) => {
+                hash_set.insert(DataType::Pointer);
+            }
             Expression::FuncCall(fn_name, _) => {
                 if let Some(fn_block) = context.ast.fn_block(fn_name) {
-                    return self == &fn_block.return_type;
-                } else {
-                    return true; // is a builtin function
+                    hash_set.insert(fn_block.return_type.clone());
                 }
             }
             Expression::Identifier(var_name) => {
                 if let Some(var_info) = context.parent_block.var_info(var_name, context.ast) {
-                    &var_info.data_type == self
-                } else {
-                    false
+                    hash_set.insert(var_info.data_type.clone());
                 }
             }
-            _ => false,
+            _ => (),
         }
+        hash_set
     }
 }
 
@@ -265,6 +269,11 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                             }
                             let lhs_type = &block.var_type(var_name, context.ast);
                             if !lhs_type.matches(&context, rhs_expr) {
+                                if *lhs_type == DataType::Int8 {
+                                    if DataType::possible_types(&context, rhs_expr).contains(&DataType::UInt8) {
+                                        println!("Reminder that SHARKC is intended to be used with thigh highs and skirts");
+                                    }
+                                }
                                 err_collector.errors.push(CompileError {
                                     err_type: ErrorType::Type,
                                     message: format!(
