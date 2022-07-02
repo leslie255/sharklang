@@ -165,6 +165,28 @@ impl Default for Expression {
         return Expression::Unknown;
     }
 }
+impl Expression {
+    pub fn description(&self) -> String {
+        match self {
+            Expression::Identifier(name) => format!("`{}`", name),
+            Expression::NumberLiteral(num) => format!("`{}`", num),
+            Expression::StringLiteral(str) => format!("{:?}", str),
+            Expression::FuncCall(fn_name, _) => format!("{}(...)", fn_name),
+            Expression::VarInit(_, _, _) => String::from("variable declaration"),
+            Expression::VarAssign(_, _) => String::from("variable assign"),
+            Expression::TypeCast(_, _) => String::from("type cast"),
+            Expression::Label(name) => format!("{}:", name),
+            Expression::RawASM(asm) => format!("`{}`", asm.trim().clone()),
+            Expression::Block(_) => String::from("block"),
+            Expression::FuncDef(fn_name, _) => format!("func `{}`(...)`", fn_name),
+            Expression::Loop(_) => format!("loop {{...}}"),
+            Expression::ReturnVoid => String::from("return"),
+            Expression::ReturnVal(_) => String::from("return ..."),
+            Expression::UnsafeReturn => String::from("_return"),
+            Expression::Unknown => String::from("UNKNWON"),
+        }
+    }
+}
 #[derive(Default, Clone)]
 pub struct ASTNode {
     pub expr: Expression,

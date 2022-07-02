@@ -1,4 +1,7 @@
+func test(a: uint64) {
+	return;
+}
 func main() -> int32 {
-	return a ~ int32;
+	return 0;
 }
 
