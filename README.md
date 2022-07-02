@@ -1,4 +1,6 @@
-# Shark Programming Language
+<img src="https://i.imgur.com/8y53ssF.png" height="100px">
+
+<h1>The Shark Programming Language</h1>
 
 **My toy programming language (WIP)**
 
