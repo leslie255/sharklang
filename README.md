@@ -1,8 +1,10 @@
-<img src="https://i.imgur.com/8y53ssF.png" height="100px">
+<img src="https://i.imgur.com/8y53ssF.png" alt="Shark logo" height="100px">
 
 <h1>The Shark Programming Language</h1>
 
-**My toy programming language (WIP)**
+**A compiled toy programming language (WIP)**
+
+<img src="https://imgur.com/VBBeGtY.png" alt="Version 0.0.1" height="24px"> <img src="https://imgur.com/Mae21iF.png" alt="Language Rust" height="24px">
 
 ### How to use:
 **right now Shark lacks a lot of the essential features of a programming language,**
