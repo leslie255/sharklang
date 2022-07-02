@@ -298,32 +298,9 @@ fn parse_single_expr(
                 let args = parse_fn_call_args(tokens, tree, err_collector);
                 tree.new_expr(Expression::FuncCall(id, args), token.position);
             }
-            TokenContent::Semicolon => {
-                // is a variable
-            }
-            TokenContent::Squiggle => {
-                // is a variable but with type cast
-                tokens.next();
-                token = tokens.next();
-                tree.new_expr(Expression::Identifier(id), token.position);
-                if let TokenContent::Identifier(ref id) = token.content {
-                    let data_type = DataType::from_str(&id).unwrap_or_else(|| {
-                        err_collector
-                            .syntax_err(&token, format!("expecting a data type after `=>`"));
-                        err_collector.print_errs();
-                        exit(1);
-                    });
-                    tree.new_expr(
-                        Expression::TypeCast(tree.nodes.len() - 1, data_type),
-                        token.position,
-                    );
-                }
-            }
             _ => {
-                let token = tokens.next();
-                err_collector.syntax_err(&token, format!("expecting `(`, `=>` or `;`"));
-                err_collector.print_errs();
-                exit(1);
+                // is a variable
+                tree.new_expr(Expression::Identifier(id), token.position);
             }
         },
         _ => {
@@ -332,7 +309,26 @@ fn parse_single_expr(
             exit(1);
         }
     }
-    if tokens.look_ahead(1).content == TokenContent::Squiggle {}
+    if tokens.look_ahead(1).content == TokenContent::Squiggle {
+        // type cast
+        tokens.next();
+        token = tokens.next();
+        if let TokenContent::Identifier(ref id) = token.content {
+            let data_type = DataType::from_str(&id).unwrap_or_else(|| {
+                err_collector.syntax_err(&token, format!("expecting a valid data type after `~`"));
+                err_collector.print_errs();
+                exit(1);
+            });
+            tree.new_expr(
+                Expression::TypeCast(tree.nodes.len() - 1, data_type),
+                token.position,
+            );
+        } else {
+            err_collector.syntax_err(&token, format!("expecting a data type after `~`"));
+            err_collector.print_errs();
+            exit(1);
+        }
+    }
     tree.nodes.len() - 1
 }
 
