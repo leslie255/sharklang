@@ -56,6 +56,8 @@ let a: uint64 = 10;
 let b: uint64 = a;
 // assigning values to a variable
 a = 20;	
+let c: uint32 = 20;
+b = c ~ uint64;	// use `~` for type cast
 let c: uint64 = uadd(a, b);
 
 u64print(c);
