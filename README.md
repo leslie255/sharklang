@@ -174,13 +174,5 @@ The compiled program can only run on 64-bit systems (although the compiler itsel
 ### Contributing
 Just open up a new PR and I'll review it as soon as possible. All issues and PR's should be in English.
 
-LICENSED UNDER GPLv3
-
-### TODO
-- characters & 8 bit types
-- pointer operations
-- if statement
-- type infer
-- type cast
-- math expressions
-....
+### LICENSE
+This project is Licensed under **GPLv3**
