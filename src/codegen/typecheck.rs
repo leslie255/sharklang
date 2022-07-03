@@ -342,7 +342,9 @@ fn var_init_check(
             }
         }
         Expression::Identifier(rhs_name) => {
-            var_exist_check(context, err_collector, rhs_name);
+            if !var_exist_check(context, err_collector, rhs_name) {
+                return false;
+            }
         }
         Expression::TypeCast(i, _) => {
             if !nested_typecast_check(context, err_collector, rhs) {
@@ -406,6 +408,11 @@ fn var_assign_check(
                 return false;
             }
         }
+        Expression::Identifier(id) => {
+            if !var_exist_check(context, err_collector, id) {
+                return false;
+            }
+        }
         Expression::TypeCast(unwrapped_rhs, _) => {
             if !nested_typecast_check(context, err_collector, rhs) {
                 return false;
@@ -427,12 +434,73 @@ fn var_assign_check(
         }
     }
     if check_type {
-        context
+        if !context
             .parent_block
             .var_type(var_name, context.ast)
             .matches(context, rhs)
-    } else {
-        true
+        {
+            err_collector.add_err(
+                ErrorType::Type,
+                context.ast.node(context.i).position,
+                usize::MAX,
+                format!(
+                    "expecting expression of type `{}` as rhs",
+                    context.parent_block.return_type.description()
+                ),
+            );
+            return false;
+        }
+    }
+    true
+}
+
+fn return_check(
+    context: &mut TypeCheckContext,
+    err_collector: &mut ErrorCollector,
+    expr: &Expression,
+    check_type: bool,
+) {
+    match expr {
+        Expression::NumberLiteral(_) | Expression::StringLiteral(_) => (),
+        Expression::FuncCall(fn_name, args) => {
+            if fn_exist_check(context, err_collector, &fn_name) {
+                fn_args_check(context, err_collector, &fn_name, &args);
+            } else {
+                return;
+            }
+        }
+        Expression::TypeCast(i, _) => {
+            if !nested_typecast_check(context, err_collector, expr) {
+                return;
+            }
+            return_check(context, err_collector, context.ast.expr(*i), false);
+        }
+        Expression::Identifier(id) => {
+            if !var_exist_check(context, err_collector, id) {
+                return;
+            }
+        }
+        _ => {
+            err_collector.add_err(
+                ErrorType::Syntax,
+                context.ast.node(context.i).position,
+                usize::MAX,
+                format!("{} is not a valid return value", expr.description()),
+            );
+        }
+    }
+    if check_type {
+        if !context.parent_block.return_type.matches(context, expr) {
+            err_collector.add_err(
+                ErrorType::Type,
+                context.ast.node(context.i).position,
+                usize::MAX,
+                format!(
+                    "expecting expression of type `{}` after `return`",
+                    context.parent_block.return_type.description()
+                ),
+            );
+        }
     }
 }
 
@@ -467,32 +535,7 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                             );
                         }
                         Expression::ReturnVal(i) => {
-                            let expr = ast.expr(*i);
-                            match expr {
-                                Expression::Identifier(var_name) => {
-                                    var_exist_check(&mut context, err_collector, var_name);
-                                }
-                                Expression::FuncCall(fn_name, args) => {
-                                    fn_exist_check(&mut context, err_collector, fn_name);
-                                    fn_args_check(&mut context, err_collector, fn_name, args);
-                                }
-                                Expression::TypeCast(..) => {
-                                    println!("using type cast as return value has not been implemented yet");
-                                    todo!();
-                                }
-                                _ => (),
-                            }
-                            if !block.return_type.matches(&context, expr) {
-                                err_collector.errors.push(CompileError {
-                                    err_type: ErrorType::Type,
-                                    message: format!(
-                                        "expecting expression of type `{}` after `return`",
-                                        block.return_type.description()
-                                    ),
-                                    position: ast.node(*i).position,
-                                    length: usize::MAX,
-                                });
-                            }
+                            return_check(&mut context, err_collector, ast.expr(*i), true);
                         }
                         Expression::ReturnVoid => {
                             if block.return_type != DataType::Void {
@@ -523,6 +566,14 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                                     continue;
                                 }
                             }
+                        }
+                        Expression::FuncDef(..) => {
+                            err_collector.add_err(
+                                ErrorType::Syntax,
+                                ast.node(*i).position,
+                                usize::MAX,
+                                format!("nested function definition is not allowed"),
+                            );
                         }
                         _ => (),
                     }
