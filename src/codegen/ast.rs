@@ -223,6 +223,25 @@ impl AST {
     pub fn expr(&self, i: usize) -> &Expression {
         unsafe { &self.nodes.get_unchecked(i).expr }
     }
+    // get expression but if the expression is a typecast, unwrap it
+    #[allow(unused)]
+    pub fn expr_no_typecast(&self, i: usize) -> &Expression {
+        let expr = unsafe { &self.nodes.get_unchecked(i).expr };
+        if let Expression::TypeCast(unwrapped_i, _) = expr {
+            unsafe { &self.nodes.get_unchecked(*unwrapped_i).expr }
+        } else {
+            expr
+        }
+    }
+    // get node but if the expression is a typecast, unwrap it
+    pub fn node_no_typecast(&self, i: usize) -> &ASTNode {
+        let node = unsafe { self.nodes.get_unchecked(i) };
+        if let Expression::TypeCast(unwrapped_i, _) = &node.expr {
+            unsafe { &self.nodes.get_unchecked(*unwrapped_i) }
+        } else {
+            node
+        }
+    }
     pub fn new_expr(&mut self, expr: Expression, position: usize) {
         match expr {
             Expression::FuncDef(ref func_name, _) => {

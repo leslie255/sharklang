@@ -73,6 +73,11 @@ impl DataType {
         }
     }
     pub fn matches(&self, context: &TypeCheckContext, expr: &Expression) -> bool {
+        if let Expression::FuncCall(fn_name, _) = expr {
+            if context.builtin_fns.is_builtin_func(fn_name) {
+                return true;
+            }
+        }
         DataType::possible_types(context, expr).contains(self)
     }
     pub fn possible_types(context: &TypeCheckContext, expr: &Expression) -> HashSet<DataType> {
