@@ -144,6 +144,7 @@ pub enum Expression {
     FuncCall(String, Vec<usize>),     // function name, arguments
     VarInit(String, DataType, usize), // lhs, rhs
     VarAssign(String, usize),         // lhs, rhs
+    TypeCast(usize, DataType),
 
     // Raw ASM
     Label(String),
@@ -162,6 +163,28 @@ pub enum Expression {
 impl Default for Expression {
     fn default() -> Self {
         return Expression::Unknown;
+    }
+}
+impl Expression {
+    pub fn description(&self) -> String {
+        match self {
+            Expression::Identifier(name) => format!("`{}`", name),
+            Expression::NumberLiteral(num) => format!("`{}`", num),
+            Expression::StringLiteral(str) => format!("{:?}", str),
+            Expression::FuncCall(fn_name, _) => format!("{}(...)", fn_name),
+            Expression::VarInit(_, _, _) => String::from("variable declaration"),
+            Expression::VarAssign(_, _) => String::from("variable assign"),
+            Expression::TypeCast(_, _) => String::from("type cast"),
+            Expression::Label(name) => format!("{}:", name),
+            Expression::RawASM(asm) => format!("`{}`", asm.trim().clone()),
+            Expression::Block(_) => String::from("block"),
+            Expression::FuncDef(fn_name, _) => format!("func `{}`(...)`", fn_name),
+            Expression::Loop(_) => format!("loop {{...}}"),
+            Expression::ReturnVoid => String::from("return"),
+            Expression::ReturnVal(_) => String::from("return ..."),
+            Expression::UnsafeReturn => String::from("_return"),
+            Expression::Unknown => String::from("UNKNWON"),
+        }
     }
 }
 #[derive(Default, Clone)]
@@ -199,6 +222,25 @@ impl AST {
     }
     pub fn expr(&self, i: usize) -> &Expression {
         unsafe { &self.nodes.get_unchecked(i).expr }
+    }
+    // get expression but if the expression is a typecast, unwrap it
+    #[allow(unused)]
+    pub fn expr_no_typecast(&self, i: usize) -> &Expression {
+        let expr = unsafe { &self.nodes.get_unchecked(i).expr };
+        if let Expression::TypeCast(unwrapped_i, _) = expr {
+            unsafe { &self.nodes.get_unchecked(*unwrapped_i).expr }
+        } else {
+            expr
+        }
+    }
+    // get node but if the expression is a typecast, unwrap it
+    pub fn node_no_typecast(&self, i: usize) -> &ASTNode {
+        let node = unsafe { self.nodes.get_unchecked(i) };
+        if let Expression::TypeCast(unwrapped_i, _) = &node.expr {
+            unsafe { &self.nodes.get_unchecked(*unwrapped_i) }
+        } else {
+            node
+        }
     }
     pub fn new_expr(&mut self, expr: Expression, position: usize) {
         match expr {
@@ -247,64 +289,19 @@ fn parse_fn_call_args(
         exit(1);
     }
 
+    // if there is a `)` coming immediately after the `(`, there are no arguments
+    match &tokens.look_ahead(1).content {
+        TokenContent::RoundParenClose => {
+            tokens.next();
+            return args;
+        }
+        _ => (),
+    }
+
     loop {
         // get the next argument
-        token = tokens.next();
-
-        // if there is a `)` coming immediately after the `(`, there are no arguments
-        match &token.content {
-            TokenContent::RoundParenClose => break,
-            _ => (),
-        }
-        match &token.content {
-            TokenContent::UInt(num) => {
-                tree.new_expr(Expression::NumberLiteral(*num), token.position);
-            }
-            TokenContent::String(str) => {
-                tree.new_expr(Expression::StringLiteral(str.clone()), token.position);
-            }
-            TokenContent::Identifier(id) => {
-                match tokens.look_ahead(1).content {
-                    TokenContent::Comma | TokenContent::RoundParenClose => {
-                        // is a variable
-                        tree.new_expr(Expression::Identifier(id.clone()), token.position);
-                    }
-                    TokenContent::RoundParenOpen => {
-                        // is a function call
-                        let args = parse_fn_call_args(tokens, tree, err_collector);
-                        tree.new_expr(Expression::FuncCall(id.clone(), args), token.position);
-                    }
-                    TokenContent::Equal => {
-                        err_collector.syntax_err(
-                            &tokens.look_ahead(1),
-                            "variable assignment cannot be used as an argument for a function"
-                                .to_string(),
-                        );
-                        err_collector.print_errs();
-                        exit(1);
-                    }
-                    _ => {
-                        err_collector.syntax_err(
-                            &tokens.look_ahead(1),
-                            "expecting `(`, `,` or `)`".to_string(),
-                        );
-                        err_collector.print_errs();
-                        exit(1);
-                    }
-                }
-            }
-            _ => {
-                err_collector.syntax_err(
-                    &token,
-                    format!("cannot use {:?} as an argument for function", token.content),
-                );
-                err_collector.print_errs();
-                exit(1);
-            }
-        }
-        args.push(tree.nodes.len() - 1);
-        // if next token is `,` it means there's another argument
-        // if it's `)` then it means function call should end
+        let i = parse_single_expr(tree, tokens, err_collector);
+        args.push(i);
         token = tokens.next();
         match &token.content {
             TokenContent::Comma => {}
@@ -328,7 +325,7 @@ fn parse_single_expr(
     tokens: &mut TokenStream,
     err_collector: &mut ErrorCollector,
 ) -> usize {
-    let token = tokens.next();
+    let mut token = tokens.next();
     match token.content {
         TokenContent::UInt(uint) => {
             tree.new_expr(Expression::NumberLiteral(uint), token.position);
@@ -342,26 +339,33 @@ fn parse_single_expr(
                 let args = parse_fn_call_args(tokens, tree, err_collector);
                 tree.new_expr(Expression::FuncCall(id, args), token.position);
             }
-            TokenContent::Semicolon => {
-                // is a variable
-                tokens.next();
-                tree.new_expr(Expression::Identifier(id), token.position);
-            }
             _ => {
-                let token = tokens.next();
-                err_collector.syntax_err(&token, format!("expecting `(` or `;`"));
-                err_collector.print_errs();
-                exit(1);
+                // is a variable
+                tree.new_expr(Expression::Identifier(id), token.position);
             }
         },
         _ => {
-            err_collector.syntax_err(
-                &token,
-                format!(
-                    "`{:?}` is not a valid rhs for variable assignment",
-                    token.content
-                ),
+            err_collector.syntax_err(&token, format!("what the fuck is this shit?"));
+            err_collector.print_errs();
+            exit(1);
+        }
+    }
+    if tokens.look_ahead(1).content == TokenContent::Squiggle {
+        // type cast
+        tokens.next();
+        token = tokens.next();
+        if let TokenContent::Identifier(ref id) = token.content {
+            let data_type = DataType::from_str(&id).unwrap_or_else(|| {
+                err_collector.syntax_err(&token, format!("expecting a valid data type after `~`"));
+                err_collector.print_errs();
+                exit(1);
+            });
+            tree.new_expr(
+                Expression::TypeCast(tree.nodes.len() - 1, data_type),
+                token.position,
             );
+        } else {
+            err_collector.syntax_err(&token, format!("expecting a data type after `~`"));
             err_collector.print_errs();
             exit(1);
         }

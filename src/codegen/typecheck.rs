@@ -73,6 +73,11 @@ impl DataType {
         }
     }
     pub fn matches(&self, context: &TypeCheckContext, expr: &Expression) -> bool {
+        if let Expression::FuncCall(fn_name, _) = expr {
+            if context.builtin_fns.is_builtin_func(fn_name) {
+                return true;
+            }
+        }
         DataType::possible_types(context, expr).contains(self)
     }
     pub fn possible_types(context: &TypeCheckContext, expr: &Expression) -> HashSet<DataType> {
@@ -100,6 +105,9 @@ impl DataType {
                 if let Some(var_info) = context.parent_block.var_info(var_name, context.ast) {
                     hash_set.insert(var_info.data_type.clone());
                 }
+            }
+            Expression::TypeCast(_, data_type) => {
+                hash_set.insert(data_type.clone());
             }
             _ => (),
         }
@@ -148,7 +156,7 @@ fn var_exist_check(
     } else {
         err_collector.errors.push(CompileError {
             err_type: ErrorType::Type,
-            message: format!("`{}` is not a variable", var_name),
+            message: format!("variable `{}` is not found in the current scope", var_name),
             position: context.ast.node(context.i).position,
             length: usize::MAX,
         });
@@ -176,7 +184,79 @@ fn fn_exist_check(
     }
 }
 
-pub fn fn_args_check(
+fn fn_arg_check(
+    // check one of the arguments
+    context: &mut TypeCheckContext,
+    err_collector: &mut ErrorCollector,
+    expected_args: &Vec<DataType>,
+    arg: usize, // the argument provided
+    i: usize,   // which argument is this?
+    check_type: bool,
+) -> bool {
+    // first check if variable or function call used as argument is valid
+    let arg_expr = context.ast.expr(arg);
+    match arg_expr {
+        Expression::StringLiteral(_) | Expression::NumberLiteral(_) => (),
+        Expression::Identifier(id) => {
+            if !var_exist_check(context, err_collector, id) {
+                return false;
+            }
+        }
+        Expression::FuncCall(fn_name, args) => {
+            if !fn_exist_check(context, err_collector, fn_name) {
+                return false;
+            }
+            fn_args_check(context, err_collector, fn_name, args);
+        }
+        Expression::TypeCast(unwrapped_i, _) => {
+            nested_typecast_check(context, err_collector, arg_expr);
+            fn_arg_check(
+                context,
+                err_collector,
+                expected_args,
+                *unwrapped_i,
+                i,
+                false,
+            );
+        }
+        _ => {
+            err_collector.add_err(
+                ErrorType::Syntax,
+                context.ast.node(arg).position,
+                usize::MAX,
+                format!(
+                    "{} is not a valid argument for a function",
+                    arg_expr.description()
+                ),
+            );
+            return false;
+        }
+    }
+
+    // check type
+    if check_type {
+        // Make sure to check the number of arguments before calling this function
+        let expected_type = expected_args.get(i).unwrap();
+        if !expected_type.matches(context, arg_expr) {
+            err_collector.add_err(
+                ErrorType::Type,
+                context.ast.node(arg).position,
+                usize::MAX,
+                format!(
+                    "expecting expression of type {} for argument #{}",
+                    expected_type.description(),
+                    i
+                ),
+            );
+            return false;
+        }
+    }
+
+    // check argument type
+    true
+}
+
+fn fn_args_check(
     context: &mut TypeCheckContext,
     err_collector: &mut ErrorCollector,
     fn_name: &String,
@@ -215,26 +295,216 @@ pub fn fn_args_check(
 
         // check arguments
         for (i, arg_i) in input_args.iter().enumerate() {
-            let arg = context.ast.expr(*arg_i);
-            if let Expression::Identifier(id) = arg {
-                if !var_exist_check(context, err_collector, id) {
-                    continue;
-                }
+            fn_arg_check(context, err_collector, &fn_block.arg_types, *arg_i, i, true);
+        }
+    }
+}
+
+fn nested_typecast_check(
+    context: &mut TypeCheckContext,
+    err_collector: &mut ErrorCollector,
+    type_cast_expr: &Expression,
+) -> bool {
+    let unwrapped = if let Expression::TypeCast(i, _) = type_cast_expr {
+        context.ast.node(*i)
+    } else {
+        panic!();
+    };
+    match unwrapped.expr {
+        Expression::TypeCast(..) => {
+            err_collector.add_err(
+                ErrorType::Syntax,
+                unwrapped.position,
+                usize::MAX,
+                format!("Nested type cast is not allowed"),
+            );
+            false
+        }
+        _ => true,
+    }
+}
+
+fn var_init_check(
+    context: &mut TypeCheckContext,
+    err_collector: &mut ErrorCollector,
+    var_name: &String,
+    var_type: Option<&DataType>, // if None means skip type check
+    rhs_i: usize,
+) -> bool {
+    // check if lhs variable exists
+    if !var_exist_check(context, err_collector, var_name) {
+        return false;
+    }
+    // check if rhs is valid
+    let rhs = context.ast.expr(rhs_i);
+    match rhs {
+        Expression::NumberLiteral(_) | Expression::StringLiteral(_) => (),
+        Expression::FuncCall(fn_name, args) => {
+            if fn_exist_check(context, err_collector, fn_name) {
+                fn_args_check(context, err_collector, fn_name, args);
+            } else {
+                return false;
             }
-            let expected_type = fn_block.arg_types.get(i).unwrap();
-            if !expected_type.matches(context, arg) {
-                err_collector.errors.push(CompileError {
-                    err_type: ErrorType::Type,
-                    message: format!(
-                        "expected expression of type {} for argument of function `{}`, found {:?}",
-                        expected_type.description(),
-                        fn_name,
-                        arg
-                    ),
-                    position: context.ast.node(context.i).position,
-                    length: usize::MAX,
-                });
+        }
+        Expression::Identifier(rhs_name) => {
+            if !var_exist_check(context, err_collector, rhs_name) {
+                return false;
             }
+        }
+        Expression::TypeCast(i, _) => {
+            if !nested_typecast_check(context, err_collector, rhs) {
+                return false;
+            }
+            if !var_init_check(context, err_collector, var_name, None, *i) {
+                return false;
+            }
+        }
+        _ => {
+            err_collector.add_err(
+                ErrorType::Syntax,
+                context.ast.node(rhs_i).position,
+                usize::MAX,
+                format!(
+                    "{} is not a valid rhs for variable declareation",
+                    rhs.description()
+                ),
+            );
+            return false;
+        }
+    }
+
+    // check rhs type
+    if var_type.is_some() {
+        if !var_type.unwrap().matches(context, rhs) {
+            err_collector.add_err(
+                ErrorType::Syntax,
+                context.ast.node(rhs_i).position,
+                usize::MAX,
+                format!(
+                    "expecting expression of type `{}` as rhs",
+                    var_type.unwrap().description()
+                ),
+            );
+            return false;
+        }
+    }
+    return true;
+}
+
+fn var_assign_check(
+    context: &mut TypeCheckContext,
+    err_collector: &mut ErrorCollector,
+    var_name: &String,
+    rhs_i: usize,
+    check_type: bool,
+) -> bool {
+    // check if lhs is a valid variable
+    if !var_exist_check(context, err_collector, var_name) {
+        return false;
+    }
+    // check if rhs is a valid expression
+    let rhs = context.ast.expr(rhs_i);
+    match rhs {
+        Expression::NumberLiteral(_) | Expression::StringLiteral(_) => (),
+        Expression::FuncCall(fn_name, args) => {
+            if fn_exist_check(context, err_collector, fn_name) {
+                fn_args_check(context, err_collector, fn_name, args);
+            } else {
+                return false;
+            }
+        }
+        Expression::Identifier(id) => {
+            if !var_exist_check(context, err_collector, id) {
+                return false;
+            }
+        }
+        Expression::TypeCast(unwrapped_rhs, _) => {
+            if !nested_typecast_check(context, err_collector, rhs) {
+                return false;
+            }
+            if !var_assign_check(context, err_collector, var_name, *unwrapped_rhs, true) {
+                return false;
+            }
+        }
+        _ => {
+            err_collector.add_err(
+                ErrorType::Syntax,
+                context.ast.node(rhs_i).position,
+                usize::MAX,
+                format!(
+                    "{} is not a valid rhs for variable assignment",
+                    rhs.description()
+                ),
+            );
+        }
+    }
+    if check_type {
+        if !context
+            .parent_block
+            .var_type(var_name, context.ast)
+            .matches(context, rhs)
+        {
+            err_collector.add_err(
+                ErrorType::Type,
+                context.ast.node(context.i).position,
+                usize::MAX,
+                format!(
+                    "expecting expression of type `{}` as rhs",
+                    context.parent_block.return_type.description()
+                ),
+            );
+            return false;
+        }
+    }
+    true
+}
+
+fn return_check(
+    context: &mut TypeCheckContext,
+    err_collector: &mut ErrorCollector,
+    expr: &Expression,
+    check_type: bool,
+) {
+    match expr {
+        Expression::NumberLiteral(_) | Expression::StringLiteral(_) => (),
+        Expression::FuncCall(fn_name, args) => {
+            if fn_exist_check(context, err_collector, &fn_name) {
+                fn_args_check(context, err_collector, &fn_name, &args);
+            } else {
+                return;
+            }
+        }
+        Expression::TypeCast(i, _) => {
+            if !nested_typecast_check(context, err_collector, expr) {
+                return;
+            }
+            return_check(context, err_collector, context.ast.expr(*i), false);
+        }
+        Expression::Identifier(id) => {
+            if !var_exist_check(context, err_collector, id) {
+                return;
+            }
+        }
+        _ => {
+            err_collector.add_err(
+                ErrorType::Syntax,
+                context.ast.node(context.i).position,
+                usize::MAX,
+                format!("{} is not a valid return value", expr.description()),
+            );
+        }
+    }
+    if check_type {
+        if !context.parent_block.return_type.matches(context, expr) {
+            err_collector.add_err(
+                ErrorType::Type,
+                context.ast.node(context.i).position,
+                usize::MAX,
+                format!(
+                    "expecting expression of type `{}` after `return`",
+                    context.parent_block.return_type.description()
+                ),
+            );
         }
     }
 }
@@ -257,78 +527,20 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                                 fn_args_check(&mut context, err_collector, fn_name, args);
                             }
                         }
-                        Expression::VarAssign(var_name, rhs) => {
-                            let rhs_expr = ast.expr(*rhs);
-                            if !var_exist_check(&mut context, err_collector, var_name) {
-                                continue;
-                            }
-                            if let Expression::FuncCall(fn_name, args) = rhs_expr {
-                                if fn_exist_check(&mut context, err_collector, fn_name) {
-                                    fn_args_check(&mut context, err_collector, fn_name, args);
-                                }
-                            }
-                            let lhs_type = &block.var_type(var_name, context.ast);
-                            if !lhs_type.matches(&context, rhs_expr) {
-                                if *lhs_type == DataType::Int8 {
-                                    if DataType::possible_types(&context, rhs_expr).contains(&DataType::UInt8) {
-                                        println!("Reminder that SHARKC is intended to be used with thigh highs and skirts");
-                                    }
-                                }
-                                err_collector.errors.push(CompileError {
-                                    err_type: ErrorType::Type,
-                                    message: format!(
-                                        "expecting expression of type `{}` as rhs",
-                                        lhs_type.description()
-                                    ),
-                                    position: ast.node(*rhs).position,
-                                    length: usize::MAX,
-                                });
-                            }
+                        Expression::VarAssign(var_name, rhs_i) => {
+                            var_assign_check(&mut context, err_collector, var_name, *rhs_i, true);
                         }
-                        Expression::VarInit(_, var_type, rhs) => {
-                            let rhs_expr = ast.expr(*rhs);
-                            if let Expression::Identifier(id) = rhs_expr {
-                                var_exist_check(&mut context, err_collector, id);
-                            } else if let Expression::FuncCall(fn_name, args) = rhs_expr {
-                                if fn_exist_check(&mut context, err_collector, fn_name) {
-                                    fn_args_check(&mut context, err_collector, fn_name, args);
-                                }
-                            }
-                            if !var_type.matches(&context, rhs_expr) {
-                                err_collector.errors.push(CompileError {
-                                    err_type: ErrorType::Type,
-                                    message: format!(
-                                        "expecting expression of type `{}` as rhs",
-                                        var_type.description()
-                                    ),
-                                    position: ast.node(*rhs).position,
-                                    length: usize::MAX,
-                                });
-                            }
+                        Expression::VarInit(lhs_name, var_type, rhs_i) => {
+                            var_init_check(
+                                &mut context,
+                                err_collector,
+                                lhs_name,
+                                Some(var_type),
+                                *rhs_i,
+                            );
                         }
                         Expression::ReturnVal(i) => {
-                            let expr = ast.expr(*i);
-                            match expr {
-                                Expression::Identifier(var_name) => {
-                                    var_exist_check(&mut context, err_collector, var_name);
-                                }
-                                Expression::FuncCall(fn_name, args) => {
-                                    fn_exist_check(&mut context, err_collector, fn_name);
-                                    fn_args_check(&mut context, err_collector, fn_name, args);
-                                }
-                                _ => (),
-                            }
-                            if !block.return_type.matches(&context, expr) {
-                                err_collector.errors.push(CompileError {
-                                    err_type: ErrorType::Type,
-                                    message: format!(
-                                        "expecting expression of type `{}` after `return`",
-                                        block.return_type.description()
-                                    ),
-                                    position: ast.node(*i).position,
-                                    length: usize::MAX,
-                                });
-                            }
+                            return_check(&mut context, err_collector, ast.expr(*i), true);
                         }
                         Expression::ReturnVoid => {
                             if block.return_type != DataType::Void {
@@ -359,6 +571,14 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                                     continue;
                                 }
                             }
+                        }
+                        Expression::FuncDef(..) => {
+                            err_collector.add_err(
+                                ErrorType::Syntax,
+                                ast.node(*i).position,
+                                usize::MAX,
+                                format!("nested function definition is not allowed"),
+                            );
                         }
                         _ => (),
                     }

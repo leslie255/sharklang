@@ -40,8 +40,8 @@ fn print_tree(src_path: String) {
     let tokens = codegen::preprocess::preprocess(codegen::tokens::parse_tokens(&source));
     let mut err_collector = codegen::error::ErrorCollector::new(src_path, &source);
     let ast = codegen::ast::construct_ast(tokens, &mut err_collector);
+    print_ast!(ast.nodes);
     if err_collector.errors.is_empty() {
-        print_ast!(ast.nodes);
     } else {
         err_collector.print_errs();
     }
