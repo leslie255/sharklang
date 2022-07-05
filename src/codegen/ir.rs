@@ -599,8 +599,13 @@ pub enum OperandContent {
 #[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AddrMode {
+    Addr,
+    // rbp - 8
     Direct,
+    // [rbp - 8]
     Indirect,
+    // mov  rax, [rbp - 8]
+    // [rax]
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Operand {
@@ -611,6 +616,7 @@ pub struct Operand {
 impl Operand {
     pub fn text(&self) -> String {
         match self.addr_mode {
+            AddrMode::Addr => todo!(),
             AddrMode::Direct => match &self.content {
                 OperandContent::Reg(reg) => match self.len {
                     8 => reg._64bit(),
