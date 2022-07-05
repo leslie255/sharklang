@@ -26,6 +26,8 @@ pub enum TokenContent {
     UnsafeReturn,
     ReturnArrow,
     Squiggle,
+    And,
+    Dollar,
 
     SingleLineCommentStart,
     NewLine,
@@ -168,9 +170,8 @@ impl TokenPrototype {
     fn is_valid(str: &String) -> bool {
         match str.as_str() {
             "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "~"
-            | "let" | "loop" | "func" | "true" | "false" | "return" | "_return" | "//" | "\n" => {
-                return true
-            }
+            | "let" | "loop" | "func" | "true" | "false" | "return" | "_return" | "//" | "&"
+            | "$" | "\n" => return true,
             _ => {
                 if str.is_empty() {
                     return false;
@@ -240,6 +241,8 @@ impl TokenPrototype {
             "func" => return Token::new(TokenContent::Func, self.position, self.len),
             "return" => return Token::new(TokenContent::Return, self.position, self.len),
             "_return" => return Token::new(TokenContent::UnsafeReturn, self.position, self.len),
+            "&" => return Token::new(TokenContent::And, self.position, self.len),
+            "$" => return Token::new(TokenContent::Dollar, self.position, self.len),
             "->" => return Token::new(TokenContent::ReturnArrow, self.position, self.len),
             "~" => return Token::new(TokenContent::Squiggle, self.position, self.len),
             "//" => {

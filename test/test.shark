@@ -1,8 +1,7 @@
-func test(a: uint64) -> uint64 {
-	return 0;
-}
 func main() -> int32 {
-	let a: uint64 = test(0);
+	let a: uint64 = 0;
+    let b: ptr = &a;
+
 	return a ~ int32;
 }
 

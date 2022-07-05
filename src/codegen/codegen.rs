@@ -6,7 +6,6 @@ use super::preprocess::*;
 use super::tokens::*;
 use super::typecheck::*;
 
-#[allow(unused)]
 static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 6] = [
     Register::r10,
     Register::r11,
@@ -16,7 +15,6 @@ static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 6] = [
     Register::r15,
 ];
 
-#[allow(unused_variables)]
 fn codegen_for_simple_expr(
     block: &CodeBlock,
     program: &Program,
@@ -46,6 +44,11 @@ fn codegen_for_simple_expr(
         Expression::FuncCall(_, _) => {
             codegen_for_fn_call(block, program, ast, node, target);
             operand!(rax, 8)
+        }
+        Expression::GetAddress(expr_i) => {
+            match &ast.expr(*expr_i) {
+                _ => panic!(),
+            }
         }
         _ => panic!(),
     }
