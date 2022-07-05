@@ -745,6 +745,7 @@ pub enum OperandContent {
     LocalVar(u64),     // qword [rbp - addr]
     Label(String),     // _label
     Int(u64),          //
+    GetVarAddr(u64),   // rbp - 8
     Raw(String),
 }
 #[allow(unused)]
@@ -789,6 +790,7 @@ impl Operand {
                     },
                     var_addr
                 ),
+                OperandContent::GetVarAddr(var_addr) => format!("[rbp - {}]", var_addr),
                 OperandContent::Label(name) => format!("{}", name),
                 OperandContent::Int(number) => format!("{}", number),
                 OperandContent::Raw(code) => format!(
@@ -809,6 +811,7 @@ impl Operand {
             OperandContent::Reg(reg) => reg.name(),
             OperandContent::StaticVar(name) => format!("static var {}", name),
             OperandContent::LocalVar(var_addr) => format!("local var {}", var_addr),
+            OperandContent::GetVarAddr(var_addr) => format!("var addr {}", var_addr),
             OperandContent::Label(name) => format!("label{}", name),
             OperandContent::Int(number) => format!("{}", number),
             OperandContent::Raw(code) => format!("raw {:?}", code),
@@ -887,6 +890,12 @@ impl ASMStatement {
             Self::DataStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
             Self::Mov(oper0, oper1) => {
                 let mut c = String::new();
+                if let OperandContent::GetVarAddr(_) = oper1.content {
+                    let rax = operand!(rax, oper0.len);
+                    c.push_str(format!("\tlea\t{}, {}\n", rax.text(), oper1.text()).as_str());
+                    c.push_str(format!("\tmov\t{}, {}\n", oper0.text(), rax.text()).as_str());
+                    return c;
+                }
                 if let OperandContent::Reg(_) = oper0.content {
                     if let OperandContent::Reg(_) = oper1.content {
                         c.push_str(format!("\tmov\t{}, {}", oper0.text(), oper1.text()).as_str());

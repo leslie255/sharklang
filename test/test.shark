@@ -1,9 +1,9 @@
-func square(x: uint64) -> uint64 {
-    return umul(x, x)
-}
-
 func main() -> int32 {
-    let a: uint64 = 0
+    let a: uint64 = 0;
+	let b: ptr = &a;
+
+	u64print(b ~ uint64);
 
     return 0;
 }
+

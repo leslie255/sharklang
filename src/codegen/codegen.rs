@@ -46,6 +46,14 @@ fn codegen_for_simple_expr(
             operand!(rax, 8)
         }
         Expression::GetAddress(expr_i) => match &ast.expr(*expr_i) {
+            Expression::Identifier(id) => {
+                let var_info = block.var_info(id, ast).unwrap();
+                Operand {
+                    len: expected_size as usize,
+                    addr_mode: AddrMode::Direct,
+                    content: OperandContent::GetVarAddr(var_info.addr),
+                }
+            }
             _ => panic!(),
         },
         _ => panic!(),
