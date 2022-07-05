@@ -1,7 +1,9 @@
-func main() -> int32 {
-	let a: uint64 = 0;
-    let b: ptr = &a;
-
-	return a ~ int32;
+func square(x: uint64) -> uint64 {
+    return umul(x, x)
 }
 
+func main() -> int32 {
+    let a: uint64 = 0
+
+    return 0;
+}

@@ -45,11 +45,9 @@ fn codegen_for_simple_expr(
             codegen_for_fn_call(block, program, ast, node, target);
             operand!(rax, 8)
         }
-        Expression::GetAddress(expr_i) => {
-            match &ast.expr(*expr_i) {
-                _ => panic!(),
-            }
-        }
+        Expression::GetAddress(expr_i) => match &ast.expr(*expr_i) {
+            _ => panic!(),
+        },
         _ => panic!(),
     }
 }
@@ -289,6 +287,8 @@ pub fn codegen(source: String, src_file: String) -> String {
     }
 
     err_collector.print_errs();
+
+    println!("{}", program.description());
 
     let generated = program.gen_code();
     generated

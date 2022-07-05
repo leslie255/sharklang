@@ -1,4 +1,155 @@
 // ir: intermedia representation
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! operand {
+    (label, $l: expr, $x: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Label($x),
+        }
+    };
+    (int, $l: expr, $x: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Int($x),
+        }
+    };
+    (var, $l: expr,$x: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::LocalVar($x),
+        }
+    };
+    (var, ptr, $l: expr, $x: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Indirect,
+            content: OperandContent::LocalVar($x),
+        }
+    };
+    (rax, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rax.of_size($l as usize)),
+        }
+    };
+    (rbx, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rbx.of_size($l as usize)),
+        }
+    };
+    (rcx, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rcx.of_size($l as usize)),
+        }
+    };
+    (rdx, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rdx.of_size($l as usize)),
+        }
+    };
+    (rsi, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rsi.of_size($l as usize)),
+        }
+    };
+    (rdi, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rdi.of_size($l as usize)),
+        }
+    };
+    (rsp, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rsp.of_size($l as usize)),
+        }
+    };
+    (rbp, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::rbp.of_size($l as usize)),
+        }
+    };
+    (r8, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r8.of_size($l as usize)),
+        }
+    };
+    (r9, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r9.of_size($l as usize)),
+        }
+    };
+    (r10, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r10.of_size($l as usize)),
+        }
+    };
+    (r11, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r11.of_size($l as usize)),
+        }
+    };
+    (r12, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r12.of_size($l as usize)),
+        }
+    };
+    (r13, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r13.of_size($l as usize)),
+        }
+    };
+    (r14, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r14.of_size($l as usize)),
+        }
+    };
+    (r15, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg(Register::r15.of_size($l as usize)),
+        }
+    };
+    (reg, $reg: expr, $l: expr) => {
+        Operand {
+            len: $l as usize,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Reg($reg.of_size($l as usize)),
+        }
+    };
+}
 
 use std::collections::HashMap;
 
@@ -713,7 +864,7 @@ impl ASMStatement {
                 result
             }
             Self::FuncDef(name) => format!("fndef\t{}\n", name),
-            Self::FuncRetVoid => format!("return\n"),
+            Self::FuncRetVoid => format!("ret\tvoid\n"),
             Self::FuncRet(oper) => format!("ret\t{}\n", oper.description()),
             Self::Add(oper0, oper1) => {
                 format!("add\t{}, {}\n", oper0.description(), oper1.description())
@@ -734,7 +885,25 @@ impl ASMStatement {
             Self::Extern(name) => format!("\textern _{}", name),
             Self::DataInt(name, value) => format!("_{}:\tdq {}", name, value),
             Self::DataStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
-            Self::Mov(oper0, oper1) => format!("\tmov\t{}, {}", oper0.text(), oper1.text()),
+            Self::Mov(oper0, oper1) => {
+                let mut c = String::new();
+                if let OperandContent::Reg(_) = oper0.content {
+                    if let OperandContent::Reg(_) = oper1.content {
+                        c.push_str(format!("\tmov\t{}, {}", oper0.text(), oper1.text()).as_str());
+                    } else if let OperandContent::Int(_) = oper1.content {
+                        c.push_str(format!("\tmov\t{}, {}", oper0.text(), oper1.text()).as_str());
+                    } else {
+                        let rax = operand!(rax, oper0.len);
+                        c.push_str(format!("\tmov\t{}, {}\n", rax.text(), oper1.text()).as_str());
+                        c.push_str(format!("\tmov\t{}, {}", oper0.text(), rax.text()).as_str());
+                    }
+                } else {
+                    let rax = operand!(rax, oper0.len);
+                    c.push_str(format!("\tmov\t{}, {}\n", rax.text(), oper1.text()).as_str());
+                    c.push_str(format!("\tmov\t{}, {}", oper0.text(), rax.text()).as_str());
+                }
+                c
+            }
             Self::FuncCall(name, args) => {
                 let mut result = String::new();
                 args.iter().enumerate().for_each(|(i, arg)| {
@@ -773,155 +942,4 @@ impl ASMFuncCallConstructor {
         }
         self
     }
-}
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! operand {
-    (label, $l: expr, $x: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Label($x),
-        }
-    };
-    (int, $l: expr, $x: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Int($x),
-        }
-    };
-    (var, $l: expr,$x: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::LocalVar($x),
-        }
-    };
-    (var, ptr, $l: expr, $x: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Indirect,
-            content: OperandContent::LocalVar($x),
-        }
-    };
-    (rax, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rax.of_size($l as usize)),
-        }
-    };
-    (rbx, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rbx.of_size($l as usize)),
-        }
-    };
-    (rcx, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rcx.of_size($l as usize)),
-        }
-    };
-    (rdx, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rdx.of_size($l as usize)),
-        }
-    };
-    (rsi, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rsi.of_size($l as usize)),
-        }
-    };
-    (rdi, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rdi.of_size($l as usize)),
-        }
-    };
-    (rsp, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rsp.of_size($l as usize)),
-        }
-    };
-    (rbp, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::rbp.of_size($l as usize)),
-        }
-    };
-    (r8, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r8.of_size($l as usize)),
-        }
-    };
-    (r9, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r9.of_size($l as usize)),
-        }
-    };
-    (r10, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r10.of_size($l as usize)),
-        }
-    };
-    (r11, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r11.of_size($l as usize)),
-        }
-    };
-    (r12, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r12.of_size($l as usize)),
-        }
-    };
-    (r13, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r13.of_size($l as usize)),
-        }
-    };
-    (r14, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r14.of_size($l as usize)),
-        }
-    };
-    (r15, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg(Register::r15.of_size($l as usize)),
-        }
-    };
-    (reg, $reg: expr, $l: expr) => {
-        Operand {
-            len: $l as usize,
-            addr_mode: AddrMode::Direct,
-            content: OperandContent::Reg($reg.of_size($l as usize)),
-        }
-    };
 }
