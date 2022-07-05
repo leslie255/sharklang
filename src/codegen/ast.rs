@@ -140,6 +140,7 @@ pub enum Expression {
     Identifier(String),
     NumberLiteral(u64),
     StringLiteral(String),
+    CharLiteral(u8),
     // Recursive expression
     FuncCall(String, Vec<usize>),     // function name, arguments
     VarInit(String, DataType, usize), // lhs, rhs
@@ -171,6 +172,7 @@ impl Expression {
             Expression::Identifier(name) => format!("`{}`", name),
             Expression::NumberLiteral(num) => format!("`{}`", num),
             Expression::StringLiteral(str) => format!("{:?}", str),
+            Expression::CharLiteral(char) => format!("{:?}", char),
             Expression::FuncCall(fn_name, _) => format!("{}(...)", fn_name),
             Expression::VarInit(_, _, _) => String::from("variable declaration"),
             Expression::VarAssign(_, _) => String::from("variable assign"),
@@ -332,6 +334,9 @@ fn parse_single_expr(
         }
         TokenContent::String(str) => {
             tree.new_expr(Expression::StringLiteral(str), token.position);
+        }
+        TokenContent::Char(byte) => {
+            tree.new_expr(Expression::CharLiteral(byte), token.position);
         }
         TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
             TokenContent::RoundParenOpen => {

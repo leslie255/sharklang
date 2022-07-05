@@ -1,8 +1,6 @@
-func test(a: uint64) {
-	return;
-}
 func main() -> int32 {
-	let a: uint64 = uadd(4, 5);
+	let a: uint8 = 'A';
+	a = 'B';
 	return a ~ int32;
 }
 

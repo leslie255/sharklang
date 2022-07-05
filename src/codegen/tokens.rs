@@ -17,6 +17,7 @@ pub enum TokenContent {
     SInt(i64),
     Float(f64),
     String(String),
+    Char(u8),
     Identifier(String),
     Let,
     Loop,
@@ -166,8 +167,8 @@ impl TokenPrototype {
     }
     fn is_valid(str: &String) -> bool {
         match str.as_str() {
-            "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "~" | "let"
-            | "loop" | "func" | "true" | "false" | "return" | "_return" | "//" | "\n" => {
+            "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "~"
+            | "let" | "loop" | "func" | "true" | "false" | "return" | "_return" | "//" | "\n" => {
                 return true
             }
             _ => {
@@ -264,6 +265,12 @@ impl TokenPrototype {
                     );
                 }
 
+                // is a character
+                if first_ch == '\'' {
+                    let byte: u8 = self.source.bytes().nth(1).unwrap();
+                    return Token::new(TokenContent::Char(byte), self.position, self.len);
+                }
+
                 // is a floating point number
                 if (first_ch.is_numeric() || first_ch == '-') && self.source.contains('.') {
                     if let Ok(float) = self.source.parse() {
@@ -354,7 +361,6 @@ pub fn parse_tokens(source: &String) -> TokenStream {
 
         // is it a string literal?
         if current_word == "\"" {
-            // TODO: string escape codes
             loop {
                 next!();
                 if ch == '\\' {
@@ -374,6 +380,23 @@ pub fn parse_tokens(source: &String) -> TokenStream {
             next!();
             last_one_is_valid = true;
             current_word = String::from(ch);
+        }
+
+        // is it a character literal?
+        if current_word == "'" {
+            next!();
+            if !ch.is_ascii() {
+                println!("character literal must be in ascii");
+                std::process::exit(1);
+            }
+            current_word.push(ch);
+            next!();
+            if ch != '\'' {
+                println!("character literal must be in ascii");
+                std::process::exit(1);
+            }
+            current_word.push(ch);
+            prototypes.push(TokenPrototype::from(&current_word, i));
         }
 
         // is it assembly instruction?

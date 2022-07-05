@@ -96,6 +96,9 @@ impl DataType {
             Expression::StringLiteral(_) => {
                 hash_set.insert(DataType::Pointer);
             }
+            Expression::CharLiteral(_) => {
+                hash_set.insert(DataType::UInt8);
+            }
             Expression::FuncCall(fn_name, _) => {
                 if let Some(fn_block) = context.ast.fn_block(fn_name) {
                     hash_set.insert(fn_block.return_type.clone());
@@ -196,7 +199,9 @@ fn fn_arg_check(
     // first check if variable or function call used as argument is valid
     let arg_expr = context.ast.expr(arg);
     match arg_expr {
-        Expression::StringLiteral(_) | Expression::NumberLiteral(_) => (),
+        Expression::NumberLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::CharLiteral(_) => (),
         Expression::Identifier(id) => {
             if !var_exist_check(context, err_collector, id) {
                 return false;
@@ -338,7 +343,9 @@ fn var_init_check(
     // check if rhs is valid
     let rhs = context.ast.expr(rhs_i);
     match rhs {
-        Expression::NumberLiteral(_) | Expression::StringLiteral(_) => (),
+        Expression::NumberLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::CharLiteral(_) => (),
         Expression::FuncCall(fn_name, args) => {
             if fn_exist_check(context, err_collector, fn_name) {
                 fn_args_check(context, err_collector, fn_name, args);
@@ -405,7 +412,9 @@ fn var_assign_check(
     // check if rhs is a valid expression
     let rhs = context.ast.expr(rhs_i);
     match rhs {
-        Expression::NumberLiteral(_) | Expression::StringLiteral(_) => (),
+        Expression::NumberLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::CharLiteral(_) => (),
         Expression::FuncCall(fn_name, args) => {
             if fn_exist_check(context, err_collector, fn_name) {
                 fn_args_check(context, err_collector, fn_name, args);

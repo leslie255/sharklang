@@ -55,7 +55,10 @@ fn codegen_for_fn_call(
                     target.push(ir!(mov, reg.clone(), operand!(rax, size)));
                     func_call.arg(reg);
                 }
-                _ => panic!("{:?} is not a valid argument for function", ast.expr_no_typecast(*arg)),
+                _ => panic!(
+                    "{:?} is not a valid argument for function",
+                    ast.expr_no_typecast(*arg)
+                ),
             }
         }
         target.push(func_call.asm);
@@ -101,6 +104,13 @@ fn gen_code_inside_block(
                     ));
                     target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
                 }
+                Expression::CharLiteral(byte) => {
+                    target.push(ir!(
+                        mov,
+                        operand!(var, 1, addr_lhs),
+                        operand!(int, 1, *byte as u64)
+                    ));
+                }
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(block, program, &ast, ast.node_no_typecast(*rhs), target);
                     target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
@@ -127,6 +137,13 @@ fn gen_code_inside_block(
                         mov,
                         operand!(var, size, addr_lhs),
                         operand!(int, size, *num)
+                    ));
+                }
+                Expression::CharLiteral(byte) => {
+                    target.push(ir!(
+                        mov,
+                        operand!(var, 1, addr_lhs),
+                        operand!(int, 1, *byte as u64)
                     ));
                 }
                 Expression::FuncCall(_, _) => {
@@ -196,7 +213,13 @@ fn gen_code_inside_block(
             };
             let mut inside_loop: Vec<ASMStatement> = Vec::new();
             for i in &loop_block.body {
-                gen_code_inside_block(loop_block, ast, ast.node_no_typecast(*i), program, &mut inside_loop);
+                gen_code_inside_block(
+                    loop_block,
+                    ast,
+                    ast.node_no_typecast(*i),
+                    program,
+                    &mut inside_loop,
+                );
             }
             target.append(&mut inside_loop);
             target.push(ir!(jmp, label));
@@ -264,7 +287,13 @@ pub fn codegen(source: String, src_file: String) -> String {
                 ));
                 }
                 for i in &block.body {
-                    gen_code_inside_block(&block, &ast, ast.node_no_typecast(*i), &mut program, &mut func);
+                    gen_code_inside_block(
+                        &block,
+                        &ast,
+                        ast.node_no_typecast(*i),
+                        &mut program,
+                        &mut func,
+                    );
                 }
                 program.funcs.push(func);
             }
