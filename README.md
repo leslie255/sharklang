@@ -24,7 +24,6 @@ func main() -> int32 {
 
     // like C the return value of `main` will be used as program exit code
     return 0;
-}
 ```
 
 To compile a Shark program:
@@ -39,7 +38,7 @@ $ ./program.out
 
 `compile.sh` requires `nasm`, `gcc` and `bat`.
 
-The compiled program can only run on x86_64 systems with (although the compiler itself *might* work on other systems), it has not been tested on Windows yet, so it probably won't work.
+The compiled program can only run on x86_64 systems (although the compiler itself *might* work on other systems), it has not been tested on Windows yet, so it probably won't work.
 
 Declaring and assigning values to a variable:
 
