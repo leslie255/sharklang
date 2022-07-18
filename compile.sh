@@ -1,7 +1,7 @@
 rm -f a.out
 rm -f compiled.o
 
-cargo run $1 -o compiled.asm
+cargo run $1 -o compiled.asm -f $2
 
 echo "generated asm:\n"
 bat --tabs 8 compiled.asm
