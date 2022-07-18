@@ -16,9 +16,9 @@ fn _input() -> String {
     input_str
 }
 
-fn compile(src_path: String, output_path: String) {
+fn compile(src_path: String, output_path: String, file_format: codegen::ir::FileFormat) {
     let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
-    let output = codegen(source, src_path);
+    let output = codegen(source, src_path, file_format);
 
     if Path::new(&output_path).exists() {
         fs::remove_file(output_path.clone()).unwrap_or_else(|_| {
@@ -58,8 +58,9 @@ fn print_tokens(src_path: String) {
 fn print_help(arg0: String) {
     println!("SHARK COMPILER v0.0.1");
     println!("\nTo compile a file:");
-    println!("{} source_file.shark", arg0);
-    println!("{} source_file.shark -o output.asm", arg0);
+    println!("{} source_file.shark \\", arg0);
+    println!("\t-o / --output: output_file.asm");
+    println!("\t-f / --format: elf64 for GNU/Linux, macho64 for macOS");
     println!("\nDebug:");
     println!("-t / --tokens: print tokens");
     println!("-a / --ast: print AST");
@@ -71,6 +72,7 @@ fn main() {
     let arg0 = args.next().expect("what the fuck?");
     let mut src_path = String::new();
     let mut output_path = String::from("output.asm");
+    let mut file_format = codegen::ir::FileFormat::Elf64;
 
     loop {
         let arg = match args.next() {
@@ -89,7 +91,7 @@ fn main() {
                         print_help(arg0);
                         println!();
                         println!("expects an arguments after `-o` for output file");
-                        panic!();
+                        std::process::exit(1);
                     }
                 }
             }
@@ -115,6 +117,26 @@ fn main() {
                     panic!();
                 }
             }
+            "-f" | "--format" => {
+                file_format = match args.next() {
+                    Some(f) => match f.to_lowercase().as_str() {
+                        "elf64" => codegen::ir::FileFormat::Elf64,
+                        "macho64" => codegen::ir::FileFormat::Macho64,
+                        _ => {
+                            print_help(arg0);
+                            println!();
+                            println!("expect `macho64` or `elf64` after `-f` for file format");
+                            std::process::exit(1);
+                        }
+                    },
+                    None => {
+                        print_help(arg0);
+                        println!();
+                        println!("expect `macho64` or `elf64` after `-f` for file format");
+                        std::process::exit(1);
+                    }
+                }
+            }
             _ => src_path = arg,
         }
     }
@@ -126,5 +148,5 @@ fn main() {
         panic!();
     }
 
-    compile(src_path, output_path);
+    compile(src_path, output_path, file_format);
 }
