@@ -112,6 +112,23 @@ impl DataType {
             Expression::TypeCast(_, data_type) => {
                 hash_set.insert(data_type.clone());
             }
+            Expression::GetAddress(_) => {
+                hash_set.insert(DataType::Pointer);
+            }
+            Expression::Dereference(_) => {
+                hash_set.insert(DataType::UInt8);
+                hash_set.insert(DataType::UInt16);
+                hash_set.insert(DataType::UInt32);
+                hash_set.insert(DataType::UInt64);
+                hash_set.insert(DataType::Int8);
+                hash_set.insert(DataType::Int16);
+                hash_set.insert(DataType::Int32);
+                hash_set.insert(DataType::Int64);
+                hash_set.insert(DataType::Float32);
+                hash_set.insert(DataType::Float64);
+                hash_set.insert(DataType::Pointer);
+                hash_set.insert(DataType::Void);
+            }
             _ => (),
         }
         hash_set
@@ -223,6 +240,12 @@ fn fn_arg_check(
                 i,
                 false,
             );
+        }
+        Expression::GetAddress(expr_i) => {
+            fn_arg_check(context, err_collector, expected_args, *expr_i, i, false);
+        }
+        Expression::Dereference(expr_i) => {
+            fn_arg_check(context, err_collector, expected_args, *expr_i, i, false);
         }
         _ => {
             err_collector.add_err(
@@ -366,6 +389,12 @@ fn var_init_check(
                 return false;
             }
         }
+        Expression::GetAddress(expr_i) => {
+            var_init_check(context, err_collector, var_name, None, *expr_i);
+        }
+        Expression::Dereference(expr_i) => {
+            var_init_check(context, err_collector, var_name, None, *expr_i);
+        }
         _ => {
             err_collector.add_err(
                 ErrorType::Syntax,
@@ -431,9 +460,15 @@ fn var_assign_check(
             if !nested_typecast_check(context, err_collector, rhs) {
                 return false;
             }
-            if !var_assign_check(context, err_collector, var_name, *unwrapped_rhs, true) {
+            if !var_assign_check(context, err_collector, var_name, *unwrapped_rhs, false) {
                 return false;
             }
+        }
+        Expression::GetAddress(expr_i) => {
+            var_assign_check(context, err_collector, var_name, *expr_i, false);
+        }
+        Expression::Dereference(expr_i) => {
+            var_assign_check(context, err_collector, var_name, *expr_i, false);
         }
         _ => {
             err_collector.add_err(

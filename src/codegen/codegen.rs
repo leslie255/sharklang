@@ -14,6 +14,52 @@ static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 6] = [
     Register::r14,
     Register::r15,
 ];
+
+fn codegen_for_simple_expr(
+    block: &CodeBlock,
+    program: &Program,
+    ast: &AST,
+    node: &ASTNode,
+    target: &mut Vec<ASMStatement>,
+    expected_size: u64,
+) -> Operand {
+    match &node.expr {
+        Expression::Identifier(id) => {
+            let var_info = block.var_info(id, ast).unwrap();
+            operand!(var, expected_size, var_info.addr)
+        }
+        Expression::NumberLiteral(num) => {
+            operand!(int, expected_size, *num)
+        }
+        Expression::StringLiteral(str) => {
+            operand!(
+                label,
+                expected_size,
+                format!("_strliteral_{}", program.strliterals_ids.get(str).unwrap())
+            )
+        }
+        Expression::CharLiteral(byte) => {
+            operand!(int, 1, *byte as u64)
+        }
+        Expression::FuncCall(_, _) => {
+            codegen_for_fn_call(block, program, ast, node, target);
+            operand!(rax, 8)
+        }
+        Expression::GetAddress(expr_i) => match &ast.expr(*expr_i) {
+            Expression::Identifier(id) => {
+                let var_info = block.var_info(id, ast).unwrap();
+                Operand {
+                    len: expected_size as usize,
+                    addr_mode: AddrMode::Direct,
+                    content: OperandContent::GetVarAddr(var_info.addr),
+                }
+            }
+            _ => panic!(),
+        },
+        _ => panic!(),
+    }
+}
+
 fn codegen_for_fn_call(
     block: &CodeBlock,
     program: &Program,
@@ -32,19 +78,6 @@ fn codegen_for_fn_call(
                 8
             };
             match ast.expr_no_typecast(*arg) {
-                Expression::Identifier(id) => {
-                    func_call.arg(operand!(var, size, block.var_addr(id, ast).unwrap()));
-                }
-                Expression::NumberLiteral(num) => {
-                    func_call.arg(operand!(int, size, *num));
-                }
-                Expression::StringLiteral(str) => {
-                    func_call.arg(operand!(
-                        label,
-                        size,
-                        format!("_strliteral_{}", program.strliterals_ids.get(str).unwrap())
-                    ));
-                }
                 Expression::FuncCall(_, _) => {
                     codegen_for_fn_call(block, program, ast, ast.node_no_typecast(*arg), target);
                     let reg = Operand {
@@ -55,10 +88,16 @@ fn codegen_for_fn_call(
                     target.push(ir!(mov, reg.clone(), operand!(rax, size)));
                     func_call.arg(reg);
                 }
-                _ => panic!(
-                    "{:?} is not a valid argument for function",
-                    ast.expr_no_typecast(*arg)
-                ),
+                _ => {
+                    func_call.arg(codegen_for_simple_expr(
+                        block,
+                        program,
+                        ast,
+                        ast.node_no_typecast(*arg),
+                        target,
+                        size,
+                    ));
+                }
             }
         }
         target.push(func_call.asm);
@@ -81,77 +120,28 @@ fn gen_code_inside_block(
         Expression::VarInit(var_name, var_type, rhs) => {
             let addr_lhs = block.var_addr(var_name, ast).unwrap();
             let size = var_type.size();
-            match ast.expr_no_typecast(*rhs) {
-                Expression::Identifier(id) => {
-                    let addr_rhs = block.var_addr(id, ast).unwrap();
-                    target.push(ir!(mov, operand!(rax, size), operand!(var, size, addr_rhs)));
-                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
-                }
-                Expression::NumberLiteral(num) => {
-                    target.push(ir!(
-                        mov,
-                        operand!(var, size, addr_lhs),
-                        operand!(int, size, *num)
-                    ));
-                }
-                Expression::StringLiteral(str) => {
-                    let strliteral_id =
-                        format!("strliteral_{}", program.strliterals_ids.get(str).unwrap());
-                    target.push(ir!(
-                        mov,
-                        operand!(rax, size),
-                        operand!(label, size, strliteral_id)
-                    ));
-                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
-                }
-                Expression::CharLiteral(byte) => {
-                    target.push(ir!(
-                        mov,
-                        operand!(var, 1, addr_lhs),
-                        operand!(int, 1, *byte as u64)
-                    ));
-                }
-                Expression::FuncCall(_, _) => {
-                    codegen_for_fn_call(block, program, &ast, ast.node_no_typecast(*rhs), target);
-                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
-                }
-                _ => {
-                    panic!();
-                }
-            };
+            let rhs_operand = codegen_for_simple_expr(
+                block,
+                program,
+                ast,
+                ast.node_no_typecast(*rhs),
+                target,
+                size,
+            );
+            target.push(ir!(mov, operand!(var, size, addr_lhs), rhs_operand));
         }
         Expression::VarAssign(var_name, rhs) => {
             let addr_lhs = block.var_addr(var_name, ast).unwrap();
             let size = block.var_type(var_name, ast).size();
-            match ast.expr_no_typecast(*rhs) {
-                Expression::Identifier(id) => {
-                    target.push(ir!(
-                        mov,
-                        operand!(rax, size),
-                        operand!(var, size, block.var_addr(id, ast).unwrap())
-                    ));
-                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
-                }
-                Expression::NumberLiteral(num) => {
-                    target.push(ir!(
-                        mov,
-                        operand!(var, size, addr_lhs),
-                        operand!(int, size, *num)
-                    ));
-                }
-                Expression::CharLiteral(byte) => {
-                    target.push(ir!(
-                        mov,
-                        operand!(var, 1, addr_lhs),
-                        operand!(int, 1, *byte as u64)
-                    ));
-                }
-                Expression::FuncCall(_, _) => {
-                    codegen_for_fn_call(block, program, &ast, &ast.node_no_typecast(*rhs), target);
-                    target.push(ir!(mov, operand!(var, size, addr_lhs), operand!(rax, size)));
-                }
-                _ => panic!("{:?} is not a valid expression", ast.expr_no_typecast(*rhs)),
-            }
+            let rhs_operand = codegen_for_simple_expr(
+                block,
+                program,
+                ast,
+                ast.node_no_typecast(*rhs),
+                target,
+                size,
+            );
+            target.push(ir!(mov, operand!(var, size, addr_lhs), rhs_operand));
         }
         Expression::FuncCall(_, _) => {
             codegen_for_fn_call(block, program, &ast, node, target);
@@ -178,22 +168,15 @@ fn gen_code_inside_block(
         }
         Expression::ReturnVal(val) => {
             let size = block.return_type.size();
-            match ast.expr_no_typecast(*val) {
-                Expression::Identifier(id) => {
-                    target.push(ir!(
-                        mov,
-                        operand!(rax, size),
-                        operand!(var, size, block.var_addr(id, ast).unwrap())
-                    ));
-                }
-                Expression::NumberLiteral(num) => {
-                    target.push(ir!(mov, operand!(rax, size), operand!(int, size, *num)));
-                }
-                Expression::FuncCall(_, _) => {
-                    codegen_for_fn_call(block, program, &ast, &ast.node_no_typecast(*val), target);
-                }
-                _ => panic!("{:?} is not a valid expression", ast.expr_no_typecast(*val)),
-            }
+            let return_val = codegen_for_simple_expr(
+                block,
+                program,
+                ast,
+                ast.node_no_typecast(*val),
+                target,
+                size,
+            );
+            target.push(ir!(mov, operand!(rax, size), return_val));
             if block.has_vars {
                 target.push(ir!(
                     add,
@@ -312,6 +295,8 @@ pub fn codegen(source: String, src_file: String) -> String {
     }
 
     err_collector.print_errs();
+
+    println!("{}", program.description());
 
     let generated = program.gen_code();
     generated

@@ -1,6 +1,9 @@
 func main() -> int32 {
-	let a: uint8 = 'A';
-	a = 'B';
-	return a ~ int32;
+    let a: uint64 = 0;
+	let b: ptr = &a;
+
+	u64print(b ~ uint64);
+
+    return 0;
 }
 

@@ -146,6 +146,8 @@ pub enum Expression {
     VarInit(String, DataType, usize), // lhs, rhs
     VarAssign(String, usize),         // lhs, rhs
     TypeCast(usize, DataType),
+    GetAddress(usize),
+    Dereference(usize),
 
     // Raw ASM
     Label(String),
@@ -177,6 +179,8 @@ impl Expression {
             Expression::VarInit(_, _, _) => String::from("variable declaration"),
             Expression::VarAssign(_, _) => String::from("variable assign"),
             Expression::TypeCast(_, _) => String::from("type cast"),
+            Expression::GetAddress(_) => String::from("get address"),
+            Expression::Dereference(_) => String::from("dereference"),
             Expression::Label(name) => format!("{}:", name),
             Expression::RawASM(asm) => format!("`{}`", asm.trim().clone()),
             Expression::Block(_) => String::from("block"),
@@ -349,6 +353,14 @@ fn parse_single_expr(
                 tree.new_expr(Expression::Identifier(id), token.position);
             }
         },
+        TokenContent::And => {
+            parse_single_expr(tree, tokens, err_collector);
+            tree.new_expr(Expression::GetAddress(tree.nodes.len() - 1), token.position);
+        }
+        TokenContent::Dollar => {
+            parse_single_expr(tree, tokens, err_collector);
+            tree.new_expr(Expression::Dereference(tree.nodes.len() - 1), token.position);
+        }
         _ => {
             err_collector.syntax_err(&token, format!("what the fuck is this shit?"));
             err_collector.print_errs();
