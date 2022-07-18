@@ -71,55 +71,61 @@ impl BuiltinFuncChecker {
             BuiltinFunc {
                 externs: vec![String::from("printf")],
                 data_sect: vec![ir!(data_str, "println_fmt", "%s\n")],
-                text_sect: vec![ir!(include_str!("../builtin_fns/println.asm"))],
+                text_sect: vec![
+                    ir!(func_def, "println"),
+                    ir!(mov, operand!(rsi, 8), operand!(rdi, 8)),
+                    ir!(mov, operand!(rdi, 8), operand!(label, "println_fmt")),
+                    ir!(func_call, "printf").asm,
+                    ir!(func_ret),
+                ],
                 return_type: DataType::Void,
             },
         );
-        checker.funcs.insert(
-            String::from("u64print"),
-            BuiltinFunc {
-                externs: vec![String::from("printf")],
-                data_sect: vec![ir!(data_str, "u64print_fmt", "%llu\n")],
-                text_sect: vec![ir!(include_str!("../builtin_fns/u64print.asm"))],
-                return_type: DataType::Void,
-            },
-        );
-        checker.funcs.insert(
-            String::from("uadd"),
-            BuiltinFunc {
-                externs: Vec::new(),
-                data_sect: Vec::new(),
-                text_sect: vec![ir!(include_str!("../builtin_fns/uadd.asm"))],
-                return_type: DataType::UInt64,
-            },
-        );
-        checker.funcs.insert(
-            String::from("usub"),
-            BuiltinFunc {
-                externs: Vec::new(),
-                data_sect: Vec::new(),
-                text_sect: vec![ir!(include_str!("../builtin_fns/usub.asm"))],
-                return_type: DataType::UInt64,
-            },
-        );
-        checker.funcs.insert(
-            String::from("umul"),
-            BuiltinFunc {
-                externs: Vec::new(),
-                data_sect: Vec::new(),
-                text_sect: vec![ir!(include_str!("../builtin_fns/umul.asm"))],
-                return_type: DataType::UInt64,
-            },
-        );
-        checker.funcs.insert(
-            String::from("udiv"),
-            BuiltinFunc {
-                externs: Vec::new(),
-                data_sect: Vec::new(),
-                text_sect: vec![ir!(include_str!("../builtin_fns/udiv.asm"))],
-                return_type: DataType::UInt64,
-            },
-        );
+        //checker.funcs.insert(
+        //    String::from("u64print"),
+        //    BuiltinFunc {
+        //        externs: vec![String::from("printf")],
+        //        data_sect: vec![ir!(data_str, "u64print_fmt", "%llu\n")],
+        //        text_sect: vec![ir!(include_str!("../builtin_fns/u64print.asm"))],
+        //        return_type: DataType::Void,
+        //    },
+        //);
+        //checker.funcs.insert(
+        //    String::from("uadd"),
+        //    BuiltinFunc {
+        //        externs: Vec::new(),
+        //        data_sect: Vec::new(),
+        //        text_sect: vec![ir!(include_str!("../builtin_fns/uadd.asm"))],
+        //        return_type: DataType::UInt64,
+        //    },
+        //);
+        //checker.funcs.insert(
+        //    String::from("usub"),
+        //    BuiltinFunc {
+        //        externs: Vec::new(),
+        //        data_sect: Vec::new(),
+        //        text_sect: vec![ir!(include_str!("../builtin_fns/usub.asm"))],
+        //        return_type: DataType::UInt64,
+        //    },
+        //);
+        //checker.funcs.insert(
+        //    String::from("umul"),
+        //    BuiltinFunc {
+        //        externs: Vec::new(),
+        //        data_sect: Vec::new(),
+        //        text_sect: vec![ir!(include_str!("../builtin_fns/umul.asm"))],
+        //        return_type: DataType::UInt64,
+        //    },
+        //);
+        //checker.funcs.insert(
+        //    String::from("udiv"),
+        //    BuiltinFunc {
+        //        externs: Vec::new(),
+        //        data_sect: Vec::new(),
+        //        text_sect: vec![ir!(include_str!("../builtin_fns/udiv.asm"))],
+        //        return_type: DataType::UInt64,
+        //    },
+        //);
         checker
     }
 }

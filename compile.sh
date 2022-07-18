@@ -5,8 +5,8 @@ cargo run $1 -o compiled.asm
 
 echo "generated asm:\n"
 bat --tabs 8 compiled.asm
-nasm -f macho64 compiled.asm -o compiled.o
-gcc compiled.o
+nasm -f $2 compiled.asm -o compiled.o
+gcc -no-pie compiled.o -o program.out
 
 rm -rf compiled*
 

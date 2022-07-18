@@ -34,8 +34,7 @@ fn codegen_for_simple_expr(
         Expression::StringLiteral(str) => {
             operand!(
                 label,
-                expected_size,
-                format!("_strliteral_{}", program.strliterals_ids.get(str).unwrap())
+                format!("strliteral_{}", program.strliterals_ids.get(str).unwrap())
             )
         }
         Expression::CharLiteral(byte) => {
@@ -229,7 +228,7 @@ pub fn codegen(source: String, src_file: String) -> String {
     type_check(&ast, &builtin_fns, &mut err_collector);
     err_collector.print_errs();
 
-    let mut program = Program::new();
+    let mut program = Program::new(FileFormat::Elf64);
 
     // generate string literals
     for (i, node) in ast.nodes.iter().enumerate() {
