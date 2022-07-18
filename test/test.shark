@@ -1,9 +1,5 @@
 func main() -> int32 {
-    let a: uint64 = 0;
-	let b: ptr = &a;
-
-	u64print(b ~ uint64);
-
+	u64print(255);
     return 0;
 }
 

@@ -30,18 +30,16 @@ func main() -> int32 {
 To compile a Shark program:
 
 ``` Bash
-$ ./compile.sh program.shark
-$ ./a.out
+# on macOS:
+$ ./compile.sh program.shark macho64
+# on Linux:
+$ ./compile.sh program.shark elf64
+$ ./program.out
 ```
 
-`compile.sh` will emit the assembly code generated for debug
+`compile.sh` requires `nasm`, `gcc` and `bat`.
 
-You will need `nasm`, `gcc` and `bat` for `compile.sh` (`gcc` won't be needed in the future when the Shark Standard Library is built).
-
-Note that if you're on Linux you will have to change the `macho64` in `compile.sh` to `elf64`,
-if you're on Windows, you will have to do `cargo run program.shark -o output.asm`, then assemble and link the generated assembly code using `nasm` and `gcc`.
-
-The compiled program can only run on 64-bit systems (although the compiler itself might work on 32-bit systems)
+The compiled program can only run on x86_64 systems with (although the compiler itself *might* work on other systems), it has not been tested on Windows yet, so it probably won't work.
 
 Declaring and assigning values to a variable:
 

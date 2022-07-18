@@ -2,11 +2,11 @@
 #[allow(unused_macros)]
 #[macro_export]
 macro_rules! operand {
-    (label, $l: expr, $x: expr) => {
+    (label, $x: expr) => {
         Operand {
-            len: $l as usize,
+            len: 0,
             addr_mode: AddrMode::Direct,
-            content: OperandContent::Label($x),
+            content: OperandContent::Label($x.to_string()),
         }
     };
     (int, $l: expr, $x: expr) => {
@@ -151,6 +151,21 @@ macro_rules! operand {
     };
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum FileFormat {
+    Elf64,
+    Macho64,
+}
+impl FileFormat {
+    pub fn name_prefix(&self) -> String {
+        // has underscore before name?
+        match self {
+            FileFormat::Macho64 => "_".to_string(),
+            FileFormat::Elf64 => "".to_string(),
+        }
+    }
+}
+
 use std::collections::HashMap;
 
 // names of the register to pass function calling arguments to
@@ -254,14 +269,16 @@ pub struct Program {
     pub data_sect: Vec<ASMStatement>,
     pub funcs: Vec<Vec<ASMStatement>>,
     pub strliterals_ids: HashMap<String, u64>,
+    pub format: FileFormat,
 }
 impl Program {
-    pub fn new() -> Program {
+    pub fn new(format: FileFormat) -> Program {
         Program {
             externs: Vec::new(),
             data_sect: Vec::new(),
             funcs: Vec::new(),
             strliterals_ids: HashMap::new(),
+            format,
         }
     }
     #[allow(dead_code)]
@@ -284,15 +301,15 @@ impl Program {
     pub fn gen_code(&self) -> String {
         let mut result = String::new();
         for asm in &self.externs {
-            result.push_str(&asm.gen_code());
+            result.push_str(&asm.gen_code(self.format));
         }
         for asm in &self.data_sect {
-            result.push_str(&asm.gen_code());
+            result.push_str(&asm.gen_code(self.format));
         }
-        result.push_str(&ir!(sect, "text").gen_code());
+        result.push_str(&ir!(sect, "text").gen_code(self.format));
         for func in &self.funcs {
             for asm in func {
-                result.push_str(&asm.gen_code());
+                result.push_str(&asm.gen_code(self.format));
             }
         }
         result
@@ -766,7 +783,7 @@ pub struct Operand {
     pub content: OperandContent,
 }
 impl Operand {
-    pub fn text(&self) -> String {
+    pub fn text(&self, file_format: FileFormat) -> String {
         match self.addr_mode {
             AddrMode::Addr => todo!(),
             AddrMode::Direct => match &self.content {
@@ -778,7 +795,7 @@ impl Operand {
                     _ => panic!(),
                 }
                 .name(),
-                OperandContent::StaticVar(name) => format!("_{}", name),
+                OperandContent::StaticVar(name) => format!("{}{}", file_format.name_prefix(), name),
                 OperandContent::LocalVar(var_addr) => format!(
                     "{} [rbp - {}]",
                     match self.len {
@@ -791,7 +808,7 @@ impl Operand {
                     var_addr
                 ),
                 OperandContent::GetVarAddr(var_addr) => format!("[rbp - {}]", var_addr),
-                OperandContent::Label(name) => format!("{}", name),
+                OperandContent::Label(name) => format!("{}{}", file_format.name_prefix(), name),
                 OperandContent::Int(number) => format!("{}", number),
                 OperandContent::Raw(code) => format!(
                     "{}{}",
@@ -852,7 +869,7 @@ impl ASMStatement {
             Self::SectionHead(name) => format!("section\t{}\n", name),
             Self::Label(name) => format!("label\t{}\n", name),
             Self::Jump(name) => format!("jump\t{}\n", name),
-            Self::Extern(name) => format!("extern\t_{}\n", name),
+            Self::Extern(name) => format!("extern\t{}\n", name),
             Self::DataInt(name, value) => format!("data\t{}\t{}\n", name, value),
             Self::DataStr(name, value) => format!("data\t{}\t{:?}\n", name, value),
             Self::Mov(oper0, oper1) => {
@@ -880,36 +897,55 @@ impl ASMStatement {
             Self::Raw(code) => format!("raw\t{}", code),
         }
     }
-    pub fn gen_code(&self) -> String {
+    pub fn gen_code(&self, format: FileFormat) -> String {
         let mut code = match self {
             Self::SectionHead(name) => format!("\n\tsection .{}", name),
             Self::Label(name) => format!("{}:", name),
             Self::Jump(name) => format!("\tjmp\t{}", name),
-            Self::Extern(name) => format!("\textern _{}", name),
-            Self::DataInt(name, value) => format!("_{}:\tdq {}", name, value),
-            Self::DataStr(name, value) => format!("_{}:\tdb {}", name, asm_fmt_str!(value)),
+            Self::Extern(name) => format!("\textern {}{}", format.name_prefix(), name),
+            Self::DataInt(name, value) => format!("{}{}:\tdq {}", format.name_prefix(), name, value),
+            Self::DataStr(name, value) => format!("{}{}:\tdb {}", format.name_prefix(), name, asm_fmt_str!(value)),
             Self::Mov(oper0, oper1) => {
                 let mut c = String::new();
                 if let OperandContent::GetVarAddr(_) = oper1.content {
                     let rax = operand!(rax, oper0.len);
-                    c.push_str(format!("\tlea\t{}, {}\n", rax.text(), oper1.text()).as_str());
-                    c.push_str(format!("\tmov\t{}, {}\n", oper0.text(), rax.text()).as_str());
+                    c.push_str(
+                        format!("\tlea\t{}, {}\n", rax.text(format), oper1.text(format)).as_str(),
+                    );
+                    c.push_str(
+                        format!("\tmov\t{}, {}\n", oper0.text(format), rax.text(format)).as_str(),
+                    );
                     return c;
                 }
                 if let OperandContent::Reg(_) = oper0.content {
                     if let OperandContent::Reg(_) = oper1.content {
-                        c.push_str(format!("\tmov\t{}, {}", oper0.text(), oper1.text()).as_str());
+                        c.push_str(
+                            format!("\tmov\t{}, {}", oper0.text(format), oper1.text(format))
+                                .as_str(),
+                        );
                     } else if let OperandContent::Int(_) = oper1.content {
-                        c.push_str(format!("\tmov\t{}, {}", oper0.text(), oper1.text()).as_str());
+                        c.push_str(
+                            format!("\tmov\t{}, {}", oper0.text(format), oper1.text(format))
+                                .as_str(),
+                        );
                     } else {
                         let rax = operand!(rax, oper0.len);
-                        c.push_str(format!("\tmov\t{}, {}\n", rax.text(), oper1.text()).as_str());
-                        c.push_str(format!("\tmov\t{}, {}", oper0.text(), rax.text()).as_str());
+                        c.push_str(
+                            format!("\tmov\t{}, {}\n", rax.text(format), oper1.text(format))
+                                .as_str(),
+                        );
+                        c.push_str(
+                            format!("\tmov\t{}, {}", oper0.text(format), rax.text(format)).as_str(),
+                        );
                     }
                 } else {
                     let rax = operand!(rax, oper0.len);
-                    c.push_str(format!("\tmov\t{}, {}\n", rax.text(), oper1.text()).as_str());
-                    c.push_str(format!("\tmov\t{}, {}", oper0.text(), rax.text()).as_str());
+                    c.push_str(
+                        format!("\tmov\t{}, {}\n", rax.text(format), oper1.text(format)).as_str(),
+                    );
+                    c.push_str(
+                        format!("\tmov\t{}, {}", oper0.text(format), rax.text(format)).as_str(),
+                    );
                 }
                 c
             }
@@ -917,22 +953,26 @@ impl ASMStatement {
                 let mut result = String::new();
                 args.iter().enumerate().for_each(|(i, arg)| {
                     result.push_str(
-                        format!("\tmov\t{}, {}\n", ARG_REG_NAMES[i], arg.text()).as_str(),
+                        format!("\tmov\t{}, {}\n", ARG_REG_NAMES[i], arg.text(format)).as_str(),
                     );
                 });
-                result.push_str(format!("\tcall\t_{}\n", name).as_str());
+                result.push_str(format!("\tcall\t{}{}\n", format.name_prefix(), name).as_str());
                 result
             }
             Self::FuncDef(name) => format!(
-                "\n\tglobal _{}\n_{}:\n\tpush\trbp\n\tmov\trbp, rsp\n",
-                name, name
+                "\n\tglobal {}{}\n{}{}:\n\tpush\trbp\n\tmov\trbp, rsp\n",
+                format.name_prefix(), name, format.name_prefix(), name
             ),
             Self::FuncRetVoid => format!("\tpop\trbp\n\tret"),
-            Self::FuncRet(oper) => format!("\tpop\trbp\n\tmov\trax, {}\n\tret", oper.text()),
-            Self::Add(oper0, oper1) => format!("\tadd\t{}, {}", oper0.text(), oper1.text()),
-            Self::Sub(oper0, oper1) => format!("\tsub\t{}, {}", oper0.text(), oper1.text()),
-            Self::Mul(oper) => format!("\tmul\t{}", oper.text()),
-            Self::Div(oper) => format!("\tdiv\t{}", oper.text()),
+            Self::FuncRet(oper) => format!("\tpop\trbp\n\tmov\trax, {}\n\tret", oper.text(format)),
+            Self::Add(oper0, oper1) => {
+                format!("\tadd\t{}, {}", oper0.text(format), oper1.text(format))
+            }
+            Self::Sub(oper0, oper1) => {
+                format!("\tsub\t{}, {}", oper0.text(format), oper1.text(format))
+            }
+            Self::Mul(oper) => format!("\tmul\t{}", oper.text(format)),
+            Self::Div(oper) => format!("\tdiv\t{}", oper.text(format)),
             Self::Raw(code) => code.clone(),
         };
         code.push_str("\n");
