@@ -24,6 +24,7 @@ func main() -> int32 {
 
     // like C the return value of `main` will be used as program exit code
     return 0;
+}
 ```
 
 To compile a Shark program:
