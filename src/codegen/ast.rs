@@ -373,6 +373,21 @@ fn recursive_parse_exprs(
                 target.new_expr(Expression::StringLiteral(str.clone()), token.position);
                 break;
             }
+            TokenContent::And => {
+                let position = token.position;
+                if let Some(i) = recursive_call!() {
+                    target.new_expr(Expression::GetAddress(i), position);
+                    break;
+                } else {
+                    err_collector.add_err(
+                        ErrorType::Syntax,
+                        position,
+                        1,
+                        format!("Expected an expression"),
+                    );
+                    return None;
+                }
+            }
             TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                 TokenContent::Equal => {
                     // variable assign
