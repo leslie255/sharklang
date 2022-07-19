@@ -35,7 +35,8 @@ pub struct CodeBlock {
     pub arg_types: Vec<DataType>,
     pub has_vars: bool,
     pub return_type: DataType,
-    pub parent: usize,
+    pub parent: usize, // parent block
+    pub owner: usize,  // loop, func def, if, etc...
 }
 impl Default for CodeBlock {
     fn default() -> Self {
@@ -47,6 +48,7 @@ impl Default for CodeBlock {
             has_vars: bool::default(),
             return_type: DataType::Void,
             parent: usize::MAX,
+            owner: usize::MAX,
         }
     }
 }
@@ -156,6 +158,7 @@ pub enum Expression {
     Block(CodeBlock),
     FuncDef(String, usize), // name, code block
     Loop(usize),            // code block
+    If(usize, usize),       // condition, code block
     ReturnVoid,
     ReturnVal(usize),
     UnsafeReturn,
@@ -183,8 +186,9 @@ impl Expression {
             Expression::Label(name) => format!("{}:", name),
             Expression::RawASM(asm) => format!("`{}`", asm.trim().clone()),
             Expression::Block(_) => String::from("block"),
-            Expression::FuncDef(fn_name, _) => format!("func `{}`(...)`", fn_name),
+            Expression::FuncDef(fn_name, _) => format!("func `{}(...)`", fn_name),
             Expression::Loop(_) => format!("loop {{...}}"),
+            Expression::If(_, _) => format!("if {{...}}"),
             Expression::ReturnVoid => String::from("return"),
             Expression::ReturnVal(_) => String::from("return ..."),
             Expression::UnsafeReturn => String::from("_return"),
@@ -560,7 +564,10 @@ fn recursive_parse_exprs(
                     match target.nodes.get_mut(*i).unwrap().expr {
                         Expression::Loop(block_i) => {
                             match &mut target.nodes.get_mut(block_i).unwrap().expr {
-                                Expression::Block(block) => block.parent = parent,
+                                Expression::Block(block) => {
+                                    block.parent = parent;
+                                    block.owner = *i
+                                }
                                 _ => panic!(),
                             }
                         }
@@ -587,8 +594,34 @@ fn recursive_parse_exprs(
                         break;
                     }
                 }
+                code_block.owner = target.nodes.len() + 1;
                 target.new_expr(Expression::Block(code_block), loop_pos);
                 target.new_expr(Expression::Loop(target.nodes.len() - 1), loop_pos);
+                break;
+            }
+            TokenContent::If => {
+                let if_pos = token.position;
+                let mut code_block = CodeBlock::default();
+                token_ensure_type!(tokens.next(), TokenContent::RoundParenOpen);
+                let condition = if let Some(i) = recursive_call!() {
+                    i
+                } else {
+                    usize::MAX
+                };
+                token_ensure_type!(tokens.next(), TokenContent::RoundParenClose);
+                token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
+                loop {
+                    if let Some(i) = recursive_call!() {
+                        code_block.body.push(i);
+                    }
+                    if tokens.look_ahead(1).content == TokenContent::BigParenClose {
+                        tokens.next();
+                        break;
+                    }
+                }
+                code_block.owner = target.nodes.len() + 1;
+                target.new_expr(Expression::Block(code_block), if_pos);
+                target.new_expr(Expression::If(condition, target.nodes.len() - 1), if_pos);
                 break;
             }
             TokenContent::EOF => return None,

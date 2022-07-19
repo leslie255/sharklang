@@ -22,6 +22,7 @@ pub enum TokenContent {
     Identifier(String),
     Let,
     Loop,
+    If,
     Func,
     Return,
     ReturnArrow,
@@ -199,7 +200,7 @@ impl TokenPrototype {
     fn is_valid(str: &String) -> bool {
         match str.as_str() {
             "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "~" | "_"
-            | "let" | "loop" | "func" | "true" | "false" | "return" | "//" | "&" | "$" | "\n" => {
+            | "let" | "loop" | "if" | "func" | "true" | "false" | "return" | "//" | "&" | "$" | "\n" => {
                 return true
             }
             _ => {
@@ -268,6 +269,7 @@ impl TokenPrototype {
             "." => return Token::new(TokenContent::Period, self.position, self.len),
             "," => return Token::new(TokenContent::Comma, self.position, self.len),
             ":" => return Token::new(TokenContent::Colon, self.position, self.len),
+            "if" => return Token::new(TokenContent::If, self.position, self.len),
             "func" => return Token::new(TokenContent::Func, self.position, self.len),
             "return" => return Token::new(TokenContent::Return, self.position, self.len),
             "&" => return Token::new(TokenContent::And, self.position, self.len),
