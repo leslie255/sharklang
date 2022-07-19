@@ -1,5 +1,2 @@
-func main() -> int32 {
-	u64print(255);
-    return 0;
-}
+test(0, 1);
 

@@ -19,6 +19,8 @@ pub enum DataType {
     Float64,
     Pointer,
     Void,
+
+    ToBeDetermined,
 }
 
 impl DataType {
@@ -54,6 +56,8 @@ impl DataType {
             DataType::Float64 => 2,
             DataType::Pointer => 8,
             DataType::Void => 0,
+
+            DataType::ToBeDetermined => 0,
         }
     }
     pub fn description(&self) -> String {
@@ -70,6 +74,8 @@ impl DataType {
             DataType::Float64 => String::from("float64"),
             DataType::Pointer => String::from("ptr"),
             DataType::Void => String::from("void"),
+
+            DataType::ToBeDetermined => String::from(""),
         }
     }
     pub fn matches(&self, context: &TypeCheckContext, expr: &Expression) -> bool {
@@ -132,6 +138,11 @@ impl DataType {
             _ => (),
         }
         hash_set
+    }
+}
+impl Default for DataType {
+    fn default() -> Self {
+        return DataType::ToBeDetermined;
     }
 }
 

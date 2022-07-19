@@ -74,27 +74,45 @@ pub struct TokenStream {
 
 impl TokenStream {
     pub fn next(&mut self) -> Token {
-        if self.has_started {
+        let t = match self.tokens.get(if self.has_started {
             self.i += 1;
-            match self.tokens.get(self.i) {
-                Some(token) => token.clone(),
-                None => Token::eof(),
-            }
+            self.i
         } else {
             self.has_started = true;
-            self.tokens.first().unwrap().clone()
-        }
+            0
+        }) {
+            Some(token) => token.clone(),
+            None => Token::eof(),
+        };
+        t
     }
     pub fn look_ahead(&self, i: usize) -> Token {
-        match self
+        let t = match self
             .tokens
             .get(if self.has_started { self.i + i } else { 0 })
         {
             Some(token) => token.clone(),
             None => Token::eof(),
+        };
+        t
+    }
+    pub fn current(&self) -> Token {
+        match self.tokens.get(if self.has_started { self.i } else { 0 }) {
+            Some(token) => token.clone(),
+            None => Token::eof(),
         }
     }
-
+    pub fn skip_to_next_expr(&mut self) -> Token {
+        loop {
+            let token = self.next();
+            if token.indicates_end_of_expr() {
+                let next = self.look_ahead(1);
+                if next.indicates_end_of_expr() {
+                    break self.next();
+                }
+            }
+        }
+    }
     pub fn from_prototypes(prototypes: Vec<TokenPrototype>) -> TokenStream {
         let mut stream = TokenStream {
             tokens: Vec::new(),
@@ -148,6 +166,17 @@ impl Token {
             content: TokenContent::EOF,
             position: 0,
             len: 0,
+        }
+    }
+    pub fn indicates_end_of_expr(&self) -> bool {
+        match self.content {
+            TokenContent::EOF
+            | TokenContent::Comma
+            | TokenContent::BigParenClose
+            | TokenContent::RoundParenClose
+            | TokenContent::RectParenClose
+            | TokenContent::Semicolon => true,
+            _ => false,
         }
     }
 }
