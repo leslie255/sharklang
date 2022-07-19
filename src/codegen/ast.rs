@@ -359,15 +359,15 @@ fn recursive_parse_exprs(
         match &token.content {
             TokenContent::UInt(num) => {
                 target.new_expr(Expression::NumberLiteral(*num), token.position);
-                break Some(target.nodes.len() - 1);
+                break;
             }
             TokenContent::Char(ch) => {
                 target.new_expr(Expression::CharLiteral(*ch as u8), token.position);
-                break Some(target.nodes.len() - 1);
+                break;
             }
             TokenContent::String(str) => {
                 target.new_expr(Expression::StringLiteral(str.clone()), token.position);
-                break Some(target.nodes.len() - 1);
+                break;
             }
             TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                 TokenContent::Equal => {
@@ -379,7 +379,7 @@ fn recursive_parse_exprs(
                         Expression::VarAssign(var_name, target.nodes.len() - 1),
                         token.position,
                     );
-                    break Some(target.nodes.len() - 1);
+                    break;
                 }
                 TokenContent::RoundParenOpen => {
                     // function call
@@ -390,7 +390,7 @@ fn recursive_parse_exprs(
                     if tokens.look_ahead(1).content == TokenContent::RoundParenClose {
                         // there are no arguments
                         target.new_expr(Expression::FuncCall(func_name, args), position);
-                        break Some(target.nodes.len() - 1);
+                        break;
                     }
                     loop {
                         if let Some(i) = recursive_call!() {
@@ -409,24 +409,24 @@ fn recursive_parse_exprs(
                         }
                     }
                     target.new_expr(Expression::FuncCall(func_name, args), position);
-                    break Some(target.nodes.len() - 1);
+                    break;
                 }
                 _ => {
                     target.new_expr(Expression::Identifier(id.clone()), token.position);
-                    break Some(target.nodes.len() - 1);
+                    break;
                 }
             },
             TokenContent::Return => {
                 if tokens.look_ahead(1).indicates_end_of_expr() {
                     target.new_expr(Expression::ReturnVoid, token.position);
-                    break Some(target.nodes.len() - 1);
+                    break;
                 } else {
                     recursive_call!();
                     target.new_expr(
                         Expression::ReturnVal(target.nodes.len() - 1),
                         token.position,
                     );
-                    break Some(target.nodes.len() - 1);
+                    break;
                 }
             }
             TokenContent::Let => {
@@ -448,7 +448,7 @@ fn recursive_parse_exprs(
                     Expression::VarInit(var_name.clone(), var_type, target.nodes.len() - 1),
                     token.position,
                 );
-                break Some(target.nodes.len() - 1);
+                break;
             }
             TokenContent::Func => {
                 let fn_def_pos = token.position;
@@ -525,7 +525,7 @@ fn recursive_parse_exprs(
                     Expression::FuncDef(fn_name, target.nodes.len() - 1),
                     fn_def_pos,
                 );
-                break Some(target.nodes.len() - 1);
+                break;
             }
             TokenContent::Loop => {
                 let loop_pos = token.position;
@@ -542,7 +542,7 @@ fn recursive_parse_exprs(
                 }
                 target.new_expr(Expression::Block(code_block), loop_pos);
                 target.new_expr(Expression::Loop(target.nodes.len() - 1), loop_pos);
-                break Some(target.nodes.len() - 1);
+                break;
             }
             TokenContent::EOF => return None,
             _ => {
@@ -559,6 +559,16 @@ fn recursive_parse_exprs(
             }
         }
     }
+    if tokens.look_ahead(1).content == TokenContent::Squiggle {
+        // type cast
+        let position = tokens.next().position;
+        let casted_type = token_extract_data_type!(tokens.next());
+        target.new_expr(
+            Expression::TypeCast(target.nodes.len() - 1, casted_type),
+            position,
+        );
+    }
+    return Some(target.nodes.len() - 1);
 }
 
 pub fn construct_ast(mut tokens: TokenStream, err_collector: &mut ErrorCollector) -> AST {

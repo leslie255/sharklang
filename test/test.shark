@@ -1,8 +1,4 @@
 func main() -> int32 {
-	let a: uint64 = 0;
-	loop {
-		a = uadd(a, 1);
-		u64print(a);
-	}
-	return 0;
+	let a: uint64 = 255;
+	return a ~ int32;
 }
