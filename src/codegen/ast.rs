@@ -284,31 +284,90 @@ fn recursive_parse_exprs(
     tokens: &mut TokenStream,
     target: &mut AST,
     err_collector: &mut ErrorCollector,
-) {
+) -> Option<usize> {
     let mut token: Token;
     macro_rules! recursive_call {
         () => {{
-            recursive_parse_exprs(tokens, target, err_collector);
+            let i = recursive_parse_exprs(tokens, target, err_collector);
             if tokens.look_ahead(1).content == TokenContent::EOF {
-                return;
+                return None;
             }
             token = tokens.current();
+            i
         }};
+    }
+    macro_rules! token_get_id {
+        ($t: expr) => {
+            if let TokenContent::Identifier(ref x) = $t.content {
+                x.clone()
+            } else {
+                err_collector.add_err(
+                    ErrorType::Syntax,
+                    $t.position,
+                    $t.len,
+                    format!("expecting an identifier"),
+                );
+                tokens.skip_to_next_expr();
+                return None;
+            }
+        };
+    }
+    macro_rules! token_extract_data_type {
+        ($t: expr) => {
+            if let Some(t) = DataType::from_str(&token_get_id!($t)) {
+                t
+            } else {
+                err_collector.add_err(
+                    ErrorType::Syntax,
+                    $t.position,
+                    $t.len,
+                    format!("expecting a type name"),
+                );
+                tokens.skip_to_next_expr();
+                return None;
+            }
+        };
+    }
+    macro_rules! token_ensure_type {
+        ($token: expr, $token_type: expr) => {
+            if $token_type != $token.content {
+                err_collector.add_err(
+                    ErrorType::Syntax,
+                    $token.position,
+                    $token.len,
+                    format!("expecting a `{:?}`", $token_type),
+                );
+                tokens.skip_to_next_expr();
+                return None;
+            }
+        };
+        ($token: expr, $type0: expr, $type1: expr) => {
+            if $type0 != $token.content && $type1 != $token.content {
+                err_collector.add_err(
+                    ErrorType::Syntax,
+                    $token.position,
+                    $token.len,
+                    format!("expecting `{:?}` or `{:?}`", $type0, $type1),
+                );
+                tokens.skip_to_next_expr();
+                return None;
+            }
+        };
     }
     loop {
         token = tokens.next();
         match &token.content {
             TokenContent::UInt(num) => {
                 target.new_expr(Expression::NumberLiteral(*num), token.position);
-                break;
+                break Some(target.nodes.len() - 1);
             }
             TokenContent::Char(ch) => {
                 target.new_expr(Expression::CharLiteral(*ch as u8), token.position);
-                break;
+                break Some(target.nodes.len() - 1);
             }
             TokenContent::String(str) => {
                 target.new_expr(Expression::StringLiteral(str.clone()), token.position);
-                break;
+                break Some(target.nodes.len() - 1);
             }
             TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                 TokenContent::Equal => {
@@ -320,7 +379,7 @@ fn recursive_parse_exprs(
                         Expression::VarAssign(var_name, target.nodes.len() - 1),
                         token.position,
                     );
-                    break;
+                    break Some(target.nodes.len() - 1);
                 }
                 TokenContent::RoundParenOpen => {
                     // function call
@@ -328,103 +387,133 @@ fn recursive_parse_exprs(
                     let position = token.position;
                     let mut args: Vec<usize> = Vec::new();
                     tokens.next();
+                    if token.content == TokenContent::RoundParenClose {
+                        // there are no arguments
+                        target.new_expr(Expression::FuncCall(func_name, args), position);
+                        break Some(target.nodes.len() - 1);
+                    }
                     loop {
                         recursive_call!();
                         args.push(target.nodes.len() - 1);
                         token = tokens.next();
+                        // comma means there is another argument, closing round paren means end
+                        token_ensure_type!(
+                            token,
+                            TokenContent::Comma,
+                            TokenContent::RoundParenClose
+                        );
                         match token.content {
-                            TokenContent::Comma => (),
-                            TokenContent::RoundParenClose => {
-                                break;
-                            }
-                            _ => {
-                                err_collector.add_err(
-                                    ErrorType::Syntax,
-                                    token.position,
-                                    token.len,
-                                    format!("expected `,` or `)`"),
-                                );
-                                tokens.skip_to_next_expr();
-                                return;
-                            }
+                            TokenContent::RoundParenClose => break,
+                            _ => (),
                         }
                     }
                     target.new_expr(Expression::FuncCall(func_name, args), position);
-                    break;
+                    break Some(target.nodes.len() - 1);
                 }
                 _ => {
                     target.new_expr(Expression::Identifier(id.clone()), token.position);
-                    break;
+                    break Some(target.nodes.len() - 1);
                 }
             },
             TokenContent::Return => {
                 if tokens.look_ahead(1).indicates_end_of_expr() {
                     target.new_expr(Expression::ReturnVoid, token.position);
-                    break;
+                    break Some(target.nodes.len() - 1);
                 } else {
                     recursive_call!();
                     target.new_expr(
                         Expression::ReturnVal(target.nodes.len() - 1),
                         token.position,
                     );
-                    break;
+                    break Some(target.nodes.len() - 1);
                 }
             }
             TokenContent::Let => {
                 token = tokens.next();
-                let var_name = if let TokenContent::Identifier(ref x) = token.content {
-                    x.clone()
-                } else {
-                    err_collector.add_err(
-                        ErrorType::Syntax,
-                        token.position,
-                        token.len,
-                        format!("expecting an identifier"),
-                    );
-                    tokens.skip_to_next_expr();
-                    return;
-                };
+                let var_name = token_get_id!(token);
                 let mut var_type = DataType::ToBeDetermined;
-                token = tokens.next();
+                token_ensure_type!(tokens.next(), TokenContent::Colon, TokenContent::Equal);
                 match token.content {
                     TokenContent::Colon => {
-                        token = tokens.next();
-                        let type_name = if let TokenContent::Identifier(ref x) = token.content {
-                            x.clone()
-                        } else {
-                            err_collector.add_err(
-                                ErrorType::Syntax,
-                                token.position,
-                                token.len,
-                                format!("expecting an type name"),
-                            );
-                            tokens.skip_to_next_expr();
-                            return;
-                        };
-                        var_type = DataType::from_str(&type_name).unwrap_or_default();
+                        var_type = token_extract_data_type!(tokens.next());
                         token = tokens.next();
                         if token.content != TokenContent::Equal {}
                     }
                     TokenContent::Equal => (),
-                    _ => {
-                        err_collector.add_err(
-                            ErrorType::Syntax,
-                            token.position,
-                            token.len,
-                            format!("expecting `:` or `=`"),
-                        );
-                        tokens.skip_to_next_expr();
-                        return;
-                    }
+                    _ => (),
                 }
                 recursive_call!();
                 target.new_expr(
                     Expression::VarInit(var_name.clone(), var_type, target.nodes.len() - 1),
                     token.position,
                 );
-                break;
+                break Some(target.nodes.len() - 1);
             }
-            TokenContent::EOF => break,
+            TokenContent::Func => {
+                let fn_def_pos = token.position;
+                token = tokens.next();
+
+                // function name and arguments
+                let fn_name = token_get_id!(token);
+                let mut fn_args: Vec<(String, DataType)> = Vec::new();
+                let mut code_block = CodeBlock::default();
+                token_ensure_type!(tokens.next(), TokenContent::RoundParenOpen);
+                if tokens.look_ahead(1).content != TokenContent::RoundParenClose {
+                    // has ast least one arguments
+                    loop {
+                        token = tokens.next();
+                        let arg_name = token_get_id!(token);
+
+                        token = tokens.next();
+                        token_ensure_type!(token, TokenContent::Colon);
+
+                        token = tokens.next();
+                        let arg_type = token_extract_data_type!(token);
+
+                        fn_args.push((arg_name, arg_type));
+
+                        // comma means there is another argument, closing round paren means end
+                        token = tokens.next();
+                        token_ensure_type!(
+                            token,
+                            TokenContent::Comma,
+                            TokenContent::RoundParenClose
+                        );
+                        match token.content {
+                            TokenContent::RoundParenClose => break,
+                            _ => (),
+                        }
+                    }
+                } else {
+                    // no arguments
+                    tokens.next();
+                }
+
+                // function body
+                token = tokens.next();
+                token_ensure_type!(token, TokenContent::BigParenOpen, TokenContent::ReturnArrow);
+                if token.content == TokenContent::ReturnArrow {
+                    code_block.return_type = token_extract_data_type!(tokens.next());
+                    token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
+                }
+                loop {
+                    if let Some(i) = recursive_call!() {
+                        target.nodes.last_mut().unwrap().is_root = true;
+                        code_block.body.push(target.nodes.len() - 1);
+                    }
+                    if tokens.look_ahead(1).content == TokenContent::BigParenClose {
+                        tokens.next();
+                        break;
+                    }
+                }
+                code_block.gen_vars_with_args(&target.nodes, fn_args);
+                target.new_expr(Expression::Block(code_block), fn_def_pos);
+                target.new_expr(
+                    Expression::FuncDef(fn_name, target.nodes.len() - 1),
+                    fn_def_pos,
+                );
+            }
+            TokenContent::EOF => return None,
             _ => {
                 if !token.indicates_end_of_expr() {
                     err_collector.add_err(
@@ -435,7 +524,7 @@ fn recursive_parse_exprs(
                     );
                     tokens.skip_to_next_expr();
                 }
-                return;
+                return None;
             }
         }
     }
@@ -444,9 +533,8 @@ fn recursive_parse_exprs(
 pub fn construct_ast(mut tokens: TokenStream, err_collector: &mut ErrorCollector) -> AST {
     let mut ast = AST::default();
     loop {
-        recursive_parse_exprs(&mut tokens, &mut ast, err_collector);
-        if !ast.nodes.is_empty() {
-            ast.nodes.last_mut().unwrap().is_top_level = true;
+        if let Some(i) = recursive_parse_exprs(&mut tokens, &mut ast, err_collector) {
+            ast.nodes.get_mut(i).unwrap().is_top_level = true;
         }
         if tokens.look_ahead(1).content.is_eof() {
             break;
