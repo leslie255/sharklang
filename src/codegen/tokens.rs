@@ -13,6 +13,7 @@ pub enum TokenContent {
     Period,
     Comma,
     Colon,
+    Underscore,
     UInt(u64),
     SInt(i64),
     Float(f64),
@@ -23,7 +24,6 @@ pub enum TokenContent {
     Loop,
     Func,
     Return,
-    UnsafeReturn,
     ReturnArrow,
     Squiggle,
     And,
@@ -74,27 +74,45 @@ pub struct TokenStream {
 
 impl TokenStream {
     pub fn next(&mut self) -> Token {
-        if self.has_started {
+        let t = match self.tokens.get(if self.has_started {
             self.i += 1;
-            match self.tokens.get(self.i) {
-                Some(token) => token.clone(),
-                None => Token::eof(),
-            }
+            self.i
         } else {
             self.has_started = true;
-            self.tokens.first().unwrap().clone()
-        }
+            0
+        }) {
+            Some(token) => token.clone(),
+            None => Token::eof(),
+        };
+        t
     }
     pub fn look_ahead(&self, i: usize) -> Token {
-        match self
+        let t = match self
             .tokens
             .get(if self.has_started { self.i + i } else { 0 })
         {
             Some(token) => token.clone(),
             None => Token::eof(),
+        };
+        t
+    }
+    pub fn current(&self) -> Token {
+        match self.tokens.get(if self.has_started { self.i } else { 0 }) {
+            Some(token) => token.clone(),
+            None => Token::eof(),
         }
     }
-
+    pub fn skip_to_next_expr(&mut self) -> Token {
+        loop {
+            let token = self.next();
+            if token.indicates_end_of_expr() {
+                let next = self.look_ahead(1);
+                if next.indicates_end_of_expr() {
+                    break self.next();
+                }
+            }
+        }
+    }
     pub fn from_prototypes(prototypes: Vec<TokenPrototype>) -> TokenStream {
         let mut stream = TokenStream {
             tokens: Vec::new(),
@@ -150,6 +168,17 @@ impl Token {
             len: 0,
         }
     }
+    pub fn indicates_end_of_expr(&self) -> bool {
+        match self.content {
+            TokenContent::EOF
+            | TokenContent::Comma
+            | TokenContent::BigParenClose
+            | TokenContent::RoundParenClose
+            | TokenContent::RectParenClose
+            | TokenContent::Semicolon => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -169,9 +198,10 @@ impl TokenPrototype {
     }
     fn is_valid(str: &String) -> bool {
         match str.as_str() {
-            "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "~"
-            | "let" | "loop" | "func" | "true" | "false" | "return" | "_return" | "//" | "&"
-            | "$" | "\n" => return true,
+            "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "~" | "_"
+            | "let" | "loop" | "func" | "true" | "false" | "return" | "//" | "&" | "$" | "\n" => {
+                return true
+            }
             _ => {
                 if str.is_empty() {
                     return false;
@@ -240,11 +270,11 @@ impl TokenPrototype {
             ":" => return Token::new(TokenContent::Colon, self.position, self.len),
             "func" => return Token::new(TokenContent::Func, self.position, self.len),
             "return" => return Token::new(TokenContent::Return, self.position, self.len),
-            "_return" => return Token::new(TokenContent::UnsafeReturn, self.position, self.len),
             "&" => return Token::new(TokenContent::And, self.position, self.len),
             "$" => return Token::new(TokenContent::Dollar, self.position, self.len),
             "->" => return Token::new(TokenContent::ReturnArrow, self.position, self.len),
             "~" => return Token::new(TokenContent::Squiggle, self.position, self.len),
+            "_" => return Token::new(TokenContent::Underscore, self.position, self.len),
             "//" => {
                 return Token::new(
                     TokenContent::SingleLineCommentStart,

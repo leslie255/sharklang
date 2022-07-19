@@ -1,5 +1,4 @@
 func main() -> int32 {
-	u64print(255);
+	"hello";
     return 0;
 }
-

@@ -139,7 +139,7 @@ impl BuiltinFuncChecker {
             },
         );
         checker.funcs.insert(
-            String::from("umul"),
+            String::from("udiv"),
             BuiltinFunc {
                 externs: Vec::new(),
                 data_sect: Vec::new(),

@@ -1,5 +1,3 @@
-use super::tokens::*;
-
 #[derive(Debug, Clone)]
 pub enum ErrorType {
     Syntax,
@@ -50,14 +48,6 @@ impl<'a> ErrorCollector<'a> {
         self.errors
             .push(CompileError::new(err_type, message, position, len));
     }
-    pub fn syntax_err(&mut self, token: &Token, message: String) {
-        self.errors.push(CompileError::new(
-            ErrorType::Syntax,
-            message,
-            token.position,
-            token.len,
-        ));
-    }
 }
 
 impl<'a> ErrorCollector<'a> {
@@ -106,7 +96,7 @@ impl<'a> ErrorCollector<'a> {
             }
             if err.length != usize::MAX {
                 println!();
-                for _ in 0..column - 1 {
+                for _ in 0..column.saturating_sub(1) {
                     print!(" ");
                 }
                 print!("^");

@@ -109,11 +109,24 @@ fn gen_code_inside_block(
     node: &ASTNode,
     program: &mut Program,
     target: &mut Vec<ASMStatement>,
+    builtin_fns: &mut BuiltinFuncChecker,
 ) {
     match &node.expr {
         Expression::Identifier(_) => {}
         Expression::NumberLiteral(_) => {}
-        Expression::StringLiteral(_) => {}
+        Expression::StringLiteral(str) => {
+            // implicit `println` call
+            builtin_fns.add_if_needed(&format!("println"), program);
+            target.push(
+                ir!(func_call, "println")
+                    .arg(operand!(
+                        label,
+                        format!("strliteral_{}", program.strliterals_ids.get(str).unwrap())
+                    ))
+                    .asm
+                    .clone(),
+            );
+        }
         Expression::RawASM(text) => target.push(ir!(format!("\t{}", text))),
         Expression::Label(name) => target.push(ir!(label, name)),
         Expression::VarInit(var_name, var_type, rhs) => {
@@ -201,6 +214,7 @@ fn gen_code_inside_block(
                     ast.node_no_typecast(*i),
                     program,
                     &mut inside_loop,
+                    builtin_fns,
                 );
             }
             target.append(&mut inside_loop);
@@ -275,6 +289,7 @@ pub fn codegen(source: String, src_file: String, file_format: FileFormat) -> Str
                         ast.node_no_typecast(*i),
                         &mut program,
                         &mut func,
+                        &mut builtin_fns,
                     );
                 }
                 program.funcs.push(func);

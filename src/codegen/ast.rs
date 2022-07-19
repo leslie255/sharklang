@@ -1,7 +1,6 @@
 use super::error::*;
 use super::tokens::*;
 use super::typecheck::*;
-use std::process::exit;
 
 use std::collections::HashMap;
 
@@ -72,7 +71,7 @@ impl CodeBlock {
         match self.vars.get(var_name) {
             Some(x) => Some(x.addr),
             None => {
-                let parent_block = if let Expression::Block(b) = ast.expr(self.parent) {
+                let parent_block = if let Expression::Block(b) = &ast.nodes.get(self.parent)?.expr {
                     b
                 } else {
                     return None;
@@ -280,460 +279,350 @@ impl AST {
     }
 }
 
-fn parse_fn_call_args(
+#[allow(unused_assignments)]
+fn recursive_parse_exprs(
     tokens: &mut TokenStream,
-    tree: &mut AST,
+    target: &mut AST,
     err_collector: &mut ErrorCollector,
-) -> Vec<usize> {
-    let mut args: Vec<usize> = Vec::new();
-    let mut token = tokens.next();
-
-    // make sure there is a `(`
-    if TokenContent::RoundParenOpen != token.content {
-        err_collector.syntax_err(&token, "expected a `(` for function call".to_string());
-        err_collector.print_errs();
-        exit(1);
+) -> Option<usize> {
+    let mut token: Token;
+    macro_rules! recursive_call {
+        () => {{
+            let i = recursive_parse_exprs(tokens, target, err_collector);
+            if tokens.look_ahead(1).content == TokenContent::EOF {
+                return None;
+            }
+            token = tokens.current();
+            i
+        }};
     }
-
-    // if there is a `)` coming immediately after the `(`, there are no arguments
-    match &tokens.look_ahead(1).content {
-        TokenContent::RoundParenClose => {
-            tokens.next();
-            return args;
-        }
-        _ => (),
+    macro_rules! token_get_id {
+        ($t: expr) => {
+            if let TokenContent::Identifier(ref x) = $t.content {
+                x.clone()
+            } else {
+                err_collector.add_err(
+                    ErrorType::Syntax,
+                    $t.position,
+                    $t.len,
+                    format!("expecting an identifier"),
+                );
+                tokens.skip_to_next_expr();
+                return None;
+            }
+        };
     }
-
+    macro_rules! token_extract_data_type {
+        ($t: expr) => {
+            if let Some(t) = DataType::from_str(&token_get_id!($t)) {
+                t
+            } else {
+                err_collector.add_err(
+                    ErrorType::Syntax,
+                    $t.position,
+                    $t.len,
+                    format!("expecting a type name"),
+                );
+                tokens.skip_to_next_expr();
+                return None;
+            }
+        };
+    }
+    macro_rules! token_ensure_type {
+        ($token: expr, $token_type: expr) => {
+            if $token_type != $token.content {
+                err_collector.add_err(
+                    ErrorType::Syntax,
+                    $token.position,
+                    $token.len,
+                    format!("expecting a `{:?}`", $token_type),
+                );
+                tokens.skip_to_next_expr();
+                return None;
+            }
+        };
+        ($token: expr, $type0: expr, $type1: expr) => {
+            if $type0 != $token.content && $type1 != $token.content {
+                err_collector.add_err(
+                    ErrorType::Syntax,
+                    $token.position,
+                    $token.len,
+                    format!("expecting `{:?}` or `{:?}`", $type0, $type1),
+                );
+                tokens.skip_to_next_expr();
+                return None;
+            }
+        };
+    }
     loop {
-        // get the next argument
-        let i = parse_single_expr(tree, tokens, err_collector);
-        args.push(i);
         token = tokens.next();
         match &token.content {
-            TokenContent::Comma => {}
-            TokenContent::RoundParenClose => break,
-            _ => {
-                err_collector.syntax_err(
-                    &token,
-                    format!("expected `)` or `,` after a function argument"),
+            TokenContent::RawASM(code) => {
+                target.new_expr(Expression::RawASM(code.clone()), token.position);
+                break;
+            }
+            TokenContent::UInt(num) => {
+                target.new_expr(Expression::NumberLiteral(*num), token.position);
+                break;
+            }
+            TokenContent::Char(ch) => {
+                target.new_expr(Expression::CharLiteral(*ch as u8), token.position);
+                break;
+            }
+            TokenContent::String(str) => {
+                target.new_expr(Expression::StringLiteral(str.clone()), token.position);
+                break;
+            }
+            TokenContent::And => {
+                let position = token.position;
+                if let Some(i) = recursive_call!() {
+                    target.new_expr(Expression::GetAddress(i), position);
+                    break;
+                } else {
+                    err_collector.add_err(
+                        ErrorType::Syntax,
+                        position,
+                        1,
+                        format!("Expected an expression"),
+                    );
+                    return None;
+                }
+            }
+            TokenContent::Dollar => {
+                let position = token.position;
+                if let Some(i) = recursive_call!() {
+                    target.new_expr(Expression::Dereference(i), position);
+                    break;
+                } else {
+                    err_collector.add_err(
+                        ErrorType::Syntax,
+                        position,
+                        1,
+                        format!("Expected an expression"),
+                    );
+                    return None;
+                }
+            }
+            TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
+                TokenContent::Equal => {
+                    // variable assign
+                    let var_name = id.clone();
+                    tokens.next();
+                    recursive_call!();
+                    target.new_expr(
+                        Expression::VarAssign(var_name, target.nodes.len() - 1),
+                        token.position,
+                    );
+                    break;
+                }
+                TokenContent::RoundParenOpen => {
+                    // function call
+                    let func_name = id.clone();
+                    let position = token.position;
+                    let mut args: Vec<usize> = Vec::new();
+                    token_ensure_type!(tokens.next(), TokenContent::RoundParenOpen);
+                    if tokens.look_ahead(1).content == TokenContent::RoundParenClose {
+                        // there are no arguments
+                        target.new_expr(Expression::FuncCall(func_name, args), position);
+                        break;
+                    }
+                    loop {
+                        if let Some(i) = recursive_call!() {
+                            args.push(i);
+                        }
+                        token = tokens.next();
+                        // comma means there is another argument, closing round paren means end
+                        token_ensure_type!(
+                            token,
+                            TokenContent::Comma,
+                            TokenContent::RoundParenClose
+                        );
+                        match token.content {
+                            TokenContent::RoundParenClose => break,
+                            _ => (),
+                        }
+                    }
+                    target.new_expr(Expression::FuncCall(func_name, args), position);
+                    break;
+                }
+                TokenContent::Colon => {
+                    // Label
+                    let label_name = id.clone();
+                    let position = token.position;
+                    tokens.next();
+                    target.new_expr(Expression::Label(label_name), position);
+                    break;
+                }
+                _ => {
+                    target.new_expr(Expression::Identifier(id.clone()), token.position);
+                    break;
+                }
+            },
+            TokenContent::Return => {
+                let look_ahead = tokens.look_ahead(1);
+                if look_ahead.indicates_end_of_expr() {
+                    target.new_expr(Expression::ReturnVoid, token.position);
+                    break;
+                } else if look_ahead.content == TokenContent::Underscore {
+                    tokens.next();
+                    target.new_expr(Expression::UnsafeReturn, token.position);
+                    break;
+                } else {
+                    recursive_call!();
+                    target.new_expr(
+                        Expression::ReturnVal(target.nodes.len() - 1),
+                        token.position,
+                    );
+                    break;
+                }
+            }
+            TokenContent::Let => {
+                let var_name = token_get_id!(tokens.next());
+                let mut var_type = DataType::ToBeDetermined;
+                token = tokens.next();
+                token_ensure_type!(token, TokenContent::Colon, TokenContent::Equal);
+                match token.content {
+                    TokenContent::Colon => {
+                        var_type = token_extract_data_type!(tokens.next());
+                        token = tokens.next();
+                        if token.content != TokenContent::Equal {}
+                    }
+                    TokenContent::Equal => (),
+                    _ => (),
+                }
+                recursive_call!();
+                target.new_expr(
+                    Expression::VarInit(var_name.clone(), var_type, target.nodes.len() - 1),
+                    token.position,
                 );
-                err_collector.print_errs();
-                exit(1);
+                break;
             }
-        }
-    }
+            TokenContent::Func => {
+                let fn_def_pos = token.position;
+                token = tokens.next();
 
-    args
-}
+                // function name and arguments
+                let fn_name = token_get_id!(token);
+                let mut fn_args: Vec<(String, DataType)> = Vec::new();
+                let mut code_block = CodeBlock::default();
+                token_ensure_type!(tokens.next(), TokenContent::RoundParenOpen);
+                if tokens.look_ahead(1).content != TokenContent::RoundParenClose {
+                    // has ast least one arguments
+                    loop {
+                        token = tokens.next();
+                        let arg_name = token_get_id!(token);
 
-fn parse_single_expr(
-    tree: &mut AST,
-    tokens: &mut TokenStream,
-    err_collector: &mut ErrorCollector,
-) -> usize {
-    let mut token = tokens.next();
-    match token.content {
-        TokenContent::UInt(uint) => {
-            tree.new_expr(Expression::NumberLiteral(uint), token.position);
-        }
-        TokenContent::String(str) => {
-            tree.new_expr(Expression::StringLiteral(str), token.position);
-        }
-        TokenContent::Char(byte) => {
-            tree.new_expr(Expression::CharLiteral(byte), token.position);
-        }
-        TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
-            TokenContent::RoundParenOpen => {
-                // is a function call
-                let args = parse_fn_call_args(tokens, tree, err_collector);
-                tree.new_expr(Expression::FuncCall(id, args), token.position);
+                        token = tokens.next();
+                        token_ensure_type!(token, TokenContent::Colon);
+
+                        token = tokens.next();
+                        let arg_type = token_extract_data_type!(token);
+
+                        fn_args.push((arg_name, arg_type));
+
+                        // comma means there is another argument, closing round paren means end
+                        token = tokens.next();
+                        token_ensure_type!(
+                            token,
+                            TokenContent::Comma,
+                            TokenContent::RoundParenClose
+                        );
+                        match token.content {
+                            TokenContent::RoundParenClose => break,
+                            _ => (),
+                        }
+                    }
+                } else {
+                    // no arguments
+                    tokens.next();
+                }
+
+                // function body
+                token = tokens.next();
+                token_ensure_type!(token, TokenContent::BigParenOpen, TokenContent::ReturnArrow);
+                if token.content == TokenContent::ReturnArrow {
+                    code_block.return_type = token_extract_data_type!(tokens.next());
+                    token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
+                }
+                loop {
+                    if let Some(i) = recursive_call!() {
+                        target.nodes.get_mut(i).unwrap().is_root = true;
+                        code_block.body.push(target.nodes.len() - 1);
+                    }
+                    if tokens.look_ahead(1).content == TokenContent::BigParenClose {
+                        tokens.next();
+                        break;
+                    }
+                }
+                code_block.gen_vars_with_args(&target.nodes, fn_args);
+                let parent = target.nodes.len();
+                for i in &code_block.body {
+                    match target.nodes.get_mut(*i).unwrap().expr {
+                        Expression::Loop(block_i) => {
+                            match &mut target.nodes.get_mut(block_i).unwrap().expr {
+                                Expression::Block(block) => block.parent = parent,
+                                _ => panic!(),
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                target.new_expr(Expression::Block(code_block), fn_def_pos);
+                target.new_expr(
+                    Expression::FuncDef(fn_name, target.nodes.len() - 1),
+                    fn_def_pos,
+                );
+                break;
             }
+            TokenContent::Loop => {
+                let loop_pos = token.position;
+                token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
+                let mut code_block = CodeBlock::default();
+                loop {
+                    if let Some(i) = recursive_call!() {
+                        code_block.body.push(i);
+                    }
+                    if tokens.look_ahead(1).content == TokenContent::BigParenClose {
+                        tokens.next();
+                        break;
+                    }
+                }
+                target.new_expr(Expression::Block(code_block), loop_pos);
+                target.new_expr(Expression::Loop(target.nodes.len() - 1), loop_pos);
+                break;
+            }
+            TokenContent::EOF => return None,
             _ => {
-                // is a variable
-                tree.new_expr(Expression::Identifier(id), token.position);
+                if !token.indicates_end_of_expr() {
+                    err_collector.add_err(
+                        ErrorType::Syntax,
+                        token.position,
+                        token.len,
+                        format!("what is this?"),
+                    );
+                    tokens.skip_to_next_expr();
+                }
+                return None;
             }
-        },
-        TokenContent::And => {
-            parse_single_expr(tree, tokens, err_collector);
-            tree.new_expr(Expression::GetAddress(tree.nodes.len() - 1), token.position);
-        }
-        TokenContent::Dollar => {
-            parse_single_expr(tree, tokens, err_collector);
-            tree.new_expr(Expression::Dereference(tree.nodes.len() - 1), token.position);
-        }
-        _ => {
-            err_collector.syntax_err(&token, format!("what the fuck is this shit?"));
-            err_collector.print_errs();
-            exit(1);
         }
     }
     if tokens.look_ahead(1).content == TokenContent::Squiggle {
         // type cast
-        tokens.next();
-        token = tokens.next();
-        if let TokenContent::Identifier(ref id) = token.content {
-            let data_type = DataType::from_str(&id).unwrap_or_else(|| {
-                err_collector.syntax_err(&token, format!("expecting a valid data type after `~`"));
-                err_collector.print_errs();
-                exit(1);
-            });
-            tree.new_expr(
-                Expression::TypeCast(tree.nodes.len() - 1, data_type),
-                token.position,
-            );
-        } else {
-            err_collector.syntax_err(&token, format!("expecting a data type after `~`"));
-            err_collector.print_errs();
-            exit(1);
-        }
+        let position = tokens.next().position;
+        let casted_type = token_extract_data_type!(tokens.next());
+        target.new_expr(
+            Expression::TypeCast(target.nodes.len() - 1, casted_type),
+            position,
+        );
     }
-    tree.nodes.len() - 1
-}
-
-fn parse_inside_fn(
-    tree: &mut AST,
-    tokens: &mut TokenStream,
-    err_collector: &mut ErrorCollector,
-) -> usize {
-    let mut token: Token;
-
-    token = tokens.next();
-
-    match token.content {
-        TokenContent::Identifier(id) => {
-            match tokens.look_ahead(1).content {
-                TokenContent::RoundParenOpen => {
-                    // is a function call
-                    let args = parse_fn_call_args(tokens, tree, err_collector);
-                    tree.new_expr(Expression::FuncCall(id.clone(), args), token.position);
-                    return tree.nodes.len() - 1;
-                }
-                _ => {}
-            }
-            token = tokens.next();
-            match token.content {
-                TokenContent::Colon => {
-                    tree.new_expr(Expression::Label(id), token.position);
-                    return tree.nodes.len() - 1;
-                }
-                TokenContent::Equal => {
-                    // is variable assign
-                    let i = parse_single_expr(tree, tokens, err_collector);
-                    tree.new_expr(Expression::VarAssign(id, i), token.position);
-                    return tree.nodes.len() - 1;
-                }
-                _ => {
-                    err_collector.syntax_err(&token, format!("expecting `=` or `(` after {}", id));
-                    err_collector.print_errs();
-                    exit(1);
-                }
-            }
-        }
-        TokenContent::Let => {
-            // let var_name: type = rhs;
-            // rhs could be: number literal, string literal, identifier, function call
-            // get lhs
-            token = tokens.next();
-            let lhs: String;
-            let var_type: DataType;
-            if let TokenContent::Identifier(var_name) = token.content {
-                lhs = var_name;
-            } else {
-                err_collector
-                    .syntax_err(&token, format!("expecting an identifier following `let`"));
-                err_collector.print_errs();
-                exit(1);
-            }
-            // get type
-            if tokens.next().content == TokenContent::Colon {
-                token = tokens.next();
-                if let TokenContent::Identifier(ref type_name) = token.content {
-                    var_type = DataType::from_str(type_name).unwrap_or_else(|| {
-                        // TODO: type name check should happen in type checks not AST parsing
-                        err_collector.syntax_err(
-                            &token,
-                            format!("`{}` is not a valid data type", type_name),
-                        );
-                        err_collector.print_errs();
-                        exit(1);
-                    });
-                } else {
-                    err_collector.syntax_err(
-                        &token,
-                        format!("{:?} is not a valid data type", token.content),
-                    );
-                    err_collector.print_errs();
-                    exit(1);
-                }
-            } else {
-                err_collector.syntax_err(
-                    &tokens.look_ahead(0),
-                    format!("expecting `:` after variable name"),
-                );
-                err_collector.print_errs();
-                exit(1);
-            }
-            // make sure there is an `=`
-            if tokens.next().content != TokenContent::Equal {
-                err_collector.syntax_err(&token, format!("expecting `=` after variable type",));
-                err_collector.print_errs();
-            }
-            // get rhs
-            let i = parse_single_expr(tree, tokens, err_collector);
-            tree.new_expr(Expression::VarInit(lhs, var_type, i), token.position);
-            return tree.nodes.len() - 1;
-        }
-        TokenContent::Loop => {
-            token = tokens.next();
-            if token.content != TokenContent::BigParenOpen {
-                err_collector.syntax_err(&token, format!("expecting `{{` after `loop`"));
-                err_collector.print_errs();
-                exit(1);
-            }
-            let mut block = CodeBlock::default();
-            loop {
-                match tokens.look_ahead(1).content {
-                    TokenContent::EOF | TokenContent::BigParenClose => {
-                        tokens.next();
-                        break;
-                    }
-                    _ => (),
-                }
-                let i = parse_inside_fn(tree, tokens, err_collector);
-                if i != usize::MAX {
-                    block.body.push(i);
-                }
-            }
-            tree.new_expr(Expression::Block(block), token.position);
-            tree.new_expr(Expression::Loop(tree.nodes.len() - 1), token.position);
-            return tree.nodes.len() - 1;
-        }
-        TokenContent::Return => match tokens.look_ahead(1).content {
-            TokenContent::Semicolon => {
-                tree.new_expr(Expression::ReturnVoid, token.position);
-                return tree.nodes.len() - 1;
-            }
-            _ => {
-                let i = parse_single_expr(tree, tokens, err_collector);
-                tree.new_expr(Expression::ReturnVal(i), token.position);
-                return tree.nodes.len() - 1;
-            }
-        },
-        TokenContent::UnsafeReturn => {
-            tree.new_expr(Expression::UnsafeReturn, token.position);
-            return tree.nodes.len() - 1;
-        }
-        TokenContent::Semicolon => {
-            return usize::MAX;
-        }
-        TokenContent::RawASM(text) => {
-            tree.new_expr(Expression::RawASM(text), token.position);
-            return tree.nodes.len() - 1;
-        }
-        TokenContent::String(str) => {
-            tree.new_expr(Expression::StringLiteral(str), token.position);
-            tree.new_expr(
-                Expression::FuncCall(String::from("println"), vec![tree.nodes.len() - 1]),
-                token.position,
-            );
-            return tree.nodes.len() - 1;
-        }
-        _ => {
-            err_collector.syntax_err(&token, format!("unidentified token `{:?}`", token.content));
-            err_collector.print_errs();
-            exit(1);
-        }
-    };
-}
-
-fn parse_fn_def_args(
-    tokens: &mut TokenStream,
-    err_collector: &mut ErrorCollector,
-) -> Vec<(String, DataType)> {
-    let mut token = tokens.next();
-
-    // make sure there is a `(`
-    if token.content != TokenContent::RoundParenOpen {
-        err_collector.syntax_err(&token, format!("expecting `(` after function call"));
-        err_collector.print_errs();
-        exit(1);
-    }
-
-    // if there is a `)` coming immediately after the `(`, there are no arguments
-    if tokens.look_ahead(1).content == TokenContent::RoundParenClose {
-        tokens.next();
-        return Vec::new();
-    }
-
-    let mut args: Vec<(String, DataType)> = Vec::new();
-
-    loop {
-        let arg_name: String;
-        let arg_type: DataType;
-
-        token = tokens.next();
-        match &token.content {
-            TokenContent::Identifier(id) => {
-                arg_name = id.clone();
-            }
-            _ => {
-                err_collector.syntax_err(
-                    &token,
-                    format!("expecting an identifier as the name of a function arguments"),
-                );
-                err_collector.print_errs();
-                exit(1);
-            }
-        }
-
-        token = tokens.next();
-        if token.content != TokenContent::Colon {
-            err_collector.syntax_err(
-                &token,
-                format!("expecting `:` after name of a function arguments"),
-            );
-            err_collector.print_errs();
-            exit(1);
-        }
-
-        token = tokens.next();
-        if let TokenContent::Identifier(ref type_name) = token.content {
-            arg_type = DataType::from_str(type_name).unwrap_or_else(|| {
-                err_collector.syntax_err(&token, format!("{} is not a valid data type", type_name));
-                err_collector.print_errs();
-                exit(1);
-            });
-        } else {
-            err_collector.syntax_err(
-                &token,
-                format!("expecting an identifier after `:` for argument name"),
-            );
-            err_collector.print_errs();
-            exit(1);
-        }
-        args.push((arg_name, arg_type));
-
-        token = tokens.next();
-        match &token.content {
-            TokenContent::Comma => {}
-            TokenContent::RoundParenClose => break,
-            _ => {
-                err_collector.syntax_err(
-                    &token,
-                    format!("expected `)` or `,` after an argument name"),
-                );
-                err_collector.print_errs();
-                exit(1);
-            }
-        }
-    }
-
-    args
-}
-
-fn parse_top_level(
-    tree: &mut AST,
-    tokens: &mut TokenStream,
-    err_collector: &mut ErrorCollector,
-) -> usize {
-    let mut token: Token;
-    match tokens.look_ahead(1).content {
-        TokenContent::Func => {
-            tokens.next();
-            token = tokens.next();
-            let func_name: String;
-            let mut code_block = CodeBlock::default();
-            if let TokenContent::Identifier(id) = token.content {
-                func_name = id;
-            } else {
-                err_collector.syntax_err(&token, format!("expected an identifier after `func`"));
-                err_collector.print_errs();
-                exit(1);
-            }
-
-            let func_args = parse_fn_def_args(tokens, err_collector);
-
-            token = tokens.next();
-            // if it's `->` then there is a return type, otherwise it's `void`
-            match token.content {
-                TokenContent::BigParenOpen => (),
-                TokenContent::ReturnArrow => {
-                    token = tokens.next();
-                    if let TokenContent::Identifier(ref type_name) = token.content {
-                        code_block.return_type =
-                            DataType::from_str(type_name).unwrap_or_else(|| {
-                                err_collector.syntax_err(
-                                    &token,
-                                    format!("`{}` is not a valid data type", type_name),
-                                );
-                                err_collector.print_errs();
-                                exit(1);
-                            });
-                    }
-                    token = tokens.next();
-                    if token.content != TokenContent::BigParenOpen {
-                        err_collector.syntax_err(&token, format!("expected `{{` or `->`"));
-                        err_collector.print_errs();
-                        exit(1);
-                    }
-                }
-                _ => {
-                    err_collector.syntax_err(&token, format!("expected `{{` or `->`"));
-                    err_collector.print_errs();
-                    exit(1);
-                }
-            }
-            loop {
-                match tokens.look_ahead(1).content {
-                    TokenContent::EOF | TokenContent::BigParenClose => {
-                        tokens.next();
-                        break;
-                    }
-                    _ => (),
-                }
-                let i = parse_inside_fn(tree, tokens, err_collector);
-                if let Some(node) = tree.nodes.get_mut(i) {
-                    if node.is_root {
-                        continue;
-                    }
-                    node.is_root = true;
-                    code_block.body.push(i);
-                }
-            }
-            code_block.gen_vars_with_args(&tree.nodes, func_args);
-            let parent = tree.nodes.len();
-            for i in &code_block.body {
-                match tree.nodes.get_mut(*i).unwrap().expr {
-                    Expression::Loop(block_i) => {
-                        match &mut tree.nodes.get_mut(block_i).unwrap().expr {
-                            Expression::Block(block) => block.parent = parent,
-                            _ => panic!(),
-                        }
-                    }
-                    _ => (),
-                }
-            }
-            tree.new_expr(Expression::Block(code_block), token.position);
-            tree.new_expr(
-                Expression::FuncDef(func_name, tree.nodes.len() - 1),
-                token.position,
-            );
-            tree.nodes.last_mut().unwrap().is_root = true;
-        }
-        _ => {
-            parse_inside_fn(tree, tokens, err_collector);
-        }
-    }
-
-    tree.nodes.len().saturating_sub(1)
+    return Some(target.nodes.len() - 1);
 }
 
 pub fn construct_ast(mut tokens: TokenStream, err_collector: &mut ErrorCollector) -> AST {
     let mut ast = AST::default();
     loop {
-        parse_top_level(&mut ast, &mut tokens, err_collector);
-        if !ast.nodes.is_empty() {
-            ast.nodes.last_mut().unwrap().is_top_level = true;
+        if let Some(i) = recursive_parse_exprs(&mut tokens, &mut ast, err_collector) {
+            ast.nodes.get_mut(i).unwrap().is_top_level = true;
         }
         if tokens.look_ahead(1).content.is_eof() {
             break;

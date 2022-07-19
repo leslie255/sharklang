@@ -147,10 +147,11 @@ func main() -> int32 {
 }
 ```
 
+Note that you can use `return _` for an unsafe return, which skips the return type check and returns whatever is currently in the `rax` register
 ``` Swift
 func unsafe_return_test() -> uint64 {
     mov	rax, 255
-    _return;
+    return _;
 }
 
 func main() -> int32 {
