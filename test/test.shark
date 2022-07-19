@@ -1,4 +1,4 @@
 func main() -> int32 {
-	mov	rax, 255
-    return _;
+	"hello";
+    return 0;
 }

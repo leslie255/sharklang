@@ -465,10 +465,7 @@ fn recursive_parse_exprs(
                     break;
                 } else if look_ahead.content == TokenContent::Underscore {
                     tokens.next();
-                    target.new_expr(
-                        Expression::UnsafeReturn,
-                        token.position,
-                    );
+                    target.new_expr(Expression::UnsafeReturn, token.position);
                     break;
                 } else {
                     recursive_call!();
