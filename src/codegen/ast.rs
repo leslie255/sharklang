@@ -469,6 +469,7 @@ fn recursive_parse_exprs(
                         Expression::UnsafeReturn,
                         token.position,
                     );
+                    break;
                 } else {
                     recursive_call!();
                     target.new_expr(
