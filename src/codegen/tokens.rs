@@ -13,6 +13,7 @@ pub enum TokenContent {
     Period,
     Comma,
     Colon,
+    Underscore,
     UInt(u64),
     SInt(i64),
     Float(f64),
@@ -23,7 +24,6 @@ pub enum TokenContent {
     Loop,
     Func,
     Return,
-    UnsafeReturn,
     ReturnArrow,
     Squiggle,
     And,
@@ -198,9 +198,10 @@ impl TokenPrototype {
     }
     fn is_valid(str: &String) -> bool {
         match str.as_str() {
-            "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "~"
-            | "let" | "loop" | "func" | "true" | "false" | "return" | "_return" | "//" | "&"
-            | "$" | "\n" => return true,
+            "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "~" | "_"
+            | "let" | "loop" | "func" | "true" | "false" | "return" | "//" | "&" | "$" | "\n" => {
+                return true
+            }
             _ => {
                 if str.is_empty() {
                     return false;
@@ -269,11 +270,11 @@ impl TokenPrototype {
             ":" => return Token::new(TokenContent::Colon, self.position, self.len),
             "func" => return Token::new(TokenContent::Func, self.position, self.len),
             "return" => return Token::new(TokenContent::Return, self.position, self.len),
-            "_return" => return Token::new(TokenContent::UnsafeReturn, self.position, self.len),
             "&" => return Token::new(TokenContent::And, self.position, self.len),
             "$" => return Token::new(TokenContent::Dollar, self.position, self.len),
             "->" => return Token::new(TokenContent::ReturnArrow, self.position, self.len),
             "~" => return Token::new(TokenContent::Squiggle, self.position, self.len),
+            "_" => return Token::new(TokenContent::Underscore, self.position, self.len),
             "//" => {
                 return Token::new(
                     TokenContent::SingleLineCommentStart,

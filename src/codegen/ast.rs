@@ -1,4 +1,3 @@
-#![allow(unused)]
 use super::error::*;
 use super::tokens::*;
 use super::typecheck::*;
@@ -280,6 +279,7 @@ impl AST {
     }
 }
 
+#[allow(unused_assignments)]
 fn recursive_parse_exprs(
     tokens: &mut TokenStream,
     target: &mut AST,
@@ -388,6 +388,21 @@ fn recursive_parse_exprs(
                     return None;
                 }
             }
+            TokenContent::Dollar => {
+                let position = token.position;
+                if let Some(i) = recursive_call!() {
+                    target.new_expr(Expression::Dereference(i), position);
+                    break;
+                } else {
+                    err_collector.add_err(
+                        ErrorType::Syntax,
+                        position,
+                        1,
+                        format!("Expected an expression"),
+                    );
+                    return None;
+                }
+            }
             TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
                 TokenContent::Equal => {
                     // variable assign
@@ -444,9 +459,16 @@ fn recursive_parse_exprs(
                 }
             },
             TokenContent::Return => {
-                if tokens.look_ahead(1).indicates_end_of_expr() {
+                let look_ahead = tokens.look_ahead(1);
+                if look_ahead.indicates_end_of_expr() {
                     target.new_expr(Expression::ReturnVoid, token.position);
                     break;
+                } else if look_ahead.content == TokenContent::Underscore {
+                    tokens.next();
+                    target.new_expr(
+                        Expression::UnsafeReturn,
+                        token.position,
+                    );
                 } else {
                     recursive_call!();
                     target.new_expr(
@@ -560,7 +582,7 @@ fn recursive_parse_exprs(
                 let mut code_block = CodeBlock::default();
                 loop {
                     if let Some(i) = recursive_call!() {
-                        code_block.body.push(target.nodes.len() - 1);
+                        code_block.body.push(i);
                     }
                     if tokens.look_ahead(1).content == TokenContent::BigParenClose {
                         tokens.next();
