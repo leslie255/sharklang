@@ -1,4 +1,15 @@
 func main() -> int32 {
-	let a: uint64 = 255;
-	return a ~ int32;
+    let a: uint64 = 0;
+    loop {
+        a = uadd(a, 1);
+        u64print(a);
+        
+        // if `a` equals 100, break out of the loop
+        mov     rax, [rbp - 8]
+        cmp     rax, 100
+        je      _break_loop
+    }
+    _break_loop:
+    
+    return a ~ int32;
 }

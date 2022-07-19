@@ -357,6 +357,10 @@ fn recursive_parse_exprs(
     loop {
         token = tokens.next();
         match &token.content {
+            TokenContent::RawASM(code) => {
+                target.new_expr(Expression::RawASM(code.clone()), token.position);
+                break;
+            }
             TokenContent::UInt(num) => {
                 target.new_expr(Expression::NumberLiteral(*num), token.position);
                 break;
@@ -409,6 +413,14 @@ fn recursive_parse_exprs(
                         }
                     }
                     target.new_expr(Expression::FuncCall(func_name, args), position);
+                    break;
+                }
+                TokenContent::Colon => {
+                    // Label
+                    let label_name = id.clone();
+                    let position = token.position;
+                    tokens.next();
+                    target.new_expr(Expression::Label(label_name), position);
                     break;
                 }
                 _ => {
