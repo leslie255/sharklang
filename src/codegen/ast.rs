@@ -386,15 +386,16 @@ fn recursive_parse_exprs(
                     let func_name = id.clone();
                     let position = token.position;
                     let mut args: Vec<usize> = Vec::new();
-                    tokens.next();
-                    if token.content == TokenContent::RoundParenClose {
+                    token_ensure_type!(tokens.next(), TokenContent::RoundParenOpen);
+                    if tokens.look_ahead(1).content == TokenContent::RoundParenClose {
                         // there are no arguments
                         target.new_expr(Expression::FuncCall(func_name, args), position);
                         break Some(target.nodes.len() - 1);
                     }
                     loop {
-                        recursive_call!();
-                        args.push(target.nodes.len() - 1);
+                        if let Some(i) = recursive_call!() {
+                            args.push(i);
+                        }
                         token = tokens.next();
                         // comma means there is another argument, closing round paren means end
                         token_ensure_type!(
@@ -429,10 +430,10 @@ fn recursive_parse_exprs(
                 }
             }
             TokenContent::Let => {
-                token = tokens.next();
-                let var_name = token_get_id!(token);
+                let var_name = token_get_id!(tokens.next());
                 let mut var_type = DataType::ToBeDetermined;
-                token_ensure_type!(tokens.next(), TokenContent::Colon, TokenContent::Equal);
+                token = tokens.next();
+                token_ensure_type!(token, TokenContent::Colon, TokenContent::Equal);
                 match token.content {
                     TokenContent::Colon => {
                         var_type = token_extract_data_type!(tokens.next());
@@ -512,6 +513,23 @@ fn recursive_parse_exprs(
                     Expression::FuncDef(fn_name, target.nodes.len() - 1),
                     fn_def_pos,
                 );
+            }
+            TokenContent::Loop => {
+                let loop_pos = token.position;
+                token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
+                let mut code_block = CodeBlock::default();
+                loop {
+                    if let Some(i) = recursive_call!() {
+                        target.nodes.last_mut().unwrap().is_root = true;
+                        code_block.body.push(target.nodes.len() - 1);
+                    }
+                    if tokens.look_ahead(1).content == TokenContent::BigParenClose {
+                        tokens.next();
+                        break;
+                    }
+                }
+                target.new_expr(Expression::Block(code_block), loop_pos);
+                target.new_expr(Expression::Loop(target.nodes.len() - 1), loop_pos);
             }
             TokenContent::EOF => return None,
             _ => {
