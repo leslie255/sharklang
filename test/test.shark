@@ -1,8 +1,8 @@
-func test(a: uint64) -> uint64 {
-	return umul(a, a);
-}
 func main() -> int32 {
-	let a: uint64 = test(16);
-	u64print(usub(a, 1));
+	let a: uint64 = 0;
+	loop {
+		a = uadd(a, 1);
+		u64print(a);
+	}
 	return 0;
 }

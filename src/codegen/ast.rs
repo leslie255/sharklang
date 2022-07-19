@@ -72,7 +72,7 @@ impl CodeBlock {
         match self.vars.get(var_name) {
             Some(x) => Some(x.addr),
             None => {
-                let parent_block = if let Expression::Block(b) = ast.expr(self.parent) {
+                let parent_block = if let Expression::Block(b) = &ast.nodes.get(self.parent)?.expr {
                     b
                 } else {
                     return None;
@@ -499,7 +499,7 @@ fn recursive_parse_exprs(
                 }
                 loop {
                     if let Some(i) = recursive_call!() {
-                        target.nodes.last_mut().unwrap().is_root = true;
+                        target.nodes.get_mut(i).unwrap().is_root = true;
                         code_block.body.push(target.nodes.len() - 1);
                     }
                     if tokens.look_ahead(1).content == TokenContent::BigParenClose {
@@ -508,11 +508,24 @@ fn recursive_parse_exprs(
                     }
                 }
                 code_block.gen_vars_with_args(&target.nodes, fn_args);
+                let parent = target.nodes.len();
+                for i in &code_block.body {
+                    match target.nodes.get_mut(*i).unwrap().expr {
+                        Expression::Loop(block_i) => {
+                            match &mut target.nodes.get_mut(block_i).unwrap().expr {
+                                Expression::Block(block) => block.parent = parent,
+                                _ => panic!(),
+                            }
+                        }
+                        _ => (),
+                    }
+                }
                 target.new_expr(Expression::Block(code_block), fn_def_pos);
                 target.new_expr(
                     Expression::FuncDef(fn_name, target.nodes.len() - 1),
                     fn_def_pos,
                 );
+                break Some(target.nodes.len() - 1);
             }
             TokenContent::Loop => {
                 let loop_pos = token.position;
@@ -520,7 +533,6 @@ fn recursive_parse_exprs(
                 let mut code_block = CodeBlock::default();
                 loop {
                     if let Some(i) = recursive_call!() {
-                        target.nodes.last_mut().unwrap().is_root = true;
                         code_block.body.push(target.nodes.len() - 1);
                     }
                     if tokens.look_ahead(1).content == TokenContent::BigParenClose {
@@ -530,6 +542,7 @@ fn recursive_parse_exprs(
                 }
                 target.new_expr(Expression::Block(code_block), loop_pos);
                 target.new_expr(Expression::Loop(target.nodes.len() - 1), loop_pos);
+                break Some(target.nodes.len() - 1);
             }
             TokenContent::EOF => return None,
             _ => {
