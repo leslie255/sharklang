@@ -6,10 +6,10 @@
 
 <img src="https://imgur.com/VBBeGtY.png" alt="Version 0.0.1" height="24px"> <img src="https://imgur.com/Mae21iF.png" alt="Language Rust" height="24px">
 
-### Quick showcase
+### Quick Showcase
 ``` Swift
 func square(num: uint64) -> uint64 {
-    // write assembly directly among highe level code!
+    // write assembly directly among high level code!
     mov     rax, [rbp - 8]
     mul     rax
     mov     [rbp - 8], rax
@@ -27,7 +27,7 @@ func main() -> int32 {
 }
 ```
 
-### How to use
+### How to Use
 Hello World:
 
 ``` Swift
@@ -169,7 +169,7 @@ func main() -> int32 {
 }
 ```
 
-Note that you can use `return _` for an unsafe return, which skips the return type check and returns whatever is currently in the `rax` register
+Note that you can use `return _` for unsafe return, which skips the return type check and returns whatever is currently in the `rax` register
 ``` Swift
 func unsafe_return_test() -> uint64 {
     mov	rax, 255
