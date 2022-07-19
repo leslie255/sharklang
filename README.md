@@ -6,7 +6,28 @@
 
 <img src="https://imgur.com/VBBeGtY.png" alt="Version 0.0.1" height="24px"> <img src="https://imgur.com/Mae21iF.png" alt="Language Rust" height="24px">
 
-### How to use:
+### Quick showcase
+``` Swift
+func square(num: uint64) -> uint64 {
+    // write assembly directly among highe level code!
+    mov     rax, [rbp - 8]
+    mul     rax
+    mov     [rbp - 8], rax
+    
+    return num;
+}
+
+func main() -> int32 {
+    "hello world";   // this implicitly calls the `println` function
+
+    print("the square of 16 is...");
+    u64print(square(16));
+
+    return 0;
+}
+```
+
+### How to use
 Hello World:
 
 ``` Swift
