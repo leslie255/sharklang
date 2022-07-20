@@ -110,6 +110,7 @@ fn gen_code_inside_block(
     program: &mut Program,
     target: &mut Vec<ASMStatement>,
     builtin_fns: &mut BuiltinFuncChecker,
+    file_format: FileFormat,
 ) {
     match &node.expr {
         Expression::Identifier(_) => {}
@@ -179,7 +180,8 @@ fn gen_code_inside_block(
             target.push(ir!(func_ret));
         }
         Expression::ReturnVal(val) => {
-            let size = block.return_type.size();
+            let size = block.fn_return_type(ast).unwrap_or(DataType::Void).size();
+            println!("{}:{}\t{}", file!(), line!(), size);
             let return_val = codegen_for_simple_expr(
                 block,
                 program,
@@ -215,10 +217,47 @@ fn gen_code_inside_block(
                     program,
                     &mut inside_loop,
                     builtin_fns,
+                    file_format,
                 );
             }
             target.append(&mut inside_loop);
             target.push(ir!(jmp, label));
+        }
+        Expression::If(condition_i, block_i) => {
+            let end_label = format!("if_end_{}", block_i);
+            let condition_operand = codegen_for_simple_expr(
+                block,
+                program,
+                ast,
+                ast.node_no_typecast(*condition_i),
+                target,
+                8,
+            );
+            target.push(ir!(format!(
+                "\tmov\trax, {}",
+                condition_operand.text(file_format)
+            )));
+            target.push(ir!(format!("\tcmp\trax, 0",)));
+            target.push(ir!(format!("\tje\t{}", end_label)));
+            let if_block = if let Expression::Block(b) = ast.expr_no_typecast(*block_i) {
+                b
+            } else {
+                panic!();
+            };
+            let mut inside_if: Vec<ASMStatement> = Vec::new();
+            for i in &if_block.body {
+                gen_code_inside_block(
+                    if_block,
+                    ast,
+                    ast.node_no_typecast(*i),
+                    program,
+                    &mut inside_if,
+                    builtin_fns,
+                    file_format,
+                );
+            }
+            target.append(&mut inside_if);
+            target.push(ir!(label, end_label));
         }
         _ => {}
     }
@@ -290,6 +329,7 @@ pub fn codegen(source: String, src_file: String, file_format: FileFormat) -> Str
                         &mut program,
                         &mut func,
                         &mut builtin_fns,
+                        file_format,
                     );
                 }
                 program.funcs.push(func);

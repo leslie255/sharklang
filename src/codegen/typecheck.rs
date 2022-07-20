@@ -135,7 +135,9 @@ impl DataType {
                 hash_set.insert(DataType::Pointer);
                 hash_set.insert(DataType::Void);
             }
-            _ => (),
+            _ => {
+                hash_set.insert(DataType::Void);
+            }
         }
         hash_set
     }
@@ -550,14 +552,18 @@ fn return_check(
         }
     }
     if check_type {
-        if !context.parent_block.return_type.matches(context, expr) {
+        let expected_type = context
+            .parent_block
+            .fn_return_type(context.ast)
+            .unwrap_or(DataType::Void);
+        if !expected_type.matches(context, expr) {
             err_collector.add_err(
                 ErrorType::Type,
                 context.ast.node(context.i).position,
                 usize::MAX,
                 format!(
                     "expecting expression of type `{}` after `return`",
-                    context.parent_block.return_type.description()
+                    expected_type.description()
                 ),
             );
         }

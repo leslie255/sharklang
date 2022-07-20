@@ -46,7 +46,7 @@ impl Default for CodeBlock {
             stack_depth: u64::default(),
             arg_types: Vec::default(),
             has_vars: bool::default(),
-            return_type: DataType::Void,
+            return_type: DataType::ToBeDetermined,
             parent: usize::MAX,
             owner: usize::MAX,
         }
@@ -131,6 +131,23 @@ impl CodeBlock {
                     break;
                 }
                 i += 1;
+            }
+        }
+    }
+    pub fn fn_return_type(&self, ast: &AST) -> Option<DataType> {
+        if let Expression::FuncDef(_, fn_block_i) = ast.node_no_typecast(self.owner).expr {
+            // if is a function
+            if let Expression::Block(fn_block) = &ast.node_no_typecast(fn_block_i).expr {
+                Some(fn_block.return_type.clone())
+            } else {
+                None
+            }
+        } else {
+            // if is not a function
+            if let Expression::Block(parent_block) = &ast.node_no_typecast(self.parent).expr {
+                parent_block.fn_return_type(ast)
+            } else {
+                None
             }
         }
     }
@@ -233,7 +250,6 @@ impl AST {
         unsafe { &self.nodes.get_unchecked(i).expr }
     }
     // get expression but if the expression is a typecast, unwrap it
-    #[allow(unused)]
     pub fn expr_no_typecast(&self, i: usize) -> &Expression {
         let expr = unsafe { &self.nodes.get_unchecked(i).expr };
         if let Expression::TypeCast(unwrapped_i, _) = expr {
@@ -562,7 +578,7 @@ fn recursive_parse_exprs(
                 let parent = target.nodes.len();
                 for i in &code_block.body {
                     match target.nodes.get_mut(*i).unwrap().expr {
-                        Expression::Loop(block_i) => {
+                        Expression::Loop(block_i) | Expression::If(_, block_i) => {
                             match &mut target.nodes.get_mut(block_i).unwrap().expr {
                                 Expression::Block(block) => {
                                     block.parent = parent;
@@ -574,6 +590,7 @@ fn recursive_parse_exprs(
                         _ => (),
                     }
                 }
+                code_block.owner = target.nodes.len() + 1;
                 target.new_expr(Expression::Block(code_block), fn_def_pos);
                 target.new_expr(
                     Expression::FuncDef(fn_name, target.nodes.len() - 1),
@@ -619,7 +636,6 @@ fn recursive_parse_exprs(
                         break;
                     }
                 }
-                code_block.owner = target.nodes.len() + 1;
                 target.new_expr(Expression::Block(code_block), if_pos);
                 target.new_expr(Expression::If(condition, target.nodes.len() - 1), if_pos);
                 break;

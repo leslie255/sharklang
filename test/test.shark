@@ -1,4 +1,7 @@
-if (a) {
-	255
-}
+func main() -> int32 {
+	if (0) {
+		return 0;
+	}
 
+	return 1;
+}
