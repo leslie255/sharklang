@@ -181,7 +181,6 @@ fn gen_code_inside_block(
         }
         Expression::ReturnVal(val) => {
             let size = block.fn_return_type(ast).unwrap_or(DataType::Void).size();
-            println!("{}:{}\t{}", file!(), line!(), size);
             let return_val = codegen_for_simple_expr(
                 block,
                 program,
