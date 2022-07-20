@@ -664,13 +664,11 @@ fn recursive_parse_exprs(
             TokenContent::If => {
                 let if_pos = token.position;
                 let mut code_block = CodeBlock::default();
-                token_ensure_type!(tokens.next(), TokenContent::RoundParenOpen);
                 let condition = if let Some(i) = recursive_call!() {
                     i
                 } else {
                     usize::MAX
                 };
-                token_ensure_type!(tokens.next(), TokenContent::RoundParenClose);
                 token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
                 loop {
                     if let Some(i) = recursive_call!() {

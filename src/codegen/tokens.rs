@@ -173,6 +173,7 @@ impl Token {
         match self.content {
             TokenContent::EOF
             | TokenContent::Comma
+            | TokenContent::BigParenOpen
             | TokenContent::BigParenClose
             | TokenContent::RoundParenClose
             | TokenContent::RectParenClose

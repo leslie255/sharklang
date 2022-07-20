@@ -1,6 +1,9 @@
 func main() -> int32 {
-	if (1) {
+	if 1 {
 		"lol";
+	}
+	if 0 {
+		"lmao";
 	}
 
 	return 0;
