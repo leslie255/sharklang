@@ -222,8 +222,9 @@ fn gen_code_inside_block(
             target.append(&mut inside_loop);
             target.push(ir!(jmp, label));
         }
-        Expression::If(condition_i, block_i) => {
-            let end_label = format!("if_end_{}", block_i);
+        #[allow(unused_variables)]
+        Expression::If(condition_i, if_block_i, elif_blocks, else_block_i) => {
+            let end_label = format!("if_end_{}", if_block_i);
             let condition_operand = codegen_for_simple_expr(
                 block,
                 program,
@@ -238,7 +239,7 @@ fn gen_code_inside_block(
             )));
             target.push(ir!(format!("\tcmp\trax, 0",)));
             target.push(ir!(format!("\tje\t{}", end_label)));
-            let if_block = if let Expression::Block(b) = ast.expr_no_typecast(*block_i) {
+            let if_block = if let Expression::Block(b) = ast.expr_no_typecast(*if_block_i) {
                 b
             } else {
                 panic!();

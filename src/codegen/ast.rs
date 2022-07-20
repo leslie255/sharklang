@@ -173,9 +173,9 @@ pub enum Expression {
 
     // Control flows
     Block(CodeBlock),
-    FuncDef(String, usize), // name, code block
-    Loop(usize),            // code block
-    If(usize, usize),       // condition, code block
+    FuncDef(String, usize),              // name, code block
+    Loop(usize),                         // code block
+    If(usize, usize, Vec<usize>, usize), // condition, if block, else if blocks, else block
     ReturnVoid,
     ReturnVal(usize),
     UnsafeReturn,
@@ -188,6 +188,20 @@ impl Default for Expression {
     }
 }
 impl Expression {
+    fn has_block(&self) -> bool {
+        match self {
+            Expression::If(..) | Expression::Loop(..) => true,
+            _ => false,
+        }
+    }
+    fn get_block(&self) -> &CodeBlock {
+        match self {
+            Expression::Block(block) => {
+                return block;
+            }
+            _ => panic!(),
+        }
+    }
     pub fn description(&self) -> String {
         match self {
             Expression::Identifier(name) => format!("`{}`", name),
@@ -205,7 +219,7 @@ impl Expression {
             Expression::Block(_) => String::from("block"),
             Expression::FuncDef(fn_name, _) => format!("func `{}(...)`", fn_name),
             Expression::Loop(_) => format!("loop {{...}}"),
-            Expression::If(_, _) => format!("if {{...}}"),
+            Expression::If(_, _, _, _) => format!("if {{...}}"),
             Expression::ReturnVoid => String::from("return"),
             Expression::ReturnVal(_) => String::from("return ..."),
             Expression::UnsafeReturn => String::from("_return"),
@@ -248,6 +262,9 @@ impl AST {
     }
     pub fn expr(&self, i: usize) -> &Expression {
         unsafe { &self.nodes.get_unchecked(i).expr }
+    }
+    pub fn node_mut(&mut self, i: usize) -> &mut ASTNode {
+        unsafe { self.nodes.get_unchecked_mut(i) }
     }
     // get expression but if the expression is a typecast, unwrap it
     pub fn expr_no_typecast(&self, i: usize) -> &Expression {
@@ -575,21 +592,49 @@ fn recursive_parse_exprs(
                     }
                 }
                 code_block.gen_vars_with_args(&target.nodes, fn_args);
+
+                // set owners and parents for sub blocks
                 let parent = target.nodes.len();
-                for i in &code_block.body {
-                    match target.nodes.get_mut(*i).unwrap().expr {
-                        Expression::Loop(block_i) | Expression::If(_, block_i) => {
-                            match &mut target.nodes.get_mut(block_i).unwrap().expr {
-                                Expression::Block(block) => {
-                                    block.parent = parent;
-                                    block.owner = *i
-                                }
-                                _ => panic!(),
-                            }
-                        }
-                        _ => (),
+                let a: Vec<(usize, Expression)> = code_block
+                    .body
+                    .iter()
+                    .map(|x| (*x, target.expr(*x)))
+                    .filter(|(_, expr)| expr.has_block())
+                    .map(|(i, expr)| (i, expr.clone()))
+                    .collect();
+                let mut ast_changes: Vec<(usize, Expression)> = Vec::new();
+                a.iter().for_each(|(ast_i, expr)| match expr {
+                    Expression::Loop(loop_block_i) => {
+                        let mut new_block = target.expr(*loop_block_i).get_block().clone();
+                        new_block.parent = parent;
+                        new_block.owner = *ast_i;
+                        ast_changes.push((*loop_block_i, Expression::Block(new_block)));
                     }
+                    Expression::If(_, if_block_i, elif_blocks, else_block_i) => {
+                        let mut new_block = target.expr(*if_block_i).get_block().clone();
+                        new_block.parent = parent;
+                        new_block.owner = *ast_i;
+                        ast_changes.push((*if_block_i, Expression::Block(new_block)));
+                        for elif_block_i in elif_blocks {
+                            let mut new_block = target.expr(*elif_block_i).get_block().clone();
+                            new_block.parent = parent;
+                            new_block.owner = *ast_i;
+                            ast_changes.push((*elif_block_i, Expression::Block(new_block)));
+                        }
+                        if *else_block_i == usize::MAX {
+                            return;
+                        }
+                        let mut new_block = target.expr(*else_block_i).get_block().clone();
+                        new_block.parent = parent;
+                        new_block.owner = *ast_i;
+                        ast_changes.push((*else_block_i, Expression::Block(new_block)));
+                    }
+                    _ => (),
+                });
+                for (i, expr) in ast_changes {
+                    target.node_mut(i).expr = expr;
                 }
+
                 code_block.owner = target.nodes.len() + 1;
                 target.new_expr(Expression::Block(code_block), fn_def_pos);
                 target.new_expr(
@@ -637,7 +682,10 @@ fn recursive_parse_exprs(
                     }
                 }
                 target.new_expr(Expression::Block(code_block), if_pos);
-                target.new_expr(Expression::If(condition, target.nodes.len() - 1), if_pos);
+                target.new_expr(
+                    Expression::If(condition, target.nodes.len() - 1, Vec::new(), usize::MAX),
+                    if_pos,
+                );
                 break;
             }
             TokenContent::EOF => return None,
