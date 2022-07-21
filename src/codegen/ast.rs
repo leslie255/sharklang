@@ -663,7 +663,8 @@ fn recursive_parse_exprs(
             }
             TokenContent::If => {
                 let if_pos = token.position;
-                let mut code_block = CodeBlock::default();
+                let mut if_block = CodeBlock::default();
+                let mut else_block: Option<CodeBlock> = None;
                 let condition = if let Some(i) = recursive_call!() {
                     i
                 } else {
@@ -672,16 +673,39 @@ fn recursive_parse_exprs(
                 token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
                 loop {
                     if let Some(i) = recursive_call!() {
-                        code_block.body.push(i);
+                        if_block.body.push(i);
                     }
                     if tokens.look_ahead(1).content == TokenContent::BigParenClose {
                         tokens.next();
                         break;
                     }
                 }
-                target.new_expr(Expression::Block(code_block), if_pos);
+                if tokens.look_ahead(1).content == TokenContent::Else {
+                    tokens.next();
+                    token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
+                    let mut else_block_unassigned = CodeBlock::default();
+                    loop {
+                        if let Some(i) = recursive_call!() {
+                            else_block_unassigned.body.push(i);
+                        }
+                        if tokens.look_ahead(1).content == TokenContent::BigParenClose {
+                            tokens.next();
+                            break;
+                        }
+                    }
+                    else_block = Some(else_block_unassigned);
+                }
+                target.new_expr(Expression::Block(if_block), if_pos);
+                let if_block_i = target.nodes.len() - 1;
+                let else_block_i: usize;
+                if let Some(b) = else_block {
+                    target.new_expr(Expression::Block(b), if_pos);
+                    else_block_i = target.nodes.len() - 1;
+                } else {
+                    else_block_i = usize::MAX;
+                }
                 target.new_expr(
-                    Expression::If(condition, target.nodes.len() - 1, Vec::new(), usize::MAX),
+                    Expression::If(condition, if_block_i, Vec::new(), else_block_i),
                     if_pos,
                 );
                 break;

@@ -1,8 +1,7 @@
 func main() -> int32 {
-	if 1 {
-		"lol";
-	}
 	if 0 {
+		"lol";
+	} else {
 		"lmao";
 	}
 
