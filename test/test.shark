@@ -1,8 +1,17 @@
+func eq(a: uint64, b: uint64) -> uint64 {
+	cmp		rsi, rdi
+	je		_true
+	
+	return 0;
+	_true:
+	return 1;
+}
+
 func main() -> int32 {
-	if 0 {
-		"not true";
+	if eq(1, 1) {
+		"yes"
 	} else {
-		"true";
+		"no";
 	}
 
 	return 0;

@@ -252,6 +252,9 @@ fn gen_code_inside_block(
                 );
             }
             target.append(&mut inside_if);
+            if *else_block_i != usize::MAX {
+                target.push(ir!(format!("\tjmp\t{}", end_label.clone())));
+            }
             if let Some(else_block) = ast.expr_no_typecast(*else_block_i).get_block() {
                 let mut inside_else: Vec<ASMStatement> = Vec::new();
                 target.push(ir!(label, else_label));
