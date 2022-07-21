@@ -188,18 +188,26 @@ impl Default for Expression {
     }
 }
 impl Expression {
-    fn has_block(&self) -> bool {
+    pub fn has_block(&self) -> bool {
         match self {
             Expression::If(..) | Expression::Loop(..) => true,
             _ => false,
         }
     }
-    fn get_block(&self) -> &CodeBlock {
+    pub fn get_block_unchecked(&self) -> &CodeBlock {
         match self {
             Expression::Block(block) => {
                 return block;
             }
             _ => panic!(),
+        }
+    }
+    pub fn get_block(&self) -> Option<&CodeBlock> {
+        match self {
+            Expression::Block(block) => {
+                return Some(block);
+            }
+            _ => None
         }
     }
     pub fn description(&self) -> String {
@@ -605,18 +613,18 @@ fn recursive_parse_exprs(
                 let mut ast_changes: Vec<(usize, Expression)> = Vec::new();
                 a.iter().for_each(|(ast_i, expr)| match expr {
                     Expression::Loop(loop_block_i) => {
-                        let mut new_block = target.expr(*loop_block_i).get_block().clone();
+                        let mut new_block = target.expr(*loop_block_i).get_block_unchecked().clone();
                         new_block.parent = parent;
                         new_block.owner = *ast_i;
                         ast_changes.push((*loop_block_i, Expression::Block(new_block)));
                     }
                     Expression::If(_, if_block_i, elif_blocks, else_block_i) => {
-                        let mut new_block = target.expr(*if_block_i).get_block().clone();
+                        let mut new_block = target.expr(*if_block_i).get_block_unchecked().clone();
                         new_block.parent = parent;
                         new_block.owner = *ast_i;
                         ast_changes.push((*if_block_i, Expression::Block(new_block)));
                         for elif_block_i in elif_blocks {
-                            let mut new_block = target.expr(*elif_block_i).get_block().clone();
+                            let mut new_block = target.expr(*elif_block_i).get_block_unchecked().clone();
                             new_block.parent = parent;
                             new_block.owner = *ast_i;
                             ast_changes.push((*elif_block_i, Expression::Block(new_block)));
@@ -624,7 +632,7 @@ fn recursive_parse_exprs(
                         if *else_block_i == usize::MAX {
                             return;
                         }
-                        let mut new_block = target.expr(*else_block_i).get_block().clone();
+                        let mut new_block = target.expr(*else_block_i).get_block_unchecked().clone();
                         new_block.parent = parent;
                         new_block.owner = *ast_i;
                         ast_changes.push((*else_block_i, Expression::Block(new_block)));
