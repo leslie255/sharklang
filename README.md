@@ -130,6 +130,19 @@ func main() -> int32 {
 }
 ```
 
+Use the `if` and `else` keyword for if statements
+``` Swift
+func main() -> int32 {
+    let a: uint64 = 0;
+    if eq(a, 1) {   // `eq` is a builtin function for equal
+        "a equals 1";
+    } else {
+        "a does not equal to 1";
+    }   // else if statements have not been implemented yet
+    return 0;
+}
+```
+
 You can also write Assembly instructions directly among the Shark code:
 
 (They have to be in x86_64 NASM)
@@ -149,7 +162,7 @@ func main() -> int32 {
 }
 ```
 
-Note that the break statement and if statement hasn't been implemented yet, so for now you can only use inline assembly to break out of a loop:
+Note that the break statement hasn't been implemented yet, so for now you can only use inline assembly to break out of a loop:
 ``` Swift
 func main() -> int32 {
     let a: uint64 = 0;
@@ -157,11 +170,9 @@ func main() -> int32 {
         a = uadd(a, 1);
         u64print(a);
         
-        // if `a` equals 100, break out of the loop
-        mov     rdi, 100
-        mov     rax, [rbp - 8]
-        cmp     rax, rdi
-        je      _break_loop
+        if eq(a, 100) {
+            jmp      _break_loop
+        }
     }
     _break_loop:
     
@@ -184,6 +195,9 @@ func main() -> int32 {
 
 ### Contributing
 Just open up a new PR and I'll review it as soon as possible. All issues and PR's should be in English.
+
+### Version 0.0.2 Plans
+There are three more things I want to add for release 0.0.2, else if statements, break statements, and a new typechecker.
 
 ### LICENSE
 This project is Licensed under **GPLv3**
