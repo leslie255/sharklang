@@ -135,7 +135,9 @@ impl DataType {
                 hash_set.insert(DataType::Pointer);
                 hash_set.insert(DataType::Void);
             }
-            _ => (),
+            _ => {
+                hash_set.insert(DataType::Void);
+            }
         }
         hash_set
     }
@@ -550,14 +552,18 @@ fn return_check(
         }
     }
     if check_type {
-        if !context.parent_block.return_type.matches(context, expr) {
+        let expected_type = context
+            .parent_block
+            .fn_return_type(context.ast)
+            .unwrap_or(DataType::Void);
+        if !expected_type.matches(context, expr) {
             err_collector.add_err(
                 ErrorType::Type,
                 context.ast.node(context.i).position,
                 usize::MAX,
                 format!(
                     "expecting expression of type `{}` after `return`",
-                    context.parent_block.return_type.description()
+                    expected_type.description()
                 ),
             );
         }
@@ -598,10 +604,24 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                             return_check(&mut context, err_collector, ast.expr(*i), true);
                         }
                         Expression::ReturnVoid => {
-                            if block.return_type != DataType::Void {
+                            let expected_type = if let Some(t) = block.fn_return_type(context.ast) {
+                                t
+                            } else {
                                 err_collector.errors.push(CompileError {
                                     err_type: ErrorType::Type,
-                                    message: format!("this function does not have a return type"),
+                                    message: format!("return statement is not inside a function"),
+                                    position: ast.node(*i).position,
+                                    length: usize::MAX,
+                                });
+                                continue;
+                            };
+                            println!("{}:{}\t{:?}", file!(), line!(), expected_type);
+                            if expected_type != DataType::Void
+                                && expected_type != DataType::ToBeDetermined
+                            {
+                                err_collector.errors.push(CompileError {
+                                    err_type: ErrorType::Type,
+                                    message: format!("this function has a return type, but a return value is not provided"),
                                     position: ast.node(*i).position,
                                     length: usize::MAX,
                                 });

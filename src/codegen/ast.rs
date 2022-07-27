@@ -35,7 +35,8 @@ pub struct CodeBlock {
     pub arg_types: Vec<DataType>,
     pub has_vars: bool,
     pub return_type: DataType,
-    pub parent: usize,
+    pub parent: usize, // parent block
+    pub owner: usize,  // loop, func def, if, etc...
 }
 impl Default for CodeBlock {
     fn default() -> Self {
@@ -45,8 +46,9 @@ impl Default for CodeBlock {
             stack_depth: u64::default(),
             arg_types: Vec::default(),
             has_vars: bool::default(),
-            return_type: DataType::Void,
+            return_type: DataType::ToBeDetermined,
             parent: usize::MAX,
+            owner: usize::MAX,
         }
     }
 }
@@ -132,6 +134,23 @@ impl CodeBlock {
             }
         }
     }
+    pub fn fn_return_type(&self, ast: &AST) -> Option<DataType> {
+        if let Expression::FuncDef(_, fn_block_i) = ast.node_no_typecast(self.owner).expr {
+            // if is a function
+            if let Expression::Block(fn_block) = &ast.node_no_typecast(fn_block_i).expr {
+                Some(fn_block.return_type.clone())
+            } else {
+                None
+            }
+        } else {
+            // if is not a function
+            if let Expression::Block(parent_block) = &ast.node_no_typecast(self.parent).expr {
+                parent_block.fn_return_type(ast)
+            } else {
+                None
+            }
+        }
+    }
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
@@ -154,8 +173,9 @@ pub enum Expression {
 
     // Control flows
     Block(CodeBlock),
-    FuncDef(String, usize), // name, code block
-    Loop(usize),            // code block
+    FuncDef(String, usize),              // name, code block
+    Loop(usize),                         // code block
+    If(usize, usize, Vec<(usize, usize)>, usize), // condition, if block, else if blocks, else block
     ReturnVoid,
     ReturnVal(usize),
     UnsafeReturn,
@@ -168,6 +188,28 @@ impl Default for Expression {
     }
 }
 impl Expression {
+    pub fn has_block(&self) -> bool {
+        match self {
+            Expression::If(..) | Expression::Loop(..) => true,
+            _ => false,
+        }
+    }
+    pub fn get_block_unchecked(&self) -> &CodeBlock {
+        match self {
+            Expression::Block(block) => {
+                return block;
+            }
+            _ => panic!(),
+        }
+    }
+    pub fn get_block(&self) -> Option<&CodeBlock> {
+        match self {
+            Expression::Block(block) => {
+                return Some(block);
+            }
+            _ => None,
+        }
+    }
     pub fn description(&self) -> String {
         match self {
             Expression::Identifier(name) => format!("`{}`", name),
@@ -183,8 +225,9 @@ impl Expression {
             Expression::Label(name) => format!("{}:", name),
             Expression::RawASM(asm) => format!("`{}`", asm.trim().clone()),
             Expression::Block(_) => String::from("block"),
-            Expression::FuncDef(fn_name, _) => format!("func `{}`(...)`", fn_name),
+            Expression::FuncDef(fn_name, _) => format!("func `{}(...)`", fn_name),
             Expression::Loop(_) => format!("loop {{...}}"),
+            Expression::If(_, _, _, _) => format!("if {{...}}"),
             Expression::ReturnVoid => String::from("return"),
             Expression::ReturnVal(_) => String::from("return ..."),
             Expression::UnsafeReturn => String::from("_return"),
@@ -228,8 +271,10 @@ impl AST {
     pub fn expr(&self, i: usize) -> &Expression {
         unsafe { &self.nodes.get_unchecked(i).expr }
     }
+    pub fn node_mut(&mut self, i: usize) -> &mut ASTNode {
+        unsafe { self.nodes.get_unchecked_mut(i) }
+    }
     // get expression but if the expression is a typecast, unwrap it
-    #[allow(unused)]
     pub fn expr_no_typecast(&self, i: usize) -> &Expression {
         let expr = unsafe { &self.nodes.get_unchecked(i).expr };
         if let Expression::TypeCast(unwrapped_i, _) = expr {
@@ -353,6 +398,62 @@ fn recursive_parse_exprs(
                 return None;
             }
         };
+    }
+    macro_rules! parse_sub_block {
+        ($args: expr) => {{
+            let mut code_block = CodeBlock::default();
+            loop {
+                if let Some(i) = recursive_call!() {
+                    target.nodes.get_mut(i).unwrap().is_root = true;
+                    code_block.body.push(target.nodes.len() - 1);
+                }
+                if tokens.look_ahead(1).content == TokenContent::BigParenClose {
+                    tokens.next();
+                    break;
+                }
+            }
+            code_block.gen_vars_with_args(&target.nodes, $args);
+
+            // set owners and parents for sub blocks
+            let parent = target.nodes.len();
+            let a: Vec<(usize, Expression)> = code_block
+                .body
+                .iter()
+                .map(|x| (*x, target.expr(*x)))
+                .filter(|(_, expr)| expr.has_block())
+                .map(|(i, expr)| (i, expr.clone()))
+                .collect();
+            let mut ast_changes: Vec<(usize, Expression)> = Vec::new();
+            a.iter().for_each(|(ast_i, expr)| match expr {
+                Expression::Loop(loop_block_i) => {
+                    let mut new_block = target.expr(*loop_block_i).get_block_unchecked().clone();
+                    new_block.parent = parent;
+                    new_block.owner = *ast_i;
+                    ast_changes.push((*loop_block_i, Expression::Block(new_block)));
+                }
+                Expression::If(_, if_block_i, elif_blocks, else_block_i) => {
+                    let mut new_block = target.expr(*if_block_i).get_block_unchecked().clone();
+                    new_block.parent = parent;
+                    new_block.owner = *ast_i;
+                    ast_changes.push((*if_block_i, Expression::Block(new_block)));
+                    for _ in elif_blocks {
+                        todo!();
+                    }
+                    if *else_block_i == usize::MAX {
+                        return;
+                    }
+                    let mut new_block = target.expr(*else_block_i).get_block_unchecked().clone();
+                    new_block.parent = parent;
+                    new_block.owner = *ast_i;
+                    ast_changes.push((*else_block_i, Expression::Block(new_block)));
+                }
+                _ => (),
+            });
+            for (i, expr) in ast_changes {
+                target.node_mut(i).expr = expr;
+            }
+            code_block
+        }};
     }
     loop {
         token = tokens.next();
@@ -504,7 +605,6 @@ fn recursive_parse_exprs(
                 // function name and arguments
                 let fn_name = token_get_id!(token);
                 let mut fn_args: Vec<(String, DataType)> = Vec::new();
-                let mut code_block = CodeBlock::default();
                 token_ensure_type!(tokens.next(), TokenContent::RoundParenOpen);
                 if tokens.look_ahead(1).content != TokenContent::RoundParenClose {
                     // has ast least one arguments
@@ -537,36 +637,20 @@ fn recursive_parse_exprs(
                     tokens.next();
                 }
 
-                // function body
                 token = tokens.next();
                 token_ensure_type!(token, TokenContent::BigParenOpen, TokenContent::ReturnArrow);
+                let return_type: DataType;
                 if token.content == TokenContent::ReturnArrow {
-                    code_block.return_type = token_extract_data_type!(tokens.next());
+                    return_type = token_extract_data_type!(tokens.next());
                     token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
+                } else {
+                    return_type = DataType::default();
                 }
-                loop {
-                    if let Some(i) = recursive_call!() {
-                        target.nodes.get_mut(i).unwrap().is_root = true;
-                        code_block.body.push(target.nodes.len() - 1);
-                    }
-                    if tokens.look_ahead(1).content == TokenContent::BigParenClose {
-                        tokens.next();
-                        break;
-                    }
-                }
-                code_block.gen_vars_with_args(&target.nodes, fn_args);
-                let parent = target.nodes.len();
-                for i in &code_block.body {
-                    match target.nodes.get_mut(*i).unwrap().expr {
-                        Expression::Loop(block_i) => {
-                            match &mut target.nodes.get_mut(block_i).unwrap().expr {
-                                Expression::Block(block) => block.parent = parent,
-                                _ => panic!(),
-                            }
-                        }
-                        _ => (),
-                    }
-                }
+
+                // function body
+                let mut code_block = parse_sub_block!(fn_args);
+                code_block.return_type = return_type;
+                code_block.owner = target.nodes.len() + 1;
                 target.new_expr(Expression::Block(code_block), fn_def_pos);
                 target.new_expr(
                     Expression::FuncDef(fn_name, target.nodes.len() - 1),
@@ -577,18 +661,40 @@ fn recursive_parse_exprs(
             TokenContent::Loop => {
                 let loop_pos = token.position;
                 token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
-                let mut code_block = CodeBlock::default();
-                loop {
-                    if let Some(i) = recursive_call!() {
-                        code_block.body.push(i);
-                    }
-                    if tokens.look_ahead(1).content == TokenContent::BigParenClose {
-                        tokens.next();
-                        break;
-                    }
-                }
+                let mut code_block = parse_sub_block!(Vec::new());
+                code_block.owner = target.nodes.len() + 1;
                 target.new_expr(Expression::Block(code_block), loop_pos);
                 target.new_expr(Expression::Loop(target.nodes.len() - 1), loop_pos);
+                break;
+            }
+            TokenContent::If => {
+                let if_pos = token.position;
+                let mut else_block: Option<CodeBlock> = None;
+                let condition = if let Some(i) = recursive_call!() {
+                    i
+                } else {
+                    usize::MAX
+                };
+                token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
+                let if_block = parse_sub_block!(Vec::new());
+                if tokens.look_ahead(1).content == TokenContent::Else {
+                    tokens.next();
+                    token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
+                    else_block = Some(parse_sub_block!(Vec::new()));
+                }
+                target.new_expr(Expression::Block(if_block), if_pos);
+                let if_block_i = target.nodes.len() - 1; // index of the if block in AST
+                let else_block_i: usize = if let Some(b) = else_block {
+                    // index of the else block in AST
+                    target.new_expr(Expression::Block(b), if_pos);
+                    target.nodes.len() - 1
+                } else {
+                    usize::MAX
+                };
+                target.new_expr(
+                    Expression::If(condition, if_block_i, Vec::new(), else_block_i),
+                    if_pos,
+                );
                 break;
             }
             TokenContent::EOF => return None,

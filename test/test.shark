@@ -1,4 +1,10 @@
 func main() -> int32 {
-	"hello";
-    return 0;
+	loop {
+		"lol";
+		if 1 {
+			jmp _loop_break
+		}
+	}
+	_loop_break:
+	return 0;
 }

@@ -32,10 +32,8 @@ fn codegen_for_simple_expr(
             operand!(int, expected_size, *num)
         }
         Expression::StringLiteral(str) => {
-            operand!(
-                label,
-                format!("strliteral_{}", program.strliterals_ids.get(str).unwrap())
-            )
+            println!("{}:{}\t{}", file!(), line!(), str);
+            operand!(label, program.strliterals.get_label(str))
         }
         Expression::CharLiteral(byte) => {
             operand!(int, 1, *byte as u64)
@@ -110,6 +108,7 @@ fn gen_code_inside_block(
     program: &mut Program,
     target: &mut Vec<ASMStatement>,
     builtin_fns: &mut BuiltinFuncChecker,
+    file_format: FileFormat,
 ) {
     match &node.expr {
         Expression::Identifier(_) => {}
@@ -119,10 +118,7 @@ fn gen_code_inside_block(
             builtin_fns.add_if_needed(&format!("println"), program);
             target.push(
                 ir!(func_call, "println")
-                    .arg(operand!(
-                        label,
-                        format!("strliteral_{}", program.strliterals_ids.get(str).unwrap())
-                    ))
+                    .arg(operand!(label, program.strliterals.get_label(str)))
                     .asm
                     .clone(),
             );
@@ -179,7 +175,7 @@ fn gen_code_inside_block(
             target.push(ir!(func_ret));
         }
         Expression::ReturnVal(val) => {
-            let size = block.return_type.size();
+            let size = block.fn_return_type(ast).unwrap_or(DataType::Void).size();
             let return_val = codegen_for_simple_expr(
                 block,
                 program,
@@ -201,11 +197,7 @@ fn gen_code_inside_block(
         Expression::Loop(block_i) => {
             let label = format!("loop_{}", block_i);
             target.push(ir!(label, label.clone()));
-            let loop_block = if let Expression::Block(b) = ast.expr_no_typecast(*block_i) {
-                b
-            } else {
-                panic!();
-            };
+            let loop_block = ast.expr_no_typecast(*block_i).get_block_unchecked();
             let mut inside_loop: Vec<ASMStatement> = Vec::new();
             for i in &loop_block.body {
                 gen_code_inside_block(
@@ -215,10 +207,71 @@ fn gen_code_inside_block(
                     program,
                     &mut inside_loop,
                     builtin_fns,
+                    file_format,
                 );
             }
             target.append(&mut inside_loop);
             target.push(ir!(jmp, label));
+        }
+        #[allow(unused_variables)]
+        Expression::If(condition_i, if_block_i, elif_blocks, else_block_i) => {
+            let end_label = format!("if_end_{}", if_block_i);
+            let else_label = format!("else_{}", if_block_i);
+            let condition_operand = codegen_for_simple_expr(
+                block,
+                program,
+                ast,
+                ast.node_no_typecast(*condition_i),
+                target,
+                8,
+            );
+            target.push(ir!(format!(
+                "\tmov\trax, {}",
+                condition_operand.text(file_format)
+            )));
+            target.push(ir!(format!("\tcmp\trax, 0",)));
+            target.push(ir!(format!(
+                "\tje\t{}",
+                if *else_block_i == usize::MAX {
+                    end_label.clone()
+                } else {
+                    else_label.clone()
+                }
+            )));
+            let if_block = ast.expr_no_typecast(*if_block_i).get_block_unchecked();
+            let mut inside_if: Vec<ASMStatement> = Vec::new();
+            for i in &if_block.body {
+                gen_code_inside_block(
+                    if_block,
+                    ast,
+                    ast.node_no_typecast(*i),
+                    program,
+                    &mut inside_if,
+                    builtin_fns,
+                    file_format,
+                );
+            }
+            target.append(&mut inside_if);
+            if *else_block_i != usize::MAX {
+                target.push(ir!(format!("\tjmp\t{}", end_label.clone())));
+            }
+            if let Some(else_block) = ast.expr_no_typecast(*else_block_i).get_block() {
+                let mut inside_else: Vec<ASMStatement> = Vec::new();
+                target.push(ir!(label, else_label));
+                for i in &else_block.body {
+                    gen_code_inside_block(
+                        if_block,
+                        ast,
+                        ast.node_no_typecast(*i),
+                        program,
+                        &mut inside_else,
+                        builtin_fns,
+                        file_format,
+                    );
+                }
+                target.append(&mut inside_else);
+            }
+            target.push(ir!(label, end_label));
         }
         _ => {}
     }
@@ -247,10 +300,10 @@ pub fn codegen(source: String, src_file: String, file_format: FileFormat) -> Str
     // generate string literals
     for (i, node) in ast.nodes.iter().enumerate() {
         if let Expression::StringLiteral(str) = &node.expr {
-            program.strliterals_ids.insert(str.clone(), i as u64);
+            program.strliterals.add(str.clone(), i);
             program
                 .data_sect
-                .push(ir!(data_str, format!("strliteral_{}", i), str));
+                .push(ir!(data_str, program.strliterals.get_label(str), str));
         }
     }
 
@@ -290,6 +343,7 @@ pub fn codegen(source: String, src_file: String, file_format: FileFormat) -> Str
                         &mut program,
                         &mut func,
                         &mut builtin_fns,
+                        file_format,
                     );
                 }
                 program.funcs.push(func);

@@ -263,12 +263,26 @@ macro_rules! asm_fmt_str {
     }};
 }
 
+#[derive(Default, Debug, Clone)]
+pub struct StrLiteralsTable {
+    hash_map: HashMap<String, usize>,
+}
+
+impl StrLiteralsTable {
+    pub fn add(&mut self, str: String, i: usize) {
+        self.hash_map.insert(str, i);
+    }
+    pub fn get_label(&self, str: &String) -> String {
+        format!("strliteral_{}", self.hash_map.get(str).unwrap())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub externs: Vec<ASMStatement>,
     pub data_sect: Vec<ASMStatement>,
     pub funcs: Vec<Vec<ASMStatement>>,
-    pub strliterals_ids: HashMap<String, u64>,
+    pub strliterals: StrLiteralsTable,
     pub format: FileFormat,
 }
 impl Program {
@@ -277,7 +291,7 @@ impl Program {
             externs: Vec::new(),
             data_sect: Vec::new(),
             funcs: Vec::new(),
-            strliterals_ids: HashMap::new(),
+            strliterals: StrLiteralsTable::default(),
             format,
         }
     }
@@ -903,8 +917,15 @@ impl ASMStatement {
             Self::Label(name) => format!("{}:", name),
             Self::Jump(name) => format!("\tjmp\t{}", name),
             Self::Extern(name) => format!("\textern {}{}", format.name_prefix(), name),
-            Self::DataInt(name, value) => format!("{}{}:\tdq {}", format.name_prefix(), name, value),
-            Self::DataStr(name, value) => format!("{}{}:\tdb {}", format.name_prefix(), name, asm_fmt_str!(value)),
+            Self::DataInt(name, value) => {
+                format!("{}{}:\tdq {}", format.name_prefix(), name, value)
+            }
+            Self::DataStr(name, value) => format!(
+                "{}{}:\tdb {}",
+                format.name_prefix(),
+                name,
+                asm_fmt_str!(value)
+            ),
             Self::Mov(oper0, oper1) => {
                 let mut c = String::new();
                 if let OperandContent::GetVarAddr(_) = oper1.content {
@@ -961,7 +982,10 @@ impl ASMStatement {
             }
             Self::FuncDef(name) => format!(
                 "\n\tglobal {}{}\n{}{}:\n\tpush\trbp\n\tmov\trbp, rsp\n",
-                format.name_prefix(), name, format.name_prefix(), name
+                format.name_prefix(),
+                name,
+                format.name_prefix(),
+                name
             ),
             Self::FuncRetVoid => format!("\tpop\trbp\n\tret"),
             Self::FuncRet(oper) => format!("\tpop\trbp\n\tmov\trax, {}\n\tret", oper.text(format)),
