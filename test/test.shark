@@ -1,10 +1,8 @@
 func main() -> int32 {
-	loop {
+	if eq(1, 1) {
 		"lol";
-		if 1 {
-			jmp _loop_break
-		}
+	} else {
+		"lmao";
 	}
-	_loop_break:
 	return 0;
 }

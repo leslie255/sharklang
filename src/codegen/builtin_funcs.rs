@@ -152,6 +152,24 @@ impl BuiltinFuncChecker {
                 return_type: DataType::UInt64,
             },
         );
+        checker.funcs.insert(
+            String::from("eq"),
+            BuiltinFunc {
+                externs: Vec::new(),
+                data_sect: Vec::new(),
+                text_sect: vec![
+                    ir!(func_def, "eq"),
+                    ir!("cmp    rdi, rsi"),
+                    ir!("je     _true"),
+                    ir!(mov, operand!(rax, 8), 0u64.to_operand()),
+                    ir!(func_ret),
+                    ir!(label, "_true"),
+                    ir!(mov, operand!(rax, 8), 1u64.to_operand()),
+                    ir!(func_ret),
+                ],
+                return_type: DataType::UInt64,
+            },
+        );
         checker
     }
 }

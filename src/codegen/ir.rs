@@ -849,6 +849,27 @@ impl Operand {
         }
     }
 }
+pub trait OperandConvertable {
+    fn to_operand(&self) -> Operand;
+}
+impl OperandConvertable for String {
+    fn to_operand(&self) -> Operand {
+        Operand {
+            len: 8,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Raw(self.clone()),
+        }
+    }
+}
+impl OperandConvertable for u64 {
+    fn to_operand(&self) -> Operand {
+        Operand {
+            len: 8,
+            addr_mode: AddrMode::Direct,
+            content: OperandContent::Int(*self),
+        }
+    }
+}
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[allow(dead_code)]
 pub enum ASMStatement {
