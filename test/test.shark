@@ -1,9 +1,10 @@
-func say_hello() {
-	"hello";
-	return;
-}
-
 func main() -> int32 {
-	say_hello();
+	loop {
+		"lol";
+		if 1 {
+			jmp _loop_break
+		}
+	}
+	_loop_break:
 	return 0;
 }

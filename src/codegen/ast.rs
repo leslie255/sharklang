@@ -175,7 +175,7 @@ pub enum Expression {
     Block(CodeBlock),
     FuncDef(String, usize),              // name, code block
     Loop(usize),                         // code block
-    If(usize, usize, Vec<usize>, usize), // condition, if block, else if blocks, else block
+    If(usize, usize, Vec<(usize, usize)>, usize), // condition, if block, else if blocks, else block
     ReturnVoid,
     ReturnVal(usize),
     UnsafeReturn,
@@ -207,7 +207,7 @@ impl Expression {
             Expression::Block(block) => {
                 return Some(block);
             }
-            _ => None
+            _ => None,
         }
     }
     pub fn description(&self) -> String {
@@ -399,6 +399,62 @@ fn recursive_parse_exprs(
             }
         };
     }
+    macro_rules! parse_sub_block {
+        ($args: expr) => {{
+            let mut code_block = CodeBlock::default();
+            loop {
+                if let Some(i) = recursive_call!() {
+                    target.nodes.get_mut(i).unwrap().is_root = true;
+                    code_block.body.push(target.nodes.len() - 1);
+                }
+                if tokens.look_ahead(1).content == TokenContent::BigParenClose {
+                    tokens.next();
+                    break;
+                }
+            }
+            code_block.gen_vars_with_args(&target.nodes, $args);
+
+            // set owners and parents for sub blocks
+            let parent = target.nodes.len();
+            let a: Vec<(usize, Expression)> = code_block
+                .body
+                .iter()
+                .map(|x| (*x, target.expr(*x)))
+                .filter(|(_, expr)| expr.has_block())
+                .map(|(i, expr)| (i, expr.clone()))
+                .collect();
+            let mut ast_changes: Vec<(usize, Expression)> = Vec::new();
+            a.iter().for_each(|(ast_i, expr)| match expr {
+                Expression::Loop(loop_block_i) => {
+                    let mut new_block = target.expr(*loop_block_i).get_block_unchecked().clone();
+                    new_block.parent = parent;
+                    new_block.owner = *ast_i;
+                    ast_changes.push((*loop_block_i, Expression::Block(new_block)));
+                }
+                Expression::If(_, if_block_i, elif_blocks, else_block_i) => {
+                    let mut new_block = target.expr(*if_block_i).get_block_unchecked().clone();
+                    new_block.parent = parent;
+                    new_block.owner = *ast_i;
+                    ast_changes.push((*if_block_i, Expression::Block(new_block)));
+                    for _ in elif_blocks {
+                        todo!();
+                    }
+                    if *else_block_i == usize::MAX {
+                        return;
+                    }
+                    let mut new_block = target.expr(*else_block_i).get_block_unchecked().clone();
+                    new_block.parent = parent;
+                    new_block.owner = *ast_i;
+                    ast_changes.push((*else_block_i, Expression::Block(new_block)));
+                }
+                _ => (),
+            });
+            for (i, expr) in ast_changes {
+                target.node_mut(i).expr = expr;
+            }
+            code_block
+        }};
+    }
     loop {
         token = tokens.next();
         match &token.content {
@@ -549,7 +605,6 @@ fn recursive_parse_exprs(
                 // function name and arguments
                 let fn_name = token_get_id!(token);
                 let mut fn_args: Vec<(String, DataType)> = Vec::new();
-                let mut code_block = CodeBlock::default();
                 token_ensure_type!(tokens.next(), TokenContent::RoundParenOpen);
                 if tokens.look_ahead(1).content != TokenContent::RoundParenClose {
                     // has ast least one arguments
@@ -582,67 +637,19 @@ fn recursive_parse_exprs(
                     tokens.next();
                 }
 
-                // function body
                 token = tokens.next();
                 token_ensure_type!(token, TokenContent::BigParenOpen, TokenContent::ReturnArrow);
+                let return_type: DataType;
                 if token.content == TokenContent::ReturnArrow {
-                    code_block.return_type = token_extract_data_type!(tokens.next());
+                    return_type = token_extract_data_type!(tokens.next());
                     token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
-                }
-                loop {
-                    if let Some(i) = recursive_call!() {
-                        target.nodes.get_mut(i).unwrap().is_root = true;
-                        code_block.body.push(target.nodes.len() - 1);
-                    }
-                    if tokens.look_ahead(1).content == TokenContent::BigParenClose {
-                        tokens.next();
-                        break;
-                    }
-                }
-                code_block.gen_vars_with_args(&target.nodes, fn_args);
-
-                // set owners and parents for sub blocks
-                let parent = target.nodes.len();
-                let a: Vec<(usize, Expression)> = code_block
-                    .body
-                    .iter()
-                    .map(|x| (*x, target.expr(*x)))
-                    .filter(|(_, expr)| expr.has_block())
-                    .map(|(i, expr)| (i, expr.clone()))
-                    .collect();
-                let mut ast_changes: Vec<(usize, Expression)> = Vec::new();
-                a.iter().for_each(|(ast_i, expr)| match expr {
-                    Expression::Loop(loop_block_i) => {
-                        let mut new_block = target.expr(*loop_block_i).get_block_unchecked().clone();
-                        new_block.parent = parent;
-                        new_block.owner = *ast_i;
-                        ast_changes.push((*loop_block_i, Expression::Block(new_block)));
-                    }
-                    Expression::If(_, if_block_i, elif_blocks, else_block_i) => {
-                        let mut new_block = target.expr(*if_block_i).get_block_unchecked().clone();
-                        new_block.parent = parent;
-                        new_block.owner = *ast_i;
-                        ast_changes.push((*if_block_i, Expression::Block(new_block)));
-                        for elif_block_i in elif_blocks {
-                            let mut new_block = target.expr(*elif_block_i).get_block_unchecked().clone();
-                            new_block.parent = parent;
-                            new_block.owner = *ast_i;
-                            ast_changes.push((*elif_block_i, Expression::Block(new_block)));
-                        }
-                        if *else_block_i == usize::MAX {
-                            return;
-                        }
-                        let mut new_block = target.expr(*else_block_i).get_block_unchecked().clone();
-                        new_block.parent = parent;
-                        new_block.owner = *ast_i;
-                        ast_changes.push((*else_block_i, Expression::Block(new_block)));
-                    }
-                    _ => (),
-                });
-                for (i, expr) in ast_changes {
-                    target.node_mut(i).expr = expr;
+                } else {
+                    return_type = DataType::default();
                 }
 
+                // function body
+                let mut code_block = parse_sub_block!(fn_args);
+                code_block.return_type = return_type;
                 code_block.owner = target.nodes.len() + 1;
                 target.new_expr(Expression::Block(code_block), fn_def_pos);
                 target.new_expr(
@@ -654,16 +661,7 @@ fn recursive_parse_exprs(
             TokenContent::Loop => {
                 let loop_pos = token.position;
                 token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
-                let mut code_block = CodeBlock::default();
-                loop {
-                    if let Some(i) = recursive_call!() {
-                        code_block.body.push(i);
-                    }
-                    if tokens.look_ahead(1).content == TokenContent::BigParenClose {
-                        tokens.next();
-                        break;
-                    }
-                }
+                let mut code_block = parse_sub_block!(Vec::new());
                 code_block.owner = target.nodes.len() + 1;
                 target.new_expr(Expression::Block(code_block), loop_pos);
                 target.new_expr(Expression::Loop(target.nodes.len() - 1), loop_pos);
@@ -671,7 +669,6 @@ fn recursive_parse_exprs(
             }
             TokenContent::If => {
                 let if_pos = token.position;
-                let mut if_block = CodeBlock::default();
                 let mut else_block: Option<CodeBlock> = None;
                 let condition = if let Some(i) = recursive_call!() {
                     i
@@ -679,39 +676,21 @@ fn recursive_parse_exprs(
                     usize::MAX
                 };
                 token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
-                loop {
-                    if let Some(i) = recursive_call!() {
-                        if_block.body.push(i);
-                    }
-                    if tokens.look_ahead(1).content == TokenContent::BigParenClose {
-                        tokens.next();
-                        break;
-                    }
-                }
+                let if_block = parse_sub_block!(Vec::new());
                 if tokens.look_ahead(1).content == TokenContent::Else {
                     tokens.next();
                     token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
-                    let mut else_block_unassigned = CodeBlock::default();
-                    loop {
-                        if let Some(i) = recursive_call!() {
-                            else_block_unassigned.body.push(i);
-                        }
-                        if tokens.look_ahead(1).content == TokenContent::BigParenClose {
-                            tokens.next();
-                            break;
-                        }
-                    }
-                    else_block = Some(else_block_unassigned);
+                    else_block = Some(parse_sub_block!(Vec::new()));
                 }
                 target.new_expr(Expression::Block(if_block), if_pos);
-                let if_block_i = target.nodes.len() - 1;
-                let else_block_i: usize;
-                if let Some(b) = else_block {
+                let if_block_i = target.nodes.len() - 1; // index of the if block in AST
+                let else_block_i: usize = if let Some(b) = else_block {
+                    // index of the else block in AST
                     target.new_expr(Expression::Block(b), if_pos);
-                    else_block_i = target.nodes.len() - 1;
+                    target.nodes.len() - 1
                 } else {
-                    else_block_i = usize::MAX;
-                }
+                    usize::MAX
+                };
                 target.new_expr(
                     Expression::If(condition, if_block_i, Vec::new(), else_block_i),
                     if_pos,
