@@ -2,6 +2,7 @@ use super::error::*;
 use super::tokens::*;
 use super::typecheck::*;
 
+use std::hash::Hash;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -235,6 +236,34 @@ impl Expression {
         }
     }
 }
+impl Hash for Expression {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            let reduced_expr: Expression = match self {
+            Expression::Identifier(..) => Expression::Identifier(String::default()),
+            Expression::NumberLiteral(..) => Expression::NumberLiteral(u64::default()),
+            Expression::StringLiteral(..) => Expression::StringLiteral(String::default()),
+            Expression::CharLiteral(..) => Expression::CharLiteral(u8::default()),
+            Expression::FuncCall(..) => Expression::FuncCall(String::default(), Vec::default()),
+            Expression::VarInit(..) => Expression::VarInit(String::default(), DataType::default(), usize::default()),
+            Expression::VarAssign(..) => Expression::VarAssign(String::default(), usize::default()),
+            Expression::TypeCast(..) => Expression::TypeCast(usize::default(), DataType::default()),
+            Expression::GetAddress(..) => Expression::GetAddress(usize::default()),
+            Expression::Dereference(..) => Expression::Dereference(usize::default()),
+            Expression::Label(..) => Expression::Label(String::default()),
+            Expression::RawASM(..) => Expression::RawASM(String::default()),
+            Expression::Block(..) => Expression::Block(CodeBlock::default()),
+            Expression::FuncDef(..) => Expression::FuncDef(String::default(), usize::default()),
+            Expression::Loop(..) => Expression::Loop(usize::default()),
+            Expression::If(..) => Expression::If(usize::default(), usize::default(), Vec::default(), usize::default()),
+            Expression::ReturnVoid => Expression::ReturnVoid,
+            Expression::ReturnVal(..) => Expression::ReturnVal(usize::default()),
+            Expression::UnsafeReturn => Expression::UnsafeReturn,
+            Expression::Unknown => Expression::Unknown,
+        };
+        core::mem::discriminant(&reduced_expr).hash(state);
+    }
+}
+    
 #[derive(Default, Clone)]
 pub struct ASTNode {
     pub expr: Expression,

@@ -8,4 +8,4 @@ pub mod builtin_funcs;
 pub mod preprocess;
 pub mod typecheck;
 pub mod error;
-
+pub mod syntaxcheck;

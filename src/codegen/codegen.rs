@@ -5,6 +5,7 @@ use super::ir::*;
 use super::preprocess::*;
 use super::tokens::*;
 use super::typecheck::*;
+use super::syntaxcheck::*;
 
 static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 6] = [
     Register::r10,
@@ -291,6 +292,9 @@ pub fn codegen(source: String, src_file: String, file_format: FileFormat) -> Str
     let ast = construct_ast(tokens, &mut err_collector);
 
     let mut builtin_fns = BuiltinFuncChecker::new();
+
+    syntax_check(&mut err_collector, &ast);
+    err_collector.print_errs();
 
     type_check(&ast, &builtin_fns, &mut err_collector);
     err_collector.print_errs();
