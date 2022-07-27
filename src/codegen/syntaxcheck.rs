@@ -154,6 +154,7 @@ impl Default for SyntaxChecker {
         SyntaxChecker {
             top_level_allowed: AllowedExprs::default().allow_fn_def().allow_asm(),
             fn_body_allowed: AllowedExprs::default()
+                .allow_str()
                 .allow_fn_call()
                 .allow_var_init()
                 .allow_var_assign()
@@ -162,6 +163,7 @@ impl Default for SyntaxChecker {
                 .allow_if()
                 .allow_ret(),
             loop_body_allowed: AllowedExprs::default()
+                .allow_str()
                 .allow_fn_call()
                 .allow_var_assign()
                 .allow_asm()
