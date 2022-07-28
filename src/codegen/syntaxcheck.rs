@@ -264,7 +264,6 @@ fn recursive_check_inside_fn(
                 .get_block_unchecked()
                 .body
                 .iter()
-                .chain(ast.expr(*else_block_i).get_block_unchecked().body.iter())
                 .map(|i| ast.node(*i))
             {
                 recursive_check_inside_fn(
@@ -274,6 +273,17 @@ fn recursive_check_inside_fn(
                     syntax_checker,
                     &syntax_checker.if_body_allowed,
                 );
+            }
+            if let Some(else_block) = ast.expr(*else_block_i).get_block() {
+                for else_body_node in else_block.body.iter().map(|i| ast.node(*i)) {
+                    recursive_check_inside_fn(
+                        err_collector,
+                        ast,
+                        else_body_node,
+                        syntax_checker,
+                        &syntax_checker.if_body_allowed,
+                    );
+                }
             }
         }
         Expression::Loop(loop_block_i) => {

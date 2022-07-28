@@ -1,6 +1,14 @@
 func main() -> int32 {
-	if 1 {
-		let a: uint64 = 0;
-	}
-	return 0;
+    let a: uint64 = 0;
+    loop {
+        a = uadd(a, 1);
+        u64print(a);
+        
+        if eq(a, 100) {
+            jmp      _break_loop
+        }
+    }
+    _break_loop:
+    
+    return 0;
 }
