@@ -1,11 +1,11 @@
 use super::ast::*;
 use super::builtin_funcs::*;
+use super::checks::syntaxcheck::*;
+use super::checks::typecheck::*;
 use super::error::*;
 use super::ir::*;
 use super::preprocess::*;
 use super::tokens::*;
-use super::checks::typecheck::*;
-use super::checks::syntaxcheck::*;
 
 static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 6] = [
     Register::r10,
@@ -195,8 +195,25 @@ fn gen_code_inside_block(
             }
             target.push(ir!(func_ret));
         }
+        Expression::Break => {
+            if let Some(loop_id) = block.parent_loop_id(ast) {
+                let break_label = format!("break_{}", loop_id);
+                target.push(ir!(jmp, break_label));
+            } else {
+                panic!();   // TODO: check if break is inside a loop
+            }
+        }
+        Expression::Continue => {
+            if let Some(loop_id) = block.parent_loop_id(ast) {
+                let loop_label = format!("loop_{}", loop_id);
+                target.push(ir!(jmp, loop_label));
+            } else {
+                panic!();   // TODO: check if break is inside a loop
+            }
+        }
         Expression::Loop(block_i) => {
             let label = format!("loop_{}", block_i);
+            let break_label = format!("break_{}", block_i);
             target.push(ir!(label, label.clone()));
             let loop_block = ast.expr_no_typecast(*block_i).get_block_unchecked();
             let mut inside_loop: Vec<ASMStatement> = Vec::new();
@@ -213,6 +230,7 @@ fn gen_code_inside_block(
             }
             target.append(&mut inside_loop);
             target.push(ir!(jmp, label));
+            target.push(ir!(label, break_label.clone()));
         }
         #[allow(unused_variables)]
         Expression::If(condition_i, if_block_i, elif_blocks, else_block_i) => {

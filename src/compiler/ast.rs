@@ -151,6 +151,19 @@ impl CodeBlock {
             }
         }
     }
+    pub fn parent_loop_id(&self, ast: &AST) -> Option<usize> {
+        if let Expression::Loop(block_i) = ast.node_no_typecast(self.owner).expr {
+            // if is a loop
+            Some(block_i)
+        } else {
+            // is not a loop
+            if let Expression::Block(parent_block) = &ast.node_no_typecast(self.parent).expr {
+                parent_block.parent_loop_id(ast)
+            } else {
+                None
+            }
+        }
+    }
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
