@@ -10,6 +10,7 @@
 ``` Swift
 func square(num: uint64) -> uint64 {
     // write assembly directly among high level code!
+
     mov     rax, [rbp - 8]
     mul     rax
     mov     [rbp - 8], rax
@@ -21,7 +22,9 @@ func main() -> int32 {
     "hello world";   // this implicitly calls the `println` function
 
     print("the square of 16 is...");
-    u64print(square(16));
+    let x = square(16); // has type infer!
+    let y: uint64 = 0   // you can also specify a type ofc
+    u64print(x);
 
     return 0;
 }

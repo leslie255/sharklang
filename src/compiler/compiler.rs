@@ -307,13 +307,13 @@ pub fn compile(source: String, src_file: String, file_format: FileFormat) -> Str
     let tokens = preprocess(parse_tokens(&source));
     let mut ast = construct_ast(tokens, &mut err_collector);
 
-    let mut builtin_fns = BuiltinFuncChecker::new();
-
     syntax_check(&mut err_collector, &ast);
     err_collector.print_errs();
 
     infer_type(&mut ast, &mut err_collector);
     err_collector.print_errs();
+
+    let mut builtin_fns = BuiltinFuncChecker::new();
 
     let mut ast_changes: Vec<(usize, CodeBlock)> = Vec::new();
     for (i, block) in ast.nodes.iter().enumerate().filter_map(|(i, n)| {
@@ -331,7 +331,7 @@ pub fn compile(source: String, src_file: String, file_format: FileFormat) -> Str
         *ast.node_mut(i).expr.get_block_mut().unwrap() = new_block;
     }
 
-    print_ast!(ast.nodes);
+    //print_ast!(ast.nodes);
     type_check(&ast, &builtin_fns, &mut err_collector);
     err_collector.print_errs();
 
