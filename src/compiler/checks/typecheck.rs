@@ -75,7 +75,7 @@ impl DataType {
             DataType::Pointer => String::from("ptr"),
             DataType::Void => String::from("void"),
 
-            DataType::ToBeDetermined => String::from(""),
+            DataType::ToBeDetermined => String::from("unknown"),
         }
     }
     pub fn matches(&self, context: &TypeCheckContext, expr: &Expression) -> bool {
@@ -202,6 +202,28 @@ impl<'a> TypeCheckContext<'a> {
     }
 }
 
+fn make_type_err_msg(
+    context_msg: &str,
+    expected_type: &DataType,
+    provided_type: HashSet<DataType>,
+) -> String {
+    format!(
+        "expecting expression of type `{}` {}{}",
+        expected_type.description(),
+        context_msg,
+        {
+            if provided_type.len() == 1 {
+                format!(
+                    ", but found `{}`",
+                    provided_type.iter().next().unwrap().description()
+                )
+            } else {
+                String::from("")
+            }
+        }
+    )
+}
+
 fn var_exist_check(
     context: &mut TypeCheckContext,
     err_collector: &mut ErrorCollector,
@@ -315,17 +337,16 @@ fn fn_arg_check(
                 ErrorType::Type,
                 context.ast.node(arg).position,
                 usize::MAX,
-                format!(
-                    "expecting expression of type {} for argument #{}",
-                    expected_type.description(),
-                    i
+                make_type_err_msg(
+                    format!("for argument `{}`", expected_args[i].0).as_str(),
+                    &expected_type,
+                    DataType::possible_types(context, arg_expr),
                 ),
             );
             return false;
         }
     }
 
-    // check argument type
     true
 }
 
@@ -355,7 +376,7 @@ fn fn_args_check(
             err_collector.errors.push(CompileError {
                 err_type: ErrorType::Type,
                 message: format!(
-                    "function `{}` has {} arguments, provided {}",
+                    "function `{}` has {} arguments, but provided {}",
                     fn_name,
                     fn_block.args.len(),
                     input_args.len()
@@ -455,16 +476,13 @@ fn var_init_check(
     }
 
     // check rhs type
-    if var_type.is_some() {
-        if !var_type.unwrap().matches(context, rhs) {
+    if let Some(t) = var_type {
+        if !t.matches(context, rhs) {
             err_collector.add_err(
                 ErrorType::Syntax,
                 context.ast.node(rhs_i).position,
                 usize::MAX,
-                format!(
-                    "expecting expression of type `{}` as rhs",
-                    var_type.unwrap().description()
-                ),
+                make_type_err_msg("as rhs", t, DataType::possible_types(context, rhs)),
             );
             return false;
         }
@@ -528,18 +546,16 @@ fn var_assign_check(
         }
     }
     if check_type {
-        if !context
-            .parent_block
-            .var_type(var_name, context.ast)
-            .matches(context, rhs)
-        {
+        let expected_type = context.parent_block.var_type(var_name, context.ast);
+        if !expected_type.matches(context, rhs) {
             err_collector.add_err(
                 ErrorType::Type,
                 context.ast.node(context.i).position,
                 usize::MAX,
-                format!(
-                    "expecting expression of type `{}` as rhs",
-                    context.parent_block.return_type.description()
+                make_type_err_msg(
+                    "as rhs",
+                    &expected_type,
+                    DataType::possible_types(context, rhs),
                 ),
             );
             return false;
@@ -593,9 +609,10 @@ fn return_check(
                 ErrorType::Type,
                 context.ast.node(context.i).position,
                 usize::MAX,
-                format!(
-                    "expecting expression of type `{}` after `return`",
-                    expected_type.description()
+                make_type_err_msg(
+                    "as return value",
+                    &expected_type,
+                    DataType::possible_types(context, expr),
                 ),
             );
         }
@@ -647,7 +664,6 @@ pub fn type_check(ast: &AST, builtin_fns: &BuiltinFuncChecker, err_collector: &m
                                 });
                                 continue;
                             };
-                            println!("{}:{}\t{:?}", file!(), line!(), expected_type);
                             if expected_type != DataType::Void
                                 && expected_type != DataType::ToBeDetermined
                             {

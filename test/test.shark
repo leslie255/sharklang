@@ -3,6 +3,9 @@ func test(a: uint64) {
 }
 func main() -> int32 {
     let a = 0;
-    u64print(a);
+    test(a);
+    let b: ptr = "hello";
+    b = a;
+
     return 0;
 }

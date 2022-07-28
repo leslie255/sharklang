@@ -25,7 +25,6 @@ pub fn infer_type(ast: &mut AST, err_collector: &mut ErrorCollector) {
             }
         }) {
             let infered_type = DataType::infer_from_expr(rhs_expr, fn_block, ast);
-            println!("{:?}:\t{:?}", rhs_expr, infered_type);
             if infered_type.is_none() {
                 err_collector.add_err(
                     ErrorType::Type,
