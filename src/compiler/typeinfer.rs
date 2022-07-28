@@ -32,6 +32,7 @@ pub fn infer_type(ast: &mut AST, err_collector: &mut ErrorCollector) {
                     usize::MAX,
                     format!("Unable to infer type from this expression"),
                 );
+                break;
             }
             var_type_changes.push((var_name.clone(), infered_type.clone().unwrap()));
             let mut new_var_init_node = old_node.clone();
