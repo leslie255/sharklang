@@ -365,7 +365,7 @@ pub fn syntax_check(err_collector: &mut ErrorCollector, ast: &AST) {
                 ErrorType::Syntax,
                 node.position,
                 usize::MAX,
-                format!("{} is not allowed here", node.expr.description()),
+                format!("{} is not allowed at top level", node.expr.description()),
             );
             continue;
         }

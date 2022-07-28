@@ -1,14 +1,9 @@
+func unsafe_return_test() -> uint64 {
+    mov	rax, 255
+    return _;
+}
+
 func main() -> int32 {
-    let a: uint64 = 0;
-    loop {
-        a = uadd(a, 1);
-        u64print(a);
-        
-        if eq(a, 100) {
-            jmp      _break_loop
-        }
-    }
-    _break_loop:
-    
+    u64print(unsafe_return_test());
     return 0;
 }

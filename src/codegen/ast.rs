@@ -432,13 +432,13 @@ fn recursive_parse_exprs(
         ($args: expr) => {{
             let mut code_block = CodeBlock::default();
             loop {
-                if let Some(i) = recursive_call!() {
-                    target.nodes.get_mut(i).unwrap().is_root = true;
-                    code_block.body.push(target.nodes.len() - 1);
-                }
                 if tokens.look_ahead(1).content == TokenContent::BigParenClose {
                     tokens.next();
                     break;
+                }
+                if let Some(i) = recursive_call!() {
+                    target.nodes.get_mut(i).unwrap().is_root = true;
+                    code_block.body.push(target.nodes.len() - 1);
                 }
             }
             code_block.gen_vars_with_args(&target.nodes, $args);
