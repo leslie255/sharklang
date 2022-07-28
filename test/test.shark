@@ -1,10 +1,8 @@
+func test(a: uint64) {
+    return;
+}
 func main() -> int32 {
-    loop {
-        "lmao";
-        if 1 {
-            continue;
-        }
-        "lol";
-    }
+    let a = 0;
+    u64print(a);
     return 0;
 }

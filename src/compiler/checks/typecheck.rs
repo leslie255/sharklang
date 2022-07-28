@@ -141,6 +141,38 @@ impl DataType {
         }
         hash_set
     }
+    pub fn infer_from_expr(
+        expr: &Expression,
+        parent_block: &CodeBlock,
+        ast: &AST,
+    ) -> Option<DataType> {
+        // return None: not able to suggest a type
+        // return Some(DataType::Void): expression does not have a return value
+        match expr {
+            Expression::Identifier(id) => Some(parent_block.var_info(id, ast)?.data_type.clone()),
+            Expression::NumberLiteral(_) => Some(DataType::UInt64),
+            Expression::StringLiteral(_) => Some(DataType::Pointer),
+            Expression::CharLiteral(_) => Some(DataType::UInt8),
+            Expression::FuncCall(fn_name, _) => Some(ast.return_type_of_fn(fn_name)?.clone()),
+            Expression::VarInit(_, _, _) => Some(DataType::Void),
+            Expression::VarAssign(_, _) => Some(DataType::Void),
+            Expression::TypeCast(_, t) => Some(t.clone()),
+            Expression::GetAddress(_) => Some(DataType::Pointer),
+            Expression::Dereference(_) => None,
+            Expression::Label(_) => Some(DataType::Void),
+            Expression::RawASM(_) => Some(DataType::Void),
+            Expression::Block(_) => Some(DataType::Void),
+            Expression::FuncDef(_, _) => Some(DataType::Void),
+            Expression::Loop(_) => Some(DataType::Void),
+            Expression::If(_, _, _, _) => Some(DataType::Void),
+            Expression::ReturnVoid => Some(DataType::Void),
+            Expression::ReturnVal(_) => Some(DataType::Void),
+            Expression::UnsafeReturn => Some(DataType::Void),
+            Expression::Break => Some(DataType::Void),
+            Expression::Continue => Some(DataType::Void),
+            Expression::Unknown => Some(DataType::Void),
+        }
+    }
 }
 impl Default for DataType {
     fn default() -> Self {
@@ -221,7 +253,7 @@ fn fn_arg_check(
     // check one of the arguments
     context: &mut TypeCheckContext,
     err_collector: &mut ErrorCollector,
-    expected_args: &Vec<DataType>,
+    expected_args: &Vec<(String, DataType)>,
     arg: usize, // the argument provided
     i: usize,   // which argument is this?
     check_type: bool,
@@ -277,7 +309,7 @@ fn fn_arg_check(
     // check type
     if check_type {
         // Make sure to check the number of arguments before calling this function
-        let expected_type = expected_args.get(i).unwrap();
+        let expected_type = expected_args.get(i).unwrap().1.clone();
         if !expected_type.matches(context, arg_expr) {
             err_collector.add_err(
                 ErrorType::Type,
@@ -319,13 +351,13 @@ fn fn_args_check(
     }
     if let Some(fn_block) = context.ast.fn_block(fn_name) {
         // check number of arguments
-        if input_args.len() != fn_block.arg_types.len() {
+        if input_args.len() != fn_block.args.len() {
             err_collector.errors.push(CompileError {
                 err_type: ErrorType::Type,
                 message: format!(
                     "function `{}` has {} arguments, provided {}",
                     fn_name,
-                    fn_block.arg_types.len(),
+                    fn_block.args.len(),
                     input_args.len()
                 ),
                 position: context.ast.node(context.i).position,
@@ -336,7 +368,7 @@ fn fn_args_check(
 
         // check arguments
         for (i, arg_i) in input_args.iter().enumerate() {
-            fn_arg_check(context, err_collector, &fn_block.arg_types, *arg_i, i, true);
+            fn_arg_check(context, err_collector, &fn_block.args, *arg_i, i, true);
         }
     }
 }

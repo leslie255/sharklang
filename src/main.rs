@@ -37,10 +37,10 @@ fn print_tree(src_path: String) {
     let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
     let tokens = compiler::preprocess::preprocess(compiler::tokens::parse_tokens(&source));
     let mut err_collector = compiler::error::ErrorCollector::new(src_path, &source);
-    let ast = compiler::ast::construct_ast(tokens, &mut err_collector);
+    let mut ast = compiler::ast::construct_ast(tokens, &mut err_collector);
+    compiler::typeinfer::infer_type(&mut ast, &mut err_collector);
     print_ast!(ast.nodes);
-    if err_collector.errors.is_empty() {
-    } else {
+    if !err_collector.errors.is_empty() {
         err_collector.print_errs();
     }
 }

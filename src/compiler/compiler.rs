@@ -6,6 +6,7 @@ use super::error::*;
 use super::ir::*;
 use super::preprocess::*;
 use super::tokens::*;
+use super::typeinfer::*;
 
 static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 6] = [
     Register::r10,
@@ -68,10 +69,10 @@ fn codegen_for_fn_call(
     if let Expression::FuncCall(func_name, args) = &node.expr {
         let mut func_call = ir!(func_call, func_name);
         // TODO: promote size smaller than 32 bit to 32 bit in function call args
-        let arg_types = ast.fn_arg_types(func_name);
+        let arg_types = ast.fn_args(func_name);
         for (i, arg) in args.iter().enumerate() {
             let size = if arg_types.is_some() {
-                arg_types.unwrap()[i].size()
+                arg_types.unwrap()[i].1.size()
             } else {
                 8
             };
@@ -196,20 +197,17 @@ fn gen_code_inside_block(
             target.push(ir!(func_ret));
         }
         Expression::Break => {
-            if let Some(loop_id) = block.parent_loop_id(ast) {
-                let break_label = format!("break_{}", loop_id);
-                target.push(ir!(jmp, break_label));
-            } else {
-                panic!();   // TODO: check if break is inside a loop
-            }
+            // break and continue has been made sure to be inside a loop in syntax checker
+            target.push(ir!(
+                jmp,
+                format!("break_{}", block.parent_loop_id(ast).unwrap())
+            ));
         }
         Expression::Continue => {
-            if let Some(loop_id) = block.parent_loop_id(ast) {
-                let loop_label = format!("loop_{}", loop_id);
-                target.push(ir!(jmp, loop_label));
-            } else {
-                panic!();   // TODO: check if break is inside a loop
-            }
+            target.push(ir!(
+                jmp,
+                format!("loop_{}", block.parent_loop_id(ast).unwrap())
+            ));
         }
         Expression::Loop(block_i) => {
             let label = format!("loop_{}", block_i);
@@ -307,13 +305,33 @@ static ARG_REGS: [Register; 6] = [
 pub fn compile(source: String, src_file: String, file_format: FileFormat) -> String {
     let mut err_collector = ErrorCollector::new(src_file, &source);
     let tokens = preprocess(parse_tokens(&source));
-    let ast = construct_ast(tokens, &mut err_collector);
+    let mut ast = construct_ast(tokens, &mut err_collector);
 
     let mut builtin_fns = BuiltinFuncChecker::new();
 
     syntax_check(&mut err_collector, &ast);
     err_collector.print_errs();
 
+    infer_type(&mut ast, &mut err_collector);
+    err_collector.print_errs();
+
+    let mut ast_changes: Vec<(usize, CodeBlock)> = Vec::new();
+    for (i, block) in ast.nodes.iter().enumerate().filter_map(|(i, n)| {
+        if let Some(b) = n.expr.get_block() {
+            Some((i, b))
+        } else {
+            None
+        }
+    }) {
+        let mut new_block = block.clone();
+        new_block.gen_var_addrs(&ast);
+        ast_changes.push((i, new_block));
+    }
+    for (i, new_block) in ast_changes {
+        *ast.node_mut(i).expr.get_block_mut().unwrap() = new_block;
+    }
+
+    print_ast!(ast.nodes);
     type_check(&ast, &builtin_fns, &mut err_collector);
     err_collector.print_errs();
 
