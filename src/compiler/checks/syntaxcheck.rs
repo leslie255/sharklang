@@ -234,6 +234,7 @@ fn recursive_check_inside_fn(
     node: &ASTNode,
     syntax_checker: &SyntaxChecker,
     allowed_exprs: &AllowedExprs,
+    parent_block: &CodeBlock,
 ) {
     macro_rules! its_not_allowed_here {
         ($node: expr) => {
@@ -250,6 +251,16 @@ fn recursive_check_inside_fn(
         return;
     }
     match &node.expr {
+        Expression::Break | Expression::Continue => {
+            if parent_block.parent_loop_id(ast).is_none() {
+                err_collector.add_err(
+                    ErrorType::Syntax,
+                    node.position,
+                    usize::MAX,
+                    format!("`{}` must be inside a loop", node.expr.description()),
+                );
+            }
+        }
         Expression::If(if_condition_i, if_block_i, elif_blocks_i, else_block_i) => {
             if !elif_blocks_i.is_empty() {
                 todo!();
@@ -260,20 +271,17 @@ fn recursive_check_inside_fn(
                 ast.node(*if_condition_i),
                 syntax_checker,
                 &syntax_checker.if_condition_allowed,
+                parent_block,
             );
-            for if_body_node in ast
-                .expr(*if_block_i)
-                .get_block_unchecked()
-                .body
-                .iter()
-                .map(|i| ast.node(*i))
-            {
+            let if_block = ast.expr(*if_block_i).get_block_unchecked();
+            for if_body_node in if_block.body.iter().map(|i| ast.node(*i)) {
                 recursive_check_inside_fn(
                     err_collector,
                     ast,
                     if_body_node,
                     syntax_checker,
                     &syntax_checker.if_body_allowed,
+                    if_block,
                 );
             }
             if let Some(else_block) = ast.expr(*else_block_i).get_block() {
@@ -284,24 +292,21 @@ fn recursive_check_inside_fn(
                         else_body_node,
                         syntax_checker,
                         &syntax_checker.if_body_allowed,
+                        else_block,
                     );
                 }
             }
         }
         Expression::Loop(loop_block_i) => {
-            for loop_body_node in ast
-                .expr(*loop_block_i)
-                .get_block_unchecked()
-                .body
-                .iter()
-                .map(|i| ast.node(*i))
-            {
+            let loop_block = ast.expr(*loop_block_i).get_block_unchecked();
+            for loop_body_node in loop_block.body.iter().map(|i| ast.node(*i)) {
                 recursive_check_inside_fn(
                     err_collector,
                     ast,
                     loop_body_node,
                     syntax_checker,
                     &syntax_checker.loop_body_allowed,
+                    loop_block,
                 );
             }
         }
@@ -313,6 +318,7 @@ fn recursive_check_inside_fn(
                     arg_node,
                     syntax_checker,
                     &syntax_checker.fn_call_arg_allowed,
+                    parent_block,
                 );
             }
         }
@@ -323,6 +329,7 @@ fn recursive_check_inside_fn(
                 ast.node(*rhs_i),
                 syntax_checker,
                 &syntax_checker.rhs_allowed,
+                parent_block,
             );
         }
         Expression::TypeCast(node_i, _) => {
@@ -332,6 +339,7 @@ fn recursive_check_inside_fn(
                 ast.node(*node_i),
                 syntax_checker,
                 &syntax_checker.type_cast_allowed,
+                parent_block,
             );
         }
         Expression::GetAddress(node_i) => {
@@ -341,6 +349,7 @@ fn recursive_check_inside_fn(
                 ast.node(*node_i),
                 syntax_checker,
                 &syntax_checker.get_addr_allowed,
+                parent_block,
             );
         }
         Expression::Dereference(node_i) => {
@@ -350,6 +359,7 @@ fn recursive_check_inside_fn(
                 ast.node(*node_i),
                 syntax_checker,
                 &syntax_checker.deref_allowed,
+                parent_block,
             );
         }
         Expression::Unknown => {
@@ -371,13 +381,13 @@ pub fn syntax_check(err_collector: &mut ErrorCollector, ast: &AST) {
             );
             continue;
         }
-        let fn_body = &if let Expression::FuncDef(_, block_i) = node.expr {
+        let fn_block = if let Expression::FuncDef(_, block_i) = node.expr {
             ast.expr(block_i)
         } else {
             panic!();
         }
-        .get_block_unchecked()
-        .body;
+        .get_block_unchecked();
+        let fn_body = &fn_block.body;
 
         for node in fn_body.iter().map(|i| ast.node(*i)) {
             recursive_check_inside_fn(
@@ -386,6 +396,7 @@ pub fn syntax_check(err_collector: &mut ErrorCollector, ast: &AST) {
                 node,
                 &syntax_checker,
                 &syntax_checker.fn_body_allowed,
+                fn_block,
             );
         }
     }
