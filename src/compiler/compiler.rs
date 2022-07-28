@@ -4,8 +4,8 @@ use super::error::*;
 use super::ir::*;
 use super::preprocess::*;
 use super::tokens::*;
-use super::typecheck::*;
-use super::syntaxcheck::*;
+use super::checks::typecheck::*;
+use super::checks::syntaxcheck::*;
 
 static NESTED_FUNC_CALL_BUFFER_REGS: [Register; 6] = [
     Register::r10,
@@ -286,7 +286,7 @@ static ARG_REGS: [Register; 6] = [
     Register::r8,
     Register::r9,
 ];
-pub fn codegen(source: String, src_file: String, file_format: FileFormat) -> String {
+pub fn compile(source: String, src_file: String, file_format: FileFormat) -> String {
     let mut err_collector = ErrorCollector::new(src_file, &source);
     let tokens = preprocess(parse_tokens(&source));
     let ast = construct_ast(tokens, &mut err_collector);

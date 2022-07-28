@@ -1,9 +1,9 @@
+use super::checks::typecheck::*; // for the DataType struct
 use super::error::*;
 use super::tokens::*;
-use super::typecheck::*;
 
-use std::hash::Hash;
 use std::collections::HashMap;
+use std::hash::Hash;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarInfo {
@@ -174,8 +174,8 @@ pub enum Expression {
 
     // Control flows
     Block(CodeBlock),
-    FuncDef(String, usize),              // name, code block
-    Loop(usize),                         // code block
+    FuncDef(String, usize),                       // name, code block
+    Loop(usize),                                  // code block
     If(usize, usize, Vec<(usize, usize)>, usize), // condition, if block, else if blocks, else block
     ReturnVoid,
     ReturnVal(usize),
@@ -238,13 +238,15 @@ impl Expression {
 }
 impl Hash for Expression {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-            let reduced_expr: Expression = match self {
+        let reduced_expr: Expression = match self {
             Expression::Identifier(..) => Expression::Identifier(String::default()),
             Expression::NumberLiteral(..) => Expression::NumberLiteral(u64::default()),
             Expression::StringLiteral(..) => Expression::StringLiteral(String::default()),
             Expression::CharLiteral(..) => Expression::CharLiteral(u8::default()),
             Expression::FuncCall(..) => Expression::FuncCall(String::default(), Vec::default()),
-            Expression::VarInit(..) => Expression::VarInit(String::default(), DataType::default(), usize::default()),
+            Expression::VarInit(..) => {
+                Expression::VarInit(String::default(), DataType::default(), usize::default())
+            }
             Expression::VarAssign(..) => Expression::VarAssign(String::default(), usize::default()),
             Expression::TypeCast(..) => Expression::TypeCast(usize::default(), DataType::default()),
             Expression::GetAddress(..) => Expression::GetAddress(usize::default()),
@@ -254,7 +256,12 @@ impl Hash for Expression {
             Expression::Block(..) => Expression::Block(CodeBlock::default()),
             Expression::FuncDef(..) => Expression::FuncDef(String::default(), usize::default()),
             Expression::Loop(..) => Expression::Loop(usize::default()),
-            Expression::If(..) => Expression::If(usize::default(), usize::default(), Vec::default(), usize::default()),
+            Expression::If(..) => Expression::If(
+                usize::default(),
+                usize::default(),
+                Vec::default(),
+                usize::default(),
+            ),
             Expression::ReturnVoid => Expression::ReturnVoid,
             Expression::ReturnVal(..) => Expression::ReturnVal(usize::default()),
             Expression::UnsafeReturn => Expression::UnsafeReturn,
@@ -263,7 +270,7 @@ impl Hash for Expression {
         core::mem::discriminant(&reduced_expr).hash(state);
     }
 }
-    
+
 #[derive(Default, Clone)]
 pub struct ASTNode {
     pub expr: Expression,

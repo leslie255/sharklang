@@ -1,12 +1,10 @@
-use crate::codegen::codegen::codegen;
-
 use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
 use std::path::Path;
 
-mod codegen;
+mod compiler;
 
 fn _input() -> String {
     let mut input_str = String::new();
@@ -16,9 +14,9 @@ fn _input() -> String {
     input_str
 }
 
-fn compile(src_path: String, output_path: String, file_format: codegen::ir::FileFormat) {
+fn compile(src_path: String, output_path: String, file_format: compiler::ir::FileFormat) {
     let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
-    let output = codegen(source, src_path, file_format);
+    let output = compiler::compiler::compile(source, src_path, file_format);
 
     if Path::new(&output_path).exists() {
         fs::remove_file(output_path.clone()).unwrap_or_else(|_| {
@@ -37,9 +35,9 @@ fn compile(src_path: String, output_path: String, file_format: codegen::ir::File
 
 fn print_tree(src_path: String) {
     let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
-    let tokens = codegen::preprocess::preprocess(codegen::tokens::parse_tokens(&source));
-    let mut err_collector = codegen::error::ErrorCollector::new(src_path, &source);
-    let ast = codegen::ast::construct_ast(tokens, &mut err_collector);
+    let tokens = compiler::preprocess::preprocess(compiler::tokens::parse_tokens(&source));
+    let mut err_collector = compiler::error::ErrorCollector::new(src_path, &source);
+    let ast = compiler::ast::construct_ast(tokens, &mut err_collector);
     print_ast!(ast.nodes);
     if err_collector.errors.is_empty() {
     } else {
@@ -49,7 +47,7 @@ fn print_tree(src_path: String) {
 
 fn print_tokens(src_path: String) {
     let source = fs::read_to_string(src_path).expect("cannot read file");
-    let tokens = codegen::tokens::parse_tokens(&source).tokens;
+    let tokens = compiler::tokens::parse_tokens(&source).tokens;
     for token in tokens {
         println!("{}\t{:?}", token.position, token.content);
     }
@@ -72,7 +70,7 @@ fn main() {
     let arg0 = args.next().expect("what the fuck?");
     let mut src_path = String::new();
     let mut output_path = String::from("output.asm");
-    let mut file_format = codegen::ir::FileFormat::Elf64;
+    let mut file_format = compiler::ir::FileFormat::Elf64;
 
     loop {
         let arg = match args.next() {
@@ -120,8 +118,8 @@ fn main() {
             "-f" | "--format" => {
                 file_format = match args.next() {
                     Some(f) => match f.to_lowercase().as_str() {
-                        "elf64" => codegen::ir::FileFormat::Elf64,
-                        "macho64" => codegen::ir::FileFormat::Macho64,
+                        "elf64" => compiler::ir::FileFormat::Elf64,
+                        "macho64" => compiler::ir::FileFormat::Macho64,
                         _ => {
                             print_help(arg0);
                             println!();

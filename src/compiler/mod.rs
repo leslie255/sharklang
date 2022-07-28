@@ -2,10 +2,9 @@
 pub mod ir;
 #[macro_use]
 pub mod ast;
-pub mod codegen;
+pub mod compiler;
 pub mod tokens;
 pub mod builtin_funcs;
 pub mod preprocess;
-pub mod typecheck;
 pub mod error;
-pub mod syntaxcheck;
+pub mod checks;

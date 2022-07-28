@@ -1,5 +1,5 @@
-use super::ast::*;
-use super::error::*;
+use super::super::ast::*;
+use super::super::error::*;
 
 #[derive(Debug, Clone)]
 struct AllowedExprs {

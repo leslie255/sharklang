@@ -1,5 +1,5 @@
 use super::ir::*;
-use super::typecheck::*;
+use super::checks::typecheck::*;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
