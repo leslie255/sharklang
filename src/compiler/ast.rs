@@ -32,7 +32,7 @@ pub struct CodeBlock {
     pub body: Vec<usize>,
     pub vars: HashMap<String, VarInfo>,
     pub stack_depth: u64,
-    pub arg_types: Vec<DataType>,
+    pub args: Vec<(String, DataType)>,
     pub has_vars: bool,
     pub return_type: DataType,
     pub parent: usize, // parent block
@@ -44,7 +44,7 @@ impl Default for CodeBlock {
             body: Vec::default(),
             vars: HashMap::default(),
             stack_depth: u64::default(),
-            arg_types: Vec::default(),
+            args: Vec::default(),
             has_vars: bool::default(),
             return_type: DataType::ToBeDetermined,
             parent: usize::MAX,
@@ -98,20 +98,19 @@ impl CodeBlock {
             }
         }
     }
-    pub fn gen_vars_with_args(&mut self, nodes: &Vec<ASTNode>, args: Vec<(String, DataType)>) {
+    pub fn gen_var_addrs(&mut self, ast: &AST) {
         // this should technically be in the codegen part but i have no idea how to move it there
         self.has_vars = false; // has at least one variable
-        for (arg_name, arg_type) in &args {
+        for (arg_name, arg_type) in &self.args {
             self.has_vars = true;
             self.stack_depth += arg_type.size();
             self.vars.insert(
                 arg_name.clone(),
                 VarInfo::new(self.stack_depth, arg_type.clone(), 0, true),
             );
-            self.arg_types.push(arg_type.clone());
         }
         for i in &self.body {
-            let node = &nodes[*i];
+            let node = &ast.nodes[*i];
             if let Expression::VarInit(var_name, var_type, _) = &node.expr {
                 self.has_vars = true;
                 self.stack_depth += var_type.size();
@@ -225,6 +224,21 @@ impl Expression {
             _ => None,
         }
     }
+    pub fn get_block_mut(&mut self) -> Option<&mut CodeBlock> {
+        match self {
+            Expression::Block(block) => {
+                return Some(block);
+            }
+            _ => None,
+        }
+    }
+    pub fn into_fn_def(&self) -> Option<(&String, &usize)> {
+        if let Expression::FuncDef(name, block_i) = self {
+            Some((name, block_i))
+        } else {
+            None
+        }
+    }
     pub fn description(&self) -> String {
         match self {
             Expression::Identifier(name) => format!("`{}`", name),
@@ -324,10 +338,10 @@ impl AST {
             position,
         });
     }
-    pub fn fn_arg_types(&self, fn_name: &String) -> Option<&Vec<DataType>> {
+    pub fn fn_args(&self, fn_name: &String) -> Option<&Vec<(String, DataType)>> {
         if let Expression::FuncDef(_, block_i) = &self.node(*self.func_defs.get(fn_name)?).expr {
             if let Expression::Block(block) = self.expr(*block_i) {
-                return Some(&block.arg_types);
+                return Some(&block.args);
             }
         }
         None
@@ -339,6 +353,14 @@ impl AST {
             }
         }
         None
+    }
+    pub fn return_type_of_fn(&self, fn_name: &String) -> Option<&DataType> {
+        Some(
+            &self
+                .expr(*self.expr(*self.func_defs.get(fn_name)?).into_fn_def()?.1)
+                .get_block()?
+                .return_type,
+        )
     }
 }
 
@@ -430,7 +452,7 @@ fn recursive_parse_exprs(
                     code_block.body.push(target.nodes.len() - 1);
                 }
             }
-            code_block.gen_vars_with_args(&target.nodes, $args);
+            code_block.args = $args.clone();
 
             // set owners and parents for sub blocks
             let parent = target.nodes.len();

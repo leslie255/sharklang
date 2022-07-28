@@ -8,3 +8,4 @@ pub mod builtin_funcs;
 pub mod preprocess;
 pub mod error;
 pub mod checks;
+pub mod typeinfer;
