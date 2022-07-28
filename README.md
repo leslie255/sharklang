@@ -116,20 +116,6 @@ func main() -> int32 {
 }
 ```
 
-Use the `loop` keyword for loops
-
-``` Swift
-func main() -> int32 {
-    let a: uint64 = 0;
-    loop {
-        a = uadd(a, 1);
-        u64print(a);
-    }
-    
-    return 0;
-}
-```
-
 Use the `if` and `else` keyword for if statements
 ``` Swift
 func main() -> int32 {
@@ -142,6 +128,24 @@ func main() -> int32 {
     return 0;
 }
 ```
+
+Use the `loop` keyword for loops
+
+``` Swift
+func main() -> int32 {
+    let a: uint64 = 0;
+    loop {
+        a = uadd(a, 1);
+        u64print(a);
+        if eq(a, 100) {
+            break;  // break and continue are both supported
+        }
+    }
+    
+    return 0;
+}
+```
+
 
 You can also write Assembly instructions directly among the Shark code:
 
@@ -158,24 +162,6 @@ func main() -> int32 {
 
     u64print(a); // will print out 42
 	
-    return 0;
-}
-```
-
-Note that the break statement hasn't been implemented yet, so for now you can only use inline assembly to break out of a loop:
-``` Swift
-func main() -> int32 {
-    let a: uint64 = 0;
-    loop {
-        a = uadd(a, 1);
-        u64print(a);
-        
-        if eq(a, 100) {
-            jmp      _break_loop
-        }
-    }
-    _break_loop:
-    
     return 0;
 }
 ```
