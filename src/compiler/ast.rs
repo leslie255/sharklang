@@ -3,7 +3,6 @@ use super::error::*;
 use super::tokens::*;
 
 use std::collections::HashMap;
-use std::hash::Hash;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarInfo {
@@ -180,6 +179,8 @@ pub enum Expression {
     ReturnVoid,
     ReturnVal(usize),
     UnsafeReturn,
+    Break,
+    Continue,
 
     Unknown,
 }
@@ -231,43 +232,11 @@ impl Expression {
             Expression::If(_, _, _, _) => format!("if {{...}}"),
             Expression::ReturnVoid => String::from("return"),
             Expression::ReturnVal(_) => String::from("return ..."),
-            Expression::UnsafeReturn => String::from("_return"),
+            Expression::UnsafeReturn => String::from("return _"),
+            Expression::Break => String::from("break"),
+            Expression::Continue => String::from("continue"),
             Expression::Unknown => String::from("UNKNWON"),
         }
-    }
-}
-impl Hash for Expression {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let reduced_expr: Expression = match self {
-            Expression::Identifier(..) => Expression::Identifier(String::default()),
-            Expression::NumberLiteral(..) => Expression::NumberLiteral(u64::default()),
-            Expression::StringLiteral(..) => Expression::StringLiteral(String::default()),
-            Expression::CharLiteral(..) => Expression::CharLiteral(u8::default()),
-            Expression::FuncCall(..) => Expression::FuncCall(String::default(), Vec::default()),
-            Expression::VarInit(..) => {
-                Expression::VarInit(String::default(), DataType::default(), usize::default())
-            }
-            Expression::VarAssign(..) => Expression::VarAssign(String::default(), usize::default()),
-            Expression::TypeCast(..) => Expression::TypeCast(usize::default(), DataType::default()),
-            Expression::GetAddress(..) => Expression::GetAddress(usize::default()),
-            Expression::Dereference(..) => Expression::Dereference(usize::default()),
-            Expression::Label(..) => Expression::Label(String::default()),
-            Expression::RawASM(..) => Expression::RawASM(String::default()),
-            Expression::Block(..) => Expression::Block(CodeBlock::default()),
-            Expression::FuncDef(..) => Expression::FuncDef(String::default(), usize::default()),
-            Expression::Loop(..) => Expression::Loop(usize::default()),
-            Expression::If(..) => Expression::If(
-                usize::default(),
-                usize::default(),
-                Vec::default(),
-                usize::default(),
-            ),
-            Expression::ReturnVoid => Expression::ReturnVoid,
-            Expression::ReturnVal(..) => Expression::ReturnVal(usize::default()),
-            Expression::UnsafeReturn => Expression::UnsafeReturn,
-            Expression::Unknown => Expression::Unknown,
-        };
-        core::mem::discriminant(&reduced_expr).hash(state);
     }
 }
 
@@ -612,6 +581,14 @@ fn recursive_parse_exprs(
                     );
                     break;
                 }
+            }
+            TokenContent::Break => {
+                target.new_expr(Expression::Break, token.position);
+                break;
+            }
+            TokenContent::Continue => {
+                target.new_expr(Expression::Continue, token.position);
+                break;
             }
             TokenContent::Let => {
                 let var_name = token_get_id!(tokens.next());

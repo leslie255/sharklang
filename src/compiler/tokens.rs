@@ -27,6 +27,8 @@ pub enum TokenContent {
     Func,
     Return,
     ReturnArrow,
+    Break,
+    Continue,
     Squiggle,
     And,
     Dollar,
@@ -202,9 +204,8 @@ impl TokenPrototype {
     fn is_valid(str: &String) -> bool {
         match str.as_str() {
             "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "~" | "_"
-            | "let" | "loop" | "if" | "else" | "func" | "true" | "false" | "return" | "//" | "&" | "$" | "\n" => {
-                return true
-            }
+            | "let" | "loop" | "if" | "else" | "func" | "true" | "false" | "return" | "break"
+            | "continue" | "//" | "&" | "$" | "\n" => return true,
             _ => {
                 if str.is_empty() {
                     return false;
@@ -274,6 +275,8 @@ impl TokenPrototype {
             "if" => return Token::new(TokenContent::If, self.position, self.len),
             "else" => return Token::new(TokenContent::Else, self.position, self.len),
             "func" => return Token::new(TokenContent::Func, self.position, self.len),
+            "break" => return Token::new(TokenContent::Break, self.position, self.len),
+            "continue" => return Token::new(TokenContent::Continue, self.position, self.len),
             "return" => return Token::new(TokenContent::Return, self.position, self.len),
             "&" => return Token::new(TokenContent::And, self.position, self.len),
             "$" => return Token::new(TokenContent::Dollar, self.position, self.len),

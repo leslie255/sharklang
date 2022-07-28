@@ -130,6 +130,8 @@ impl AllowedExprs {
             Expression::ReturnVoid => self.allow_ret,
             Expression::ReturnVal(_) => self.allow_ret,
             Expression::UnsafeReturn => self.allow_ret,
+            Expression::Break => true,
+            Expression::Continue => true,
             Expression::Unknown => false,
         }
     }
