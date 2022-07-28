@@ -30,7 +30,12 @@ pub fn infer_type(ast: &mut AST, err_collector: &mut ErrorCollector) {
                     ErrorType::Type,
                     old_node.position,
                     usize::MAX,
-                    format!("Unable to infer type from this expression"),
+                    match rhs_expr {
+                        Expression::FuncCall(..) => format!(
+                            "Unable to infer a type from this function, it's either not defined or a built-in function (which SHARKC is currently not able to infer a return type from)"
+                        ),
+                        _ => format!("Unable to infer type from this expression"),
+                    },
                 );
                 break;
             }
