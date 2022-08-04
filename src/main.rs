@@ -1,18 +1,9 @@
 use std::env;
 use std::fs;
-use std::io;
 use std::io::Write;
 use std::path::Path;
 
 mod compiler;
-
-fn _input() -> String {
-    let mut input_str = String::new();
-    io::stdin()
-        .read_line(&mut input_str)
-        .expect("failed to read line");
-    input_str
-}
 
 fn compile(src_path: String, output_path: String, file_format: compiler::ir::FileFormat) {
     let source = fs::read_to_string(src_path.clone()).expect("cannot read file");

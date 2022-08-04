@@ -9,12 +9,20 @@ func square(num: uint64) -> uint64 {
 }
 
 func main() -> int32 {
-    "hello, world";	// this implicitly calls the `println` function
-
-    let msg = "the square of 16 is...";	// has type infer
-    let a: uint64 = square(16);			// you can also specify a type ofc
-    print(msg);
-    u64print(a);
+	let a = 0;
+	loop {
+		a = uadd(a, 1);
+		u64print(square(a));
+		if eq(a, 100) {
+			break;
+		}
+	}
+	loop {
+		a = uadd(a, 1);
+		if eq(a, 1000000000) {
+			break;
+		}
+	}
 
     return 0;
 }

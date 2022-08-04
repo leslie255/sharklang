@@ -331,7 +331,7 @@ pub fn compile(source: String, src_file: String, file_format: FileFormat) -> Str
         *ast.node_mut(i).expr.get_block_mut().unwrap() = new_block;
     }
 
-    //print_ast!(ast.nodes);
+    print_ast!(ast.nodes);
     type_check(&ast, &builtin_fns, &mut err_collector);
     err_collector.print_errs();
 
