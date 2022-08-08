@@ -6,32 +6,21 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarInfo {
-    pub addr: u64,
     pub data_type: DataType,
     pub def_i: usize, // where in the AST the variable is defined
-    pub is_arg: bool,
 }
 impl VarInfo {
-    pub fn new(addr: u64, data_type: DataType, def_i: usize, is_arg: bool) -> VarInfo {
-        let mut info = VarInfo {
-            addr: 0,
-            data_type: DataType::UInt64,
-            def_i: 0,
-            is_arg: false,
-        };
-        info.addr = addr;
-        info.data_type = data_type;
-        info.def_i = def_i;
-        info.is_arg = is_arg;
-
-        info
+    pub fn new(data_type: DataType, def_i: usize) -> VarInfo {
+        VarInfo {
+            data_type,
+            def_i,
+        }
     }
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct CodeBlock {
     pub body: Vec<usize>,
-    pub vars: HashMap<String, VarInfo>,
-    pub stack_depth: u64,
+    pub var_infos: HashMap<String, VarInfo>, // where in ast it is defined, data type
     pub args: Vec<(String, DataType)>,
     pub has_vars: bool,
     pub return_type: DataType,
@@ -42,8 +31,7 @@ impl Default for CodeBlock {
     fn default() -> Self {
         CodeBlock {
             body: Vec::default(),
-            vars: HashMap::default(),
-            stack_depth: u64::default(),
+            var_infos: HashMap::default(),
             args: Vec::default(),
             has_vars: bool::default(),
             return_type: DataType::ToBeDetermined,
@@ -53,37 +41,8 @@ impl Default for CodeBlock {
     }
 }
 impl CodeBlock {
-    pub fn var_type(&self, var_name: &String, ast: &AST) -> DataType {
-        match self.vars.get(var_name) {
-            Some(x) => x.data_type.clone(),
-            None => {
-                if self.parent == usize::MAX {
-                    panic!();
-                }
-                let parent_block = if let Expression::Block(b) = ast.expr(self.parent) {
-                    b
-                } else {
-                    panic!();
-                };
-                parent_block.var_type(var_name, ast)
-            }
-        }
-    }
-    pub fn var_addr(&self, var_name: &String, ast: &AST) -> Option<u64> {
-        match self.vars.get(var_name) {
-            Some(x) => Some(x.addr),
-            None => {
-                let parent_block = if let Expression::Block(b) = &ast.nodes.get(self.parent)?.expr {
-                    b
-                } else {
-                    return None;
-                };
-                parent_block.var_addr(var_name, ast)
-            }
-        }
-    }
     pub fn var_info<'a>(&'a self, var_name: &String, ast: &'a AST) -> Option<&'a VarInfo> {
-        match self.vars.get(var_name) {
+        match self.var_infos.get(var_name) {
             Some(x) => Some(x),
             None => {
                 if self.parent == usize::MAX {
@@ -95,41 +54,6 @@ impl CodeBlock {
                     return None;
                 };
                 parent_block.var_info(var_name, ast)
-            }
-        }
-    }
-    pub fn gen_var_addrs(&mut self, ast: &AST) {
-        // this should technically be in the codegen part but i have no idea how to move it there
-        self.has_vars = false; // has at least one variable
-        for (arg_name, arg_type) in &self.args {
-            self.has_vars = true;
-            self.stack_depth += arg_type.size();
-            self.vars.insert(
-                arg_name.clone(),
-                VarInfo::new(self.stack_depth, arg_type.clone(), 0, true),
-            );
-        }
-        for i in &self.body {
-            let node = &ast.nodes[*i];
-            if let Expression::VarInit(var_name, var_type, _) = &node.expr {
-                self.has_vars = true;
-                self.stack_depth += var_type.size();
-                self.vars.insert(
-                    var_name.clone(),
-                    VarInfo::new(self.stack_depth, var_type.clone(), *i, false),
-                );
-            }
-        }
-        self.stack_depth += 8;
-        if !self.stack_depth.is_power_of_two() {
-            let mut i = 3;
-            loop {
-                let stack_size = (2 as u64).pow(i);
-                if self.stack_depth < stack_size {
-                    self.stack_depth = stack_size;
-                    break;
-                }
-                i += 1;
             }
         }
     }

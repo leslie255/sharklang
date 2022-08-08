@@ -1,6 +1,4 @@
 #[macro_use]
-pub mod ir;
-#[macro_use]
 pub mod ast;
 pub mod compiler;
 pub mod tokens;

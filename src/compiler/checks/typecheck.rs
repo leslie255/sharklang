@@ -546,7 +546,7 @@ fn var_assign_check(
         }
     }
     if check_type {
-        let expected_type = context.parent_block.var_type(var_name, context.ast);
+        let expected_type = context.parent_block.var_info(var_name, context.ast).unwrap().data_type.clone();
         if !expected_type.matches(context, rhs) {
             err_collector.add_err(
                 ErrorType::Type,

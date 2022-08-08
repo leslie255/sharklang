@@ -5,7 +5,7 @@ use std::path::Path;
 
 mod compiler;
 
-fn compile(src_path: String, output_path: String, file_format: compiler::ir::FileFormat) {
+fn compile(src_path: String, output_path: String, file_format: mir::fileformat::FileFormat) {
     let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
     let output = compiler::compiler::compile(source, src_path, file_format);
 
@@ -61,7 +61,7 @@ fn main() {
     let arg0 = args.next().expect("what the fuck?");
     let mut src_path = String::new();
     let mut output_path = String::from("output.asm");
-    let mut file_format = compiler::ir::FileFormat::Elf64;
+    let mut file_format = mir::fileformat::FileFormat::Elf64;
 
     loop {
         let arg = match args.next() {
@@ -109,8 +109,8 @@ fn main() {
             "-f" | "--format" => {
                 file_format = match args.next() {
                     Some(f) => match f.to_lowercase().as_str() {
-                        "elf64" => compiler::ir::FileFormat::Elf64,
-                        "macho64" => compiler::ir::FileFormat::Macho64,
+                        "elf64" => mir::fileformat::FileFormat::Elf64,
+                        "macho64" => mir::fileformat::FileFormat::Macho64,
                         _ => {
                             print_help(arg0);
                             println!();
