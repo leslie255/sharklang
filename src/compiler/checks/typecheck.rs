@@ -4,7 +4,6 @@ use super::super::error::*;
 
 use std::collections::HashSet;
 
-#[allow(unused)]
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub enum DataType {
     UInt8,
@@ -24,6 +23,23 @@ pub enum DataType {
 }
 
 impl DataType {
+    pub fn mir_type(&self) -> Option<mir::ir::DataType> {
+        match self {
+            DataType::UInt8 => Some(mir::ir::DataType::Unsigned8),
+            DataType::UInt16 => Some(mir::ir::DataType::Unsigned16),
+            DataType::UInt32 => Some(mir::ir::DataType::Unsigned32),
+            DataType::UInt64 => Some(mir::ir::DataType::Unsigned64),
+            DataType::Int8 => Some(mir::ir::DataType::Unsigned8),
+            DataType::Int16 => Some(mir::ir::DataType::Unsigned16),
+            DataType::Int32 => Some(mir::ir::DataType::Unsigned32),
+            DataType::Int64 => Some(mir::ir::DataType::Unsigned64),
+            DataType::Float32 => Some(mir::ir::DataType::Unsigned32),
+            DataType::Float64 => Some(mir::ir::DataType::Unsigned64),
+            DataType::Pointer => Some(mir::ir::DataType::Unsigned64),
+            DataType::Void => None,
+            DataType::ToBeDetermined => None,
+        }
+    }
     pub fn from_str(str: &String) -> Option<DataType> {
         match str.as_str() {
             "uint8" => Some(DataType::UInt8),

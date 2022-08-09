@@ -1,28 +1,3 @@
-func square(num: uint64) -> uint64 {
-    // write assembly directly among higher level code!
-
-    mov     rax, [rbp-8]
-    mul     rax
-    mov     [rbp - 8], rax
-
-    return num;
-}
-
-func main() -> int32 {
-	let a = 0;
-	loop {
-		a = uadd(a, 1);
-		u64print(square(a));
-		if eq(a, 100) {
-			break;
-		}
-	}
-	loop {
-		a = uadd(a, 1);
-		if eq(a, 1000000000) {
-			break;
-		}
-	}
-
+func main(argc: int32, argv: ptr) -> int32 {
     return 0;
 }
