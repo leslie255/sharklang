@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::ast::*;
 use super::builtin_funcs::BuiltinFuncChecker;
 use super::checks::syntaxcheck::*;
-use super::checks::typecheck::*;
+use super::checks::typecheck::type_check;
 use super::error::*;
 use super::preprocess::*;
 use super::tokens::*;
@@ -11,12 +11,16 @@ use super::typeinfer::*;
 use mir::fileformat::*;
 use mir::ir::*;
 
-#[allow(unused)]
 struct Context<'a> {
     ast: &'a AST,
     str_literals: &'a HashMap<String, u64>,
     parent_block: &'a CodeBlock,
     target: &'a mut Vec<Instruction>,
+}
+impl<'a> Context<'a> {
+    fn get_str_literal_id(&self, string: &String) -> String {
+        format!("strliteral_{}", self.str_literals.get(string).unwrap())
+    }
 }
 
 fn gen_str_literals(ast: &AST, target: &mut Program) -> HashMap<String, u64> {
@@ -37,18 +41,70 @@ fn gen_str_literals(ast: &AST, target: &mut Program) -> HashMap<String, u64> {
     str_literal_table
 }
 
+fn gen_ir_for_simple_expr(context: &mut Context, node: &ASTNode) -> Operand {
+    match &node.expr {
+        Expression::Identifier(id) => Operand {
+            dtype: context
+                .parent_block
+                .var_info(id, context.ast)
+                .unwrap()
+                .data_type
+                .mir_type()
+                .unwrap(),
+            content: OperandContent::Var(id.clone()),
+        },
+        Expression::NumberLiteral(num) => Operand {
+            dtype: context
+                .parent_block
+                .fn_return_type(context.ast)
+                .unwrap()
+                .mir_type()
+                .unwrap(),
+            content: OperandContent::Data(*num),
+        },
+        Expression::StringLiteral(str) => Operand {
+            dtype: mir::ir::DataType::Irrelavent,
+            content: OperandContent::Label(context.get_str_literal_id(str)),
+        },
+        Expression::CharLiteral(num) => Operand {
+            dtype: mir::ir::DataType::Unsigned8,
+            content: OperandContent::Data(*num as u64),
+        },
+        Expression::TypeCast(_, _) => todo!(),
+        Expression::FuncCall(_, _) => todo!(),
+        Expression::VarInit(_, _, _) => panic!(),
+        Expression::VarAssign(_, _) => panic!(),
+        Expression::GetAddress(_) => panic!(),
+        Expression::Dereference(_) => panic!(),
+        Expression::Label(_) => panic!(),
+        Expression::RawASM(_) => panic!(),
+        Expression::Block(_) => panic!(),
+        Expression::FuncDef(_, _) => panic!(),
+        Expression::Loop(_) => panic!(),
+        Expression::If(_, _, _, _) => panic!(),
+        Expression::ReturnVoid => panic!(),
+        Expression::ReturnVal(_) => panic!(),
+        Expression::UnsafeReturn => panic!(),
+        Expression::Break => panic!(),
+        Expression::Continue => panic!(),
+        Expression::Unknown => panic!(),
+    }
+}
+
 fn gen_ir_inside_fn(context: &mut Context, node: &ASTNode) {
     match &node.expr {
-        Expression::Identifier(_) => todo!(),
-        Expression::NumberLiteral(_) => todo!(),
+        Expression::Identifier(_)
+        | Expression::NumberLiteral(_)
+        | Expression::CharLiteral(_)
+        | Expression::TypeCast(_, _)
+        | Expression::GetAddress(_)
+        | Expression::Dereference(_)
+        | Expression::FuncDef(_, _)
+        | Expression::Block(_) => panic!(),
         Expression::StringLiteral(_) => todo!(),
-        Expression::CharLiteral(_) => todo!(),
         Expression::FuncCall(_, _) => todo!(),
         Expression::VarInit(_, _, _) => todo!(),
         Expression::VarAssign(_, _) => todo!(),
-        Expression::TypeCast(_, _) => todo!(),
-        Expression::GetAddress(_) => todo!(),
-        Expression::Dereference(_) => todo!(),
         Expression::Label(_) => todo!(),
         Expression::RawASM(asm_code) => context.target.push(Instruction {
             operation: OperationType::RawASM,
@@ -61,8 +117,6 @@ fn gen_ir_inside_fn(context: &mut Context, node: &ASTNode) {
                 content: OperandContent::Irrelavent,
             },
         }),
-        Expression::Block(_) => todo!(),
-        Expression::FuncDef(_, _) => todo!(),
         Expression::Loop(_) => todo!(),
         Expression::If(_, _, _, _) => todo!(),
         Expression::ReturnVoid => context.target.push(Instruction {
@@ -77,7 +131,7 @@ fn gen_ir_inside_fn(context: &mut Context, node: &ASTNode) {
             },
         }),
         Expression::ReturnVal(node_i) => {
-            let expr = context.ast.expr(*node_i);
+            gen_ir_for_simple_expr(context, context.ast.node(*node_i));
             context.target.push(Instruction {
                 operation: OperationType::Ret,
                 operand0: Operand {
