@@ -11,10 +11,7 @@ pub struct VarInfo {
 }
 impl VarInfo {
     pub fn new(data_type: DataType, def_i: usize) -> VarInfo {
-        VarInfo {
-            data_type,
-            def_i,
-        }
+        VarInfo { data_type, def_i }
     }
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -376,45 +373,53 @@ fn recursive_parse_exprs(
                     code_block.body.push(target.nodes.len() - 1);
                 }
             }
-            code_block.args = $args.clone();
 
             // set owners and parents for sub blocks
             let parent = target.nodes.len();
-            let a: Vec<(usize, Expression)> = code_block
+            let mut ast_changes: Vec<(usize, Expression)> = Vec::new();
+            code_block
                 .body
                 .iter()
                 .map(|x| (*x, target.expr(*x)))
-                .filter(|(_, expr)| expr.has_block())
                 .map(|(i, expr)| (i, expr.clone()))
-                .collect();
-            let mut ast_changes: Vec<(usize, Expression)> = Vec::new();
-            a.iter().for_each(|(ast_i, expr)| match expr {
-                Expression::Loop(loop_block_i) => {
-                    let mut new_block = target.expr(*loop_block_i).get_block_unchecked().clone();
-                    new_block.parent = parent;
-                    new_block.owner = *ast_i;
-                    ast_changes.push((*loop_block_i, Expression::Block(new_block)));
-                }
-                Expression::If(_, if_block_i, elif_blocks, else_block_i) => {
-                    let mut new_block = target.expr(*if_block_i).get_block_unchecked().clone();
-                    new_block.parent = parent;
-                    new_block.owner = *ast_i;
-                    ast_changes.push((*if_block_i, Expression::Block(new_block)));
-                    for _ in elif_blocks {
-                        todo!();
+                .for_each(|(ast_i, expr)| match expr {
+                    Expression::Loop(loop_block_i) => {
+                        let mut new_block = target.expr(loop_block_i).get_block_unchecked().clone();
+                        new_block.parent = parent;
+                        new_block.owner = ast_i;
+                        ast_changes.push((loop_block_i, Expression::Block(new_block)));
                     }
-                    if *else_block_i == usize::MAX {
-                        return;
+                    Expression::If(_, if_block_i, elif_blocks, else_block_i) => {
+                        let mut new_block = target.expr(if_block_i).get_block_unchecked().clone();
+                        new_block.parent = parent;
+                        new_block.owner = ast_i;
+                        ast_changes.push((if_block_i, Expression::Block(new_block)));
+                        for _ in elif_blocks {
+                            todo!();
+                        }
+                        if else_block_i == usize::MAX {
+                            return;
+                        }
+                        let mut new_block = target.expr(else_block_i).get_block_unchecked().clone();
+                        new_block.parent = parent;
+                        new_block.owner = ast_i;
+                        ast_changes.push((else_block_i, Expression::Block(new_block)));
                     }
-                    let mut new_block = target.expr(*else_block_i).get_block_unchecked().clone();
-                    new_block.parent = parent;
-                    new_block.owner = *ast_i;
-                    ast_changes.push((*else_block_i, Expression::Block(new_block)));
-                }
-                _ => (),
-            });
+                    Expression::VarInit(var_name, var_type, _) => {
+                        code_block
+                            .var_infos
+                            .insert(var_name.clone(), VarInfo::new(var_type.clone(), ast_i));
+                    }
+                    _ => (),
+                });
             for (i, expr) in ast_changes {
                 target.node_mut(i).expr = expr;
+            }
+            code_block.args = $args.clone();
+            for arg in $args as Vec<(String, DataType)> {
+                code_block
+                    .var_infos
+                    .insert(arg.0.to_string(), VarInfo::new(arg.1.clone(), 0));
             }
             code_block
         }};

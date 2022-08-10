@@ -103,8 +103,23 @@ fn gen_ir_inside_fn(context: &mut Context, node: &ASTNode) {
         | Expression::Block(_) => panic!(),
         Expression::StringLiteral(_) => todo!(),
         Expression::FuncCall(_, _) => todo!(),
-        Expression::VarInit(_, _, _) => todo!(),
-        Expression::VarAssign(_, _) => todo!(),
+        Expression::VarInit(var_name, _, rhs_i) | Expression::VarAssign(var_name, rhs_i) => {
+            let rhs_oper = gen_ir_for_simple_expr(context, context.ast.node(*rhs_i));
+            context.target.push(Instruction {
+                operation: OperationType::SetVar,
+                operand0: Operand {
+                    dtype: (&context
+                        .parent_block
+                        .var_info(var_name, context.ast)
+                        .unwrap()
+                        .data_type)
+                        .mir_type()
+                        .unwrap(),
+                    content: OperandContent::Var(var_name.clone()),
+                },
+                operand1: rhs_oper,
+            })
+        }
         Expression::Label(_) => todo!(),
         Expression::RawASM(asm_code) => context.target.push(Instruction {
             operation: OperationType::RawASM,
