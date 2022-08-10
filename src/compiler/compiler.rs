@@ -120,7 +120,17 @@ fn gen_ir_inside_fn(context: &mut Context, node: &ASTNode) {
                 operand1: rhs_oper,
             })
         }
-        Expression::Label(_) => todo!(),
+        Expression::Label(name) => context.target.push(Instruction {
+            operation: OperationType::Label,
+            operand0: Operand {
+                dtype: DataType::Irrelavent,
+                content: OperandContent::Label(name.clone()),
+            },
+            operand1: Operand {
+                dtype: DataType::Irrelavent,
+                content: OperandContent::Irrelavent,
+            },
+        }),
         Expression::RawASM(asm_code) => context.target.push(Instruction {
             operation: OperationType::RawASM,
             operand0: Operand {
@@ -172,7 +182,7 @@ fn gen_ir_inside_fn(context: &mut Context, node: &ASTNode) {
         }),
         Expression::Break => todo!(),
         Expression::Continue => todo!(),
-        Expression::Unknown => todo!(),
+        Expression::Unknown => panic!(),
     }
 }
 
