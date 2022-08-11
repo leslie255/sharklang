@@ -72,22 +72,22 @@ fn gen_ir_for_simple_expr(context: &mut Context, node: &ASTNode) -> Operand {
         },
         Expression::TypeCast(_, _) => todo!(),
         Expression::FuncCall(_, _) => todo!(),
-        Expression::VarInit(_, _, _) => panic!(),
-        Expression::VarAssign(_, _) => panic!(),
-        Expression::GetAddress(_) => panic!(),
-        Expression::Dereference(_) => panic!(),
-        Expression::Label(_) => panic!(),
-        Expression::RawASM(_) => panic!(),
-        Expression::Block(_) => panic!(),
-        Expression::FuncDef(_, _) => panic!(),
-        Expression::Loop(_) => panic!(),
-        Expression::If(_, _, _, _) => panic!(),
-        Expression::ReturnVoid => panic!(),
-        Expression::ReturnVal(_) => panic!(),
-        Expression::UnsafeReturn => panic!(),
-        Expression::Break => panic!(),
-        Expression::Continue => panic!(),
-        Expression::Unknown => panic!(),
+        Expression::VarInit(_, _, _)
+        | Expression::VarAssign(_, _)
+        | Expression::GetAddress(_)
+        | Expression::Dereference(_)
+        | Expression::Label(_)
+        | Expression::RawASM(_)
+        | Expression::Block(_)
+        | Expression::FuncDef(_, _)
+        | Expression::Loop(_)
+        | Expression::If(_, _, _, _)
+        | Expression::ReturnVoid
+        | Expression::ReturnVal(_)
+        | Expression::UnsafeReturn
+        | Expression::Break
+        | Expression::Continue
+        | Expression::Unknown => panic!(),
     }
 }
 
@@ -101,8 +101,55 @@ fn gen_ir_inside_fn(context: &mut Context, node: &ASTNode) {
         | Expression::Dereference(_)
         | Expression::FuncDef(_, _)
         | Expression::Block(_) => panic!(),
-        Expression::StringLiteral(_) => todo!(),
-        Expression::FuncCall(_, _) => todo!(),
+        Expression::StringLiteral(string) => {
+            context.target.push(Instruction {
+                operation: OperationType::SetArg,
+                operand0: Operand {
+                    dtype: mir::ir::DataType::Unsigned64,
+                    content: OperandContent::Arg(0),
+                },
+                operand1: Operand {
+                    dtype: mir::ir::DataType::Irrelavent,
+                    content: OperandContent::Label(context.get_str_literal_id(string)),
+                },
+            });
+            context.target.push(Instruction {
+                operation: OperationType::CallFn,
+                operand0: Operand {
+                    dtype: mir::ir::DataType::Irrelavent,
+                    content: OperandContent::Fn("println".to_string()),
+                },
+                operand1: Operand {
+                    dtype: mir::ir::DataType::Irrelavent,
+                    content: OperandContent::Irrelavent,
+                },
+            });
+        }
+        Expression::FuncCall(fn_name, args) => {
+            let arg_types = &context.ast.fn_block(fn_name).unwrap().args;
+            for (arg_i, expr_i) in args.iter().enumerate() {
+                let arg_operand = gen_ir_for_simple_expr(context, context.ast.node(*expr_i));
+                context.target.push(Instruction {
+                    operation: OperationType::SetArg,
+                    operand0: Operand {
+                        dtype: arg_types.get(arg_i).unwrap().1.mir_type().unwrap(),
+                        content: OperandContent::Arg(arg_i as u64),
+                    },
+                    operand1: arg_operand,
+                });
+            }
+            context.target.push(Instruction {
+                operation: OperationType::CallFn,
+                operand0: Operand {
+                    dtype: mir::ir::DataType::Irrelavent,
+                    content: OperandContent::Fn(fn_name.clone()),
+                },
+                operand1: Operand {
+                    dtype: mir::ir::DataType::Irrelavent,
+                    content: OperandContent::Irrelavent,
+                },
+            });
+        }
         Expression::VarInit(var_name, _, rhs_i) | Expression::VarAssign(var_name, rhs_i) => {
             let rhs_oper = gen_ir_for_simple_expr(context, context.ast.node(*rhs_i));
             context.target.push(Instruction {

@@ -123,12 +123,6 @@ impl Default for Expression {
     }
 }
 impl Expression {
-    pub fn has_block(&self) -> bool {
-        match self {
-            Expression::If(..) | Expression::Loop(..) => true,
-            _ => false,
-        }
-    }
     pub fn get_block_unchecked(&self) -> &CodeBlock {
         match self {
             Expression::Block(block) => {

@@ -1,5 +1,8 @@
+func lol(a: uint64) {
+	return;
+}
+
 func main(argc: int32, argv: ptr) -> int32 {
-	let a: uint64 = 0;
-	a = 255;
+	"hello";
     return 0;
 }
