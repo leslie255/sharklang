@@ -41,6 +41,32 @@ fn gen_str_literals(ast: &AST, target: &mut Program) -> HashMap<String, u64> {
     str_literal_table
 }
 
+fn gen_ir_for_fn_call(context: &mut Context, fn_name: &String, args: &Vec<usize>) {
+    let arg_types = &context.ast.fn_block(fn_name).unwrap().args;
+    for (arg_i, node) in args.iter().map(|i| context.ast.node(*i)).enumerate() {
+        let arg_operand = gen_ir_for_simple_expr(context, node);
+        context.target.push(Instruction {
+            operation: OperationType::SetArg,
+            operand0: Operand {
+                dtype: arg_types.get(arg_i).unwrap().1.mir_type().unwrap(),
+                content: OperandContent::Arg(arg_i as u64),
+            },
+            operand1: arg_operand,
+        });
+    }
+    context.target.push(Instruction {
+        operation: OperationType::CallFn,
+        operand0: Operand {
+            dtype: mir::ir::DataType::Irrelavent,
+            content: OperandContent::Fn(fn_name.clone()),
+        },
+        operand1: Operand {
+            dtype: mir::ir::DataType::Irrelavent,
+            content: OperandContent::Irrelavent,
+        },
+    });
+}
+
 fn gen_ir_for_simple_expr(context: &mut Context, node: &ASTNode) -> Operand {
     match &node.expr {
         Expression::Identifier(id) => Operand {
@@ -70,8 +96,20 @@ fn gen_ir_for_simple_expr(context: &mut Context, node: &ASTNode) -> Operand {
             dtype: mir::ir::DataType::Unsigned8,
             content: OperandContent::Data(*num as u64),
         },
+        Expression::FuncCall(fn_name, args) => {
+            gen_ir_for_fn_call(context, fn_name, args);
+            Operand {
+                dtype: context
+                    .ast
+                    .fn_block(fn_name)
+                    .unwrap()
+                    .return_type
+                    .mir_type()
+                    .unwrap(),
+                content: OperandContent::Result,
+            }
+        }
         Expression::TypeCast(_, _) => todo!(),
-        Expression::FuncCall(_, _) => todo!(),
         Expression::VarInit(_, _, _)
         | Expression::VarAssign(_, _)
         | Expression::GetAddress(_)
@@ -126,29 +164,7 @@ fn gen_ir_inside_fn(context: &mut Context, node: &ASTNode) {
             });
         }
         Expression::FuncCall(fn_name, args) => {
-            let arg_types = &context.ast.fn_block(fn_name).unwrap().args;
-            for (arg_i, expr_i) in args.iter().enumerate() {
-                let arg_operand = gen_ir_for_simple_expr(context, context.ast.node(*expr_i));
-                context.target.push(Instruction {
-                    operation: OperationType::SetArg,
-                    operand0: Operand {
-                        dtype: arg_types.get(arg_i).unwrap().1.mir_type().unwrap(),
-                        content: OperandContent::Arg(arg_i as u64),
-                    },
-                    operand1: arg_operand,
-                });
-            }
-            context.target.push(Instruction {
-                operation: OperationType::CallFn,
-                operand0: Operand {
-                    dtype: mir::ir::DataType::Irrelavent,
-                    content: OperandContent::Fn(fn_name.clone()),
-                },
-                operand1: Operand {
-                    dtype: mir::ir::DataType::Irrelavent,
-                    content: OperandContent::Irrelavent,
-                },
-            });
+            gen_ir_for_fn_call(context, fn_name, args);
         }
         Expression::VarInit(var_name, _, rhs_i) | Expression::VarAssign(var_name, rhs_i) => {
             let rhs_oper = gen_ir_for_simple_expr(context, context.ast.node(*rhs_i));
@@ -184,48 +200,27 @@ fn gen_ir_inside_fn(context: &mut Context, node: &ASTNode) {
                 dtype: mir::ir::DataType::Irrelavent,
                 content: OperandContent::RawASM(asm_code.clone()),
             },
-            operand1: Operand {
-                dtype: mir::ir::DataType::Irrelavent,
-                content: OperandContent::Irrelavent,
-            },
+            operand1: Operand::default(),
         }),
         Expression::Loop(_) => todo!(),
         Expression::If(_, _, _, _) => todo!(),
         Expression::ReturnVoid => context.target.push(Instruction {
-            operation: OperationType::Ret,
-            operand0: Operand {
-                dtype: mir::ir::DataType::Unsigned64,
-                content: OperandContent::Data(0),
-            },
-            operand1: Operand {
-                dtype: mir::ir::DataType::Irrelavent,
-                content: OperandContent::Irrelavent,
-            },
+            operation: OperationType::RetVoid,
+            operand0: Operand::default(),
+            operand1: Operand::default(),
         }),
         Expression::ReturnVal(node_i) => {
-            gen_ir_for_simple_expr(context, context.ast.node(*node_i));
+            let ret_operand = gen_ir_for_simple_expr(context, context.ast.node(*node_i));
             context.target.push(Instruction {
-                operation: OperationType::Ret,
-                operand0: Operand {
-                    dtype: mir::ir::DataType::Unsigned64,
-                    content: OperandContent::Data(0),
-                },
-                operand1: Operand {
-                    dtype: mir::ir::DataType::Irrelavent,
-                    content: OperandContent::Irrelavent,
-                },
+                operation: OperationType::RetVal,
+                operand0: ret_operand,
+                operand1: Operand::default(),
             })
         }
         Expression::UnsafeReturn => context.target.push(Instruction {
-            operation: OperationType::Ret,
-            operand0: Operand {
-                dtype: mir::ir::DataType::Unsigned64,
-                content: OperandContent::Data(0),
-            },
-            operand1: Operand {
-                dtype: mir::ir::DataType::Irrelavent,
-                content: OperandContent::Irrelavent,
-            },
+            operation: OperationType::RetVoid,
+            operand0: Operand::default(),
+            operand1: Operand::default(),
         }),
         Expression::Break => todo!(),
         Expression::Continue => todo!(),
@@ -242,6 +237,23 @@ fn gen_ir_toplevel(ast: &AST, target: &mut Program, str_literals: &HashMap<Strin
         }
     }) {
         let mut fn_body = Vec::<Instruction>::new();
+
+        // generate argument variables
+        for (i, (arg_name, arg_type)) in fn_block.args.iter().enumerate() {
+            fn_body.push(Instruction {
+                operation: OperationType::SetVar,
+                operand0: Operand {
+                    dtype: arg_type.mir_type().unwrap(),
+                    content: OperandContent::Var(arg_name.clone()),
+                },
+                operand1: Operand {
+                    dtype: arg_type.mir_type().unwrap(),
+                    content: OperandContent::Arg(i as u64),
+                },
+            })
+        }
+
+        // generate function body
         let mut context = Context {
             ast,
             str_literals,
