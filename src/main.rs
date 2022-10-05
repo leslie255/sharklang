@@ -112,7 +112,7 @@ fn print_ast(src_path: String) {
     }
     println!("-------------");
     for root_node in ast.root_nodes.iter().filter_map(|n| n.upgrade()) {
-        println!("{:?}\t{}", root_node.expr, root_node.pos);
+        println!("{:#?}\t{}", root_node.expr, root_node.pos);
     }
 }
 

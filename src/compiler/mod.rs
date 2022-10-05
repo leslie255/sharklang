@@ -1,8 +1,8 @@
 #[macro_use]
 pub mod ast;
-pub mod compiler;
-pub mod tokens;
 pub mod builtin_funcs;
-pub mod preprocess;
+pub mod compiler;
 pub mod error;
+pub mod preprocess;
+pub mod tokens;
 pub mod typeinfer;

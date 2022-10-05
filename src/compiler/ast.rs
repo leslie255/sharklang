@@ -75,8 +75,14 @@ pub enum Expression {
     TakeAddr(Weak<ASTNode>),
 
     DataType(TypeExpr),
+    TypeCast(Weak<ASTNode>, TypeExpr),
 
     Block(Vec<Weak<ASTNode>>),
+    Loop(Weak<ASTNode>),
+
+    Return(Option<Weak<ASTNode>>),
+    Break,
+    Continue,
 
     RawASM(Rc<String>),
 }
@@ -116,7 +122,8 @@ impl Debug for Expression {
                     &arg1
                         .iter()
                         .filter_map(|w| w.upgrade())
-                        .collect::<Vec<Rc<ASTNode>>>(),
+                        .map(|n| n.expr.clone())
+                        .collect::<Vec<Expression>>(),
                 )
                 .finish(),
             Self::Deref(arg0) => formatter
@@ -129,10 +136,35 @@ impl Debug for Expression {
                 .finish(),
             Self::RawASM(arg0) => formatter.debug_tuple("RawASM").field(arg0).finish(),
             Self::DataType(arg0) => formatter.debug_tuple("DataType").field(arg0).finish(),
+            Self::TypeCast(arg0, arg1) => formatter
+                .debug_tuple("TypeCast")
+                .field(&arg0.upgrade().unwrap().expr)
+                .field(&arg1)
+                .finish(),
             Self::Block(arg0) => formatter
                 .debug_set()
-                .entries(arg0.iter().filter_map(|w| w.upgrade()))
+                .entries(
+                    arg0.iter()
+                        .filter_map(|w| w.upgrade())
+                        .map(|n| n.expr.clone()),
+                )
                 .finish(),
+            Self::Loop(arg0) => formatter
+                .debug_tuple("Loop")
+                .field(&arg0.upgrade().unwrap().expr)
+                .finish(),
+            Self::Return(arg0) => {
+                if let Some(arg0) = arg0 {
+                    formatter
+                        .debug_tuple("Return")
+                        .field(&arg0.upgrade().unwrap().expr)
+                        .finish()
+                } else {
+                    formatter.debug_tuple("Return").field(arg0).finish()
+                }
+            }
+            Self::Break => formatter.debug_tuple("Break").finish(),
+            Self::Continue => formatter.debug_tuple("Continue").finish(),
         }
     }
 }
@@ -250,12 +282,47 @@ fn parse_expressions(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AS
                 expr: Expression::Block(body),
             })
         }
-        TokenContent::Loop => todo!(),
+        TokenContent::Return => {
+            let pos = current_token.position;
+            token_stream.next();
+            let n = parse_expressions(ast, token_stream);
+            node = Some(ASTNode {
+                pos,
+                expr: Expression::Return(if let Some(n) = n {
+                    Some(ast.add_to_node_pool(n))
+                } else {
+                    None
+                }),
+            });
+        }
+        TokenContent::Continue => {
+            node = Some(ASTNode {
+                pos: current_token.position,
+                expr: Expression::Continue,
+            })
+        }
+        TokenContent::Break => {
+            node = Some(ASTNode {
+                pos: current_token.position,
+                expr: Expression::Break,
+            })
+        }
+        TokenContent::Loop => {
+            let pos = current_token.position;
+            token_stream.next();
+            let n = parse_expressions(ast, token_stream);
+            node = Some(ASTNode {
+                pos,
+                expr: Expression::Loop(if let Some(n) = n {
+                    ast.add_to_node_pool(n)
+                } else {
+                    todo!();
+                }),
+            });
+        }
         TokenContent::If => todo!(),
         TokenContent::Func => todo!(),
-        TokenContent::Break => todo!(),
-        TokenContent::Continue => todo!(),
-        TokenContent::Squiggle => todo!(),
+        TokenContent::Squiggle => node = None,
         TokenContent::SingleLineCommentStart => node = None,
         TokenContent::NewLine => node = None,
         TokenContent::RawASM(asm_code) => {
@@ -266,7 +333,27 @@ fn parse_expressions(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AS
         }
         _ => node = None,
     }
-    node
+
+    // parse type cast
+    if let Some(node) = node {
+        match token_stream.peek(1).content {
+            TokenContent::Squiggle => {
+                let pos = token_stream.next().position;
+                let n = ast.add_to_node_pool(node);
+                token_stream.next();
+                Some(ASTNode {
+                    pos,
+                    expr: Expression::TypeCast(
+                        n,
+                        parse_type_expr(token_stream).unwrap_or_else(|| todo!()),
+                    ),
+                })
+            }
+            _ => Some(node),
+        }
+    } else {
+        node
+    }
 }
 
 fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<ASTNode> {

@@ -1,5 +1,7 @@
 main: (args: [[u8]]) -> i32 = {
-    a: i64 = 0;
-    println("hello, world");
+    i: u64 = 0 ~ u64;
+    loop {
+        "hello, world";
+    }
+    return 0;
 };
-
