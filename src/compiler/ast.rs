@@ -1,709 +1,485 @@
-use super::checks::typecheck::*; // for the DataType struct
-use super::error::*;
+use std::{
+    cell::RefCell,
+    fmt::Debug,
+    io::Cursor,
+    num::NonZeroU16,
+    rc::{Rc, Weak},
+};
+
 use super::tokens::*;
 
-use std::collections::HashMap;
+#[derive(Clone, Copy)]
+pub enum NumValue {
+    U(u64),
+    I(i64),
+    F(f64),
+}
+impl std::fmt::Debug for NumValue {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::U(num) => write!(formatter, "{}u", num),
+            Self::I(num) => write!(formatter, "{}i", num),
+            Self::F(num) => write!(formatter, "{}f", num),
+        };
+        return Ok(());
+    }
+}
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct VarInfo {
-    pub data_type: DataType,
-    pub def_i: usize, // where in the AST the variable is defined
-}
-impl VarInfo {
-    pub fn new(data_type: DataType, def_i: usize) -> VarInfo {
-        VarInfo { data_type, def_i }
+impl std::fmt::Display for NumValue {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::U(num) => write!(formatter, "{}u", num),
+            Self::I(num) => write!(formatter, "{}i", num),
+            Self::F(num) => write!(formatter, "{}f", num),
+        };
+        return Ok(());
     }
 }
-#[derive(Debug, Clone, PartialEq)]
-pub struct CodeBlock {
-    pub body: Vec<usize>,
-    pub var_infos: HashMap<String, VarInfo>, // where in ast it is defined, data type
-    pub args: Vec<(String, DataType)>,
-    pub has_vars: bool,
-    pub return_type: DataType,
-    pub parent: usize, // parent block
-    pub owner: usize,  // loop, func def, if, etc...
+
+#[derive(Debug, Clone)]
+#[allow(non_camel_case_types)]
+pub enum TypeExpr {
+    u8,
+    u16,
+    u32,
+    u64,
+    i8,
+    i16,
+    i32,
+    i64,
+    none,
+
+    Ptr(Box<Self>),
+    Slice(Box<Self>),
+
+    Block(Vec<(Rc<String>, TypeExpr)>, Box<Self>), // args, return type
 }
-impl Default for CodeBlock {
-    fn default() -> Self {
-        CodeBlock {
-            body: Vec::default(),
-            var_infos: HashMap::default(),
-            args: Vec::default(),
-            has_vars: bool::default(),
-            return_type: DataType::ToBeDetermined,
-            parent: usize::MAX,
-            owner: usize::MAX,
-        }
-    }
-}
-impl CodeBlock {
-    pub fn var_info<'a>(&'a self, var_name: &String, ast: &'a AST) -> Option<&'a VarInfo> {
-        match self.var_infos.get(var_name) {
-            Some(x) => Some(x),
-            None => {
-                if self.parent == usize::MAX {
-                    return None;
-                }
-                let parent_block = if let Expression::Block(b) = ast.expr(self.parent) {
-                    b
-                } else {
-                    return None;
-                };
-                parent_block.var_info(var_name, ast)
-            }
-        }
-    }
-    pub fn fn_return_type(&self, ast: &AST) -> Option<DataType> {
-        if let Expression::FuncDef(_, fn_block_i) = ast.node_no_typecast(self.owner).expr {
-            // if is a function
-            if let Expression::Block(fn_block) = &ast.node_no_typecast(fn_block_i).expr {
-                Some(fn_block.return_type.clone())
-            } else {
-                None
-            }
-        } else {
-            // if is not a function
-            if let Expression::Block(parent_block) = &ast.node_no_typecast(self.parent).expr {
-                parent_block.fn_return_type(ast)
-            } else {
-                None
-            }
-        }
-    }
-    pub fn parent_loop_id(&self, ast: &AST) -> Option<usize> {
-        if let Expression::Loop(block_i) = ast.node_no_typecast(self.owner).expr {
-            // if is a loop
-            Some(block_i)
-        } else {
-            // is not a loop
-            if let Expression::Block(parent_block) = &ast.node_no_typecast(self.parent).expr {
-                parent_block.parent_loop_id(ast)
-            } else {
-                None
-            }
-        }
+impl TypeExpr {
+    fn is_equivalent(&self, rhs: &Self) -> bool {
+        todo!()
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+
+#[derive(Clone)]
 pub enum Expression {
-    // Non-Recursive expression
-    Identifier(String),
-    NumberLiteral(u64),
-    StringLiteral(String),
+    Identifier(Rc<String>),
+    NumLiteral(NumValue),
+    StrLiteral(usize),
     CharLiteral(u8),
-    // Recursive expression
-    FuncCall(String, Vec<usize>),     // function name, arguments
-    VarInit(String, DataType, usize), // lhs, rhs
-    VarAssign(String, usize),         // lhs, rhs
-    TypeCast(usize, DataType),
-    GetAddress(usize),
-    Dereference(usize),
 
-    // Raw ASM
-    Label(String),
-    RawASM(String),
+    Def(Rc<String>, Option<TypeExpr>, Option<Weak<ASTNode>>), // Name, Type, RHS
+    Assign(Weak<ASTNode>, Weak<ASTNode>),                     // LHS, RHS
+    FnCall(Rc<String>, Vec<Weak<ASTNode>>),
 
-    // Control flows
-    Block(CodeBlock),
-    FuncDef(String, usize),                       // name, code block
-    Loop(usize),                                  // code block
-    If(usize, usize, Vec<(usize, usize)>, usize), // condition, if block, else if blocks, else block
-    ReturnVoid,
-    ReturnVal(usize),
-    UnsafeReturn,
-    Break,
-    Continue,
+    Deref(Weak<ASTNode>),
+    TakeAddr(Weak<ASTNode>),
 
-    Unknown,
+    DataType(TypeExpr),
+
+    Block(Vec<Weak<ASTNode>>),
+
+    RawASM(Rc<String>),
 }
-impl Default for Expression {
-    fn default() -> Self {
-        return Expression::Unknown;
+
+impl Debug for Expression {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Identifier(arg0) => formatter.debug_tuple("Identifier").field(arg0).finish(),
+            Self::NumLiteral(arg0) => formatter.debug_tuple("NumLiteral").field(arg0).finish(),
+            Self::StrLiteral(arg0) => formatter.debug_tuple("StrLiteral").field(arg0).finish(),
+            Self::CharLiteral(arg0) => formatter.debug_tuple("CharLiteral").field(arg0).finish(),
+            Self::Def(arg0, arg1, arg2) => {
+                if let Some(x) = arg2 {
+                    formatter
+                        .debug_tuple("Def")
+                        .field(arg0)
+                        .field(arg1)
+                        .field(&x.upgrade().unwrap().expr)
+                        .finish()
+                } else {
+                    formatter
+                        .debug_tuple("Def")
+                        .field(arg0)
+                        .field(arg1)
+                        .finish()
+                }
+            }
+            Self::Assign(arg0, arg1) => formatter
+                .debug_tuple("Assign")
+                .field(&arg0.upgrade().unwrap().expr)
+                .field(&arg1.upgrade().unwrap().expr)
+                .finish(),
+            Self::FnCall(arg0, arg1) => formatter
+                .debug_tuple("FnCall")
+                .field(arg0)
+                .field(
+                    &arg1
+                        .iter()
+                        .filter_map(|w| w.upgrade())
+                        .collect::<Vec<Rc<ASTNode>>>(),
+                )
+                .finish(),
+            Self::Deref(arg0) => formatter
+                .debug_tuple("Deref")
+                .field(&arg0.upgrade().unwrap().expr)
+                .finish(),
+            Self::TakeAddr(arg0) => formatter
+                .debug_tuple("TakeAddr")
+                .field(&arg0.upgrade().unwrap().expr)
+                .finish(),
+            Self::RawASM(arg0) => formatter.debug_tuple("RawASM").field(arg0).finish(),
+            Self::DataType(arg0) => formatter.debug_tuple("DataType").field(arg0).finish(),
+            Self::Block(arg0) => formatter
+                .debug_set()
+                .entries(arg0.iter().filter_map(|w| w.upgrade()))
+                .finish(),
+        }
     }
 }
-impl Expression {
-    pub fn get_block_unchecked(&self) -> &CodeBlock {
-        match self {
-            Expression::Block(block) => {
-                return block;
-            }
-            _ => panic!(),
+
+#[derive(Debug, Clone)]
+pub struct ASTNode {
+    pub pos: usize,
+    pub expr: Expression,
+}
+
+#[derive(Debug, Clone)]
+pub struct AST {
+    pub node_pool: Vec<Rc<ASTNode>>,
+    pub root_nodes: Vec<Weak<ASTNode>>,
+    pub strliteral_pool: Vec<Rc<String>>,
+}
+
+impl AST {
+    pub fn empty() -> AST {
+        AST {
+            node_pool: Vec::new(),
+            root_nodes: Vec::new(),
+            strliteral_pool: Vec::new(),
         }
     }
-    pub fn get_block(&self) -> Option<&CodeBlock> {
-        match self {
-            Expression::Block(block) => {
-                return Some(block);
-            }
-            _ => None,
+    pub fn borrow_last_node(&self) -> Weak<ASTNode> {
+        if let Some(n) = self.node_pool.last() {
+            Rc::downgrade(n)
+        } else {
+            Weak::new()
         }
     }
-    pub fn get_block_mut(&mut self) -> Option<&mut CodeBlock> {
-        match self {
-            Expression::Block(block) => {
-                return Some(block);
-            }
-            _ => None,
+    pub fn add_to_node_pool(&mut self, node: ASTNode) -> Weak<ASTNode> {
+        self.node_pool.push(Rc::new(node));
+        self.borrow_last_node()
+    }
+}
+
+pub fn parse_tokens_into_ast(token_stream: &mut TokenStream) -> AST {
+    let mut ast = AST::empty();
+    loop {
+        if token_stream.next().content.is_eof() {
+            break;
+        }
+        if let Some(n) = parse_expressions(&mut ast, token_stream) {
+            let node = ast.add_to_node_pool(n);
+            ast.root_nodes.push(node);
         }
     }
-    pub fn into_fn_def(&self) -> Option<(&String, &usize)> {
-        if let Expression::FuncDef(name, block_i) = self {
-            Some((name, block_i))
+    ast
+}
+
+fn parse_expressions(ast: &mut AST, token_stream: &mut TokenStream) -> Option<ASTNode> {
+    let current_token = token_stream.current();
+    let mut node: Option<ASTNode>;
+    match &current_token.content {
+        TokenContent::Number(num_str) => {
+            node = Some(ASTNode {
+                pos: current_token.position,
+                expr: Expression::NumLiteral(parse_numval(&num_str)?),
+            });
+        }
+        TokenContent::String(str) => {
+            node = Some(ASTNode {
+                pos: current_token.position,
+                expr: Expression::StrLiteral({
+                    ast.strliteral_pool.push(Rc::new(parse_str_content(&str)));
+                    ast.strliteral_pool.len() - 1
+                }),
+            });
+        }
+        TokenContent::Char(val) => {
+            node = Some(ASTNode {
+                pos: current_token.position,
+                expr: Expression::CharLiteral(*val),
+            });
+        }
+        TokenContent::Identifier(id_name) => {
+            node = parse_identifier(ast, token_stream);
+        }
+        TokenContent::Star => {
+            let pos = current_token.position;
+            token_stream.next();
+            if let Some(n) = parse_expressions(ast, token_stream) {
+                node = Some(ASTNode {
+                    pos,
+                    expr: Expression::Deref(ast.add_to_node_pool(n)),
+                })
+            } else {
+                node = None
+            }
+        }
+        TokenContent::And => {
+            let pos = current_token.position;
+            token_stream.next();
+            if let Some(n) = parse_expressions(ast, token_stream) {
+                node = Some(ASTNode {
+                    pos,
+                    expr: Expression::TakeAddr(ast.add_to_node_pool(n)),
+                })
+            } else {
+                node = None
+            }
+        }
+        TokenContent::BigParenOpen => {
+            let pos = current_token.position;
+            let mut body = Vec::<Weak<ASTNode>>::new();
+            while token_stream.next().content != TokenContent::BigParenClose {
+                if let Some(n) = parse_expressions(ast, token_stream) {
+                    body.push(ast.add_to_node_pool(n));
+                }
+            }
+            node = Some(ASTNode {
+                pos,
+                expr: Expression::Block(body),
+            })
+        }
+        TokenContent::Loop => todo!(),
+        TokenContent::If => todo!(),
+        TokenContent::Func => todo!(),
+        TokenContent::Break => todo!(),
+        TokenContent::Continue => todo!(),
+        TokenContent::Squiggle => todo!(),
+        TokenContent::SingleLineCommentStart => node = None,
+        TokenContent::NewLine => node = None,
+        TokenContent::RawASM(asm_code) => {
+            node = Some(ASTNode {
+                pos: current_token.position,
+                expr: Expression::RawASM(Rc::clone(asm_code)),
+            });
+        }
+        _ => node = None,
+    }
+    node
+}
+
+fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<ASTNode> {
+    let current_token = token_stream.current();
+    match token_stream.peek(1).content {
+        TokenContent::Colon => {
+            let pos = current_token.position;
+            let name = Rc::clone(current_token.content.as_identifier()?);
+            token_stream.next();
+            let mut type_expr = Option::<TypeExpr>::None;
+            let mut rhs = Option::<Weak<ASTNode>>::None;
+            if token_stream.peek(1).content != TokenContent::Equal {
+                token_stream.next();
+                // the token after colon
+                // if it's not equal sign means it has an explicit type expression
+                type_expr = Some(parse_type_expr(token_stream).unwrap_or_else(|| todo!()));
+                // TODO: report error when invalid type expression
+            }
+            let peek = token_stream.peek(1);
+            if peek.content == TokenContent::Equal {
+                token_stream.next();
+                token_stream.next();
+                if let Some(n) = parse_expressions(ast, token_stream) {
+                    rhs = Some(ast.add_to_node_pool(n));
+                }
+            } else if peek.indicates_end_of_expr() {
+            } else {
+                todo!()
+            }
+            if type_expr.is_none() && rhs.is_none() {
+                return None;
+            }
+            Some(ASTNode {
+                pos,
+                expr: Expression::Def(name, type_expr, rhs),
+            })
+        }
+        TokenContent::Equal => {
+            let pos = current_token.position;
+            let lhs_node = ASTNode {
+                pos,
+                expr: Expression::Identifier(Rc::clone(current_token.content.as_identifier()?)),
+            };
+            token_stream.next(); // equal sign
+            let rhs_pos = token_stream.next().position; // token after equal sign
+            let rhs_node = parse_expressions(ast, token_stream).unwrap(); // TODO: error prompt if
+            let assign_expr = Expression::Assign(
+                ast.add_to_node_pool(lhs_node),
+                ast.add_to_node_pool(rhs_node),
+            );
+            Some(ASTNode {
+                pos,
+                expr: assign_expr,
+            })
+        }
+        TokenContent::RoundParenOpen => {
+            let pos: usize = current_token.position;
+            let fn_name = Rc::clone(current_token.content.as_identifier()?);
+            let mut fn_args = Vec::<Weak<ASTNode>>::new();
+            token_stream.next();
+            if token_stream.next().content != TokenContent::RoundParenClose {
+                loop {
+                    if let Some(n) = parse_expressions(ast, token_stream) {
+                        fn_args.push(ast.add_to_node_pool(n));
+                    }
+                    token_stream.next();
+                    if token_stream.current().content == TokenContent::RoundParenClose {
+                        break;
+                    } else if token_stream.current().content == TokenContent::Comma {
+                        token_stream.next();
+                    } else {
+                        todo!();
+                    }
+                }
+            } else {
+                token_stream.next();
+            }
+            Some(ASTNode {
+                pos,
+                expr: Expression::FnCall(fn_name, fn_args),
+            })
+        }
+        _ => Some(ASTNode {
+            pos: current_token.position,
+            expr: Expression::Identifier(Rc::clone(current_token.content.as_identifier()?)),
+        }),
+    }
+}
+
+fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
+    match &token_stream.current().content {
+        TokenContent::Star => {
+            token_stream.next();
+            let t = parse_type_expr(token_stream)?;
+            Some(TypeExpr::Ptr(Box::new(t)))
+        }
+        TokenContent::RectParenOpen => {
+            token_stream.next();
+            let t = parse_type_expr(token_stream)?;
+            if token_stream.next().content != TokenContent::RectParenClose {
+                return None;
+            }
+            Some(TypeExpr::Slice(Box::new(t)))
+        }
+        TokenContent::Identifier(id) => Some(match id.as_str() {
+            "u64" => TypeExpr::u64,
+            "u32" => TypeExpr::u32,
+            "u16" => TypeExpr::u16,
+            "u8" => TypeExpr::u8,
+            "i64" => TypeExpr::i64,
+            "i32" => TypeExpr::i32,
+            "i16" => TypeExpr::i16,
+            "i8" => TypeExpr::i8,
+            "none" => TypeExpr::none,
+            _ => return None,
+        }),
+        TokenContent::RoundParenOpen => {
+            let pos = token_stream.current().position;
+            let mut args = Vec::<(Rc<String>, TypeExpr)>::new();
+            let mut ret_type: Box<TypeExpr>;
+            // parse arguments
+            if token_stream.peek(1).content != TokenContent::RoundParenClose {
+                loop {
+                    let arg_name = if let Some(s) = token_stream.next().content.as_identifier() {
+                        Rc::clone(s)
+                    } else {
+                        todo!();
+                    };
+                    if token_stream.next().content != TokenContent::Colon {
+                        todo!();
+                    }
+                    token_stream.next();
+                    let type_expr = if let Some(t) = parse_type_expr(token_stream) {
+                        t
+                    } else {
+                        todo!()
+                    };
+                    args.push((arg_name, type_expr));
+                    let t = token_stream.next();
+                    if t.content == TokenContent::Comma {
+                        continue;
+                    } else if t.content == TokenContent::RoundParenClose {
+                        break;
+                    } else {
+                        todo!();
+                    }
+                }
+            }
+            // parse return type
+            let peek = token_stream.peek(1);
+            if peek.content == TokenContent::ReturnArrow {
+                token_stream.next();
+                token_stream.next();
+                ret_type = if let Some(t) = parse_type_expr(token_stream) {
+                    Box::new(t)
+                } else {
+                    todo!();
+                };
+            } else {
+                ret_type = Box::new(TypeExpr::none);
+            }
+            Some(TypeExpr::Block(args, ret_type))
+        }
+        _ => None,
+    }
+}
+
+fn parse_str_content<'a>(src: &String) -> String {
+    let mut new_str = String::new();
+    let mut iter = src.chars();
+    loop {
+        let mut ch = if let Some(c) = iter.next() {
+            c
+        } else {
+            break;
+        };
+        if ch == '\\' {
+            ch = if let Some(c) = iter.next() {
+                c
+            } else {
+                break;
+            };
+            match ch {
+                'n' => new_str.push('\n'),
+                '\\' => new_str.push('\\'),
+                '0' => new_str.push('\0'),
+                _ => new_str.push(ch),
+            }
+        } else {
+            new_str.push(ch);
+        }
+    }
+    new_str
+}
+
+fn parse_numval<'a>(src: &String) -> Option<NumValue> {
+    if src.contains('.') {
+        if let Ok(f) = src.parse::<f64>() {
+            Some(NumValue::F(f))
+        } else {
+            None
+        }
+    } else if src.chars().next() == Some('-') {
+        if let Ok(i) = src.parse::<i64>() {
+            Some(NumValue::I(i))
+        } else {
+            None
+        }
+    } else {
+        if let Ok(u) = src.parse::<u64>() {
+            Some(NumValue::U(u))
         } else {
             None
         }
     }
-    pub fn description(&self) -> String {
-        match self {
-            Expression::Identifier(name) => format!("`{}`", name),
-            Expression::NumberLiteral(num) => format!("`{}`", num),
-            Expression::StringLiteral(str) => format!("{:?}", str),
-            Expression::CharLiteral(char) => format!("{:?}", char),
-            Expression::FuncCall(fn_name, _) => format!("{}(...)", fn_name),
-            Expression::VarInit(_, _, _) => String::from("variable declaration"),
-            Expression::VarAssign(_, _) => String::from("variable assign"),
-            Expression::TypeCast(_, _) => String::from("type cast"),
-            Expression::GetAddress(_) => String::from("get address"),
-            Expression::Dereference(_) => String::from("dereference"),
-            Expression::Label(name) => format!("{}:", name),
-            Expression::RawASM(asm) => format!("`{}`", asm.trim().clone()),
-            Expression::Block(_) => String::from("block"),
-            Expression::FuncDef(fn_name, _) => format!("func `{}(...)`", fn_name),
-            Expression::Loop(_) => format!("loop {{...}}"),
-            Expression::If(_, _, _, _) => format!("if {{...}}"),
-            Expression::ReturnVoid => String::from("return"),
-            Expression::ReturnVal(_) => String::from("return ..."),
-            Expression::UnsafeReturn => String::from("return _"),
-            Expression::Break => String::from("break"),
-            Expression::Continue => String::from("continue"),
-            Expression::Unknown => String::from("UNKNWON"),
-        }
-    }
-}
-
-#[derive(Default, Clone)]
-pub struct ASTNode {
-    pub expr: Expression,
-    pub is_root: bool,
-    pub is_top_level: bool,
-    pub position: usize,
-}
-#[macro_export]
-macro_rules! print_ast {
-    ($ast: expr) => {
-        for (i, node) in $ast.iter().enumerate() {
-            print!("{}:\t{:?}", i, node.expr);
-            if node.is_top_level {
-                print!("\ttop_level");
-            }
-            if node.is_root {
-                print!("\troot");
-            }
-            println!("");
-        }
-    };
-}
-
-#[derive(Default)]
-pub struct AST {
-    pub nodes: Vec<ASTNode>,
-    pub func_defs: HashMap<String, usize>,
-}
-
-impl AST {
-    pub fn node(&self, i: usize) -> &ASTNode {
-        unsafe { self.nodes.get_unchecked(i) }
-    }
-    pub fn expr(&self, i: usize) -> &Expression {
-        unsafe { &self.nodes.get_unchecked(i).expr }
-    }
-    pub fn node_mut(&mut self, i: usize) -> &mut ASTNode {
-        unsafe { self.nodes.get_unchecked_mut(i) }
-    }
-    // get expression but if the expression is a typecast, unwrap it
-    pub fn expr_no_typecast(&self, i: usize) -> &Expression {
-        let expr = unsafe { &self.nodes.get_unchecked(i).expr };
-        if let Expression::TypeCast(unwrapped_i, _) = expr {
-            unsafe { &self.nodes.get_unchecked(*unwrapped_i).expr }
-        } else {
-            expr
-        }
-    }
-    // get node but if the expression is a typecast, unwrap it
-    pub fn node_no_typecast(&self, i: usize) -> &ASTNode {
-        let node = unsafe { self.nodes.get_unchecked(i) };
-        if let Expression::TypeCast(unwrapped_i, _) = &node.expr {
-            unsafe { &self.nodes.get_unchecked(*unwrapped_i) }
-        } else {
-            node
-        }
-    }
-    pub fn new_expr(&mut self, expr: Expression, position: usize) {
-        match expr {
-            Expression::FuncDef(ref func_name, _) => {
-                self.func_defs.insert(func_name.clone(), self.nodes.len());
-            }
-            _ => (),
-        }
-        self.nodes.push(ASTNode {
-            expr,
-            is_root: false,
-            is_top_level: false,
-            position,
-        });
-    }
-    pub fn fn_args(&self, fn_name: &String) -> Option<&Vec<(String, DataType)>> {
-        if let Expression::FuncDef(_, block_i) = &self.node(*self.func_defs.get(fn_name)?).expr {
-            if let Expression::Block(block) = self.expr(*block_i) {
-                return Some(&block.args);
-            }
-        }
-        None
-    }
-    pub fn fn_block(&self, fn_name: &String) -> Option<&CodeBlock> {
-        if let Expression::FuncDef(_, block_i) = &self.node(*self.func_defs.get(fn_name)?).expr {
-            if let Expression::Block(block) = self.expr(*block_i) {
-                return Some(&block);
-            }
-        }
-        None
-    }
-    pub fn return_type_of_fn(&self, fn_name: &String) -> Option<&DataType> {
-        Some(
-            &self
-                .expr(*self.expr(*self.func_defs.get(fn_name)?).into_fn_def()?.1)
-                .get_block()?
-                .return_type,
-        )
-    }
-}
-
-#[allow(unused_assignments)]
-fn recursive_parse_exprs(
-    tokens: &mut TokenStream,
-    target: &mut AST,
-    err_collector: &mut ErrorCollector,
-) -> Option<usize> {
-    let mut token: Token;
-    macro_rules! recursive_call {
-        () => {{
-            let i = recursive_parse_exprs(tokens, target, err_collector);
-            if tokens.look_ahead(1).content == TokenContent::EOF {
-                return None;
-            }
-            token = tokens.current();
-            i
-        }};
-    }
-    macro_rules! token_get_id {
-        ($t: expr) => {
-            if let TokenContent::Identifier(ref x) = $t.content {
-                x.clone()
-            } else {
-                err_collector.add_err(
-                    ErrorType::Syntax,
-                    $t.position,
-                    $t.len,
-                    format!("expecting an identifier"),
-                );
-                tokens.skip_to_next_expr();
-                return None;
-            }
-        };
-    }
-    macro_rules! token_extract_data_type {
-        ($t: expr) => {
-            if let Some(t) = DataType::from_str(&token_get_id!($t)) {
-                t
-            } else {
-                err_collector.add_err(
-                    ErrorType::Syntax,
-                    $t.position,
-                    $t.len,
-                    format!("expecting a type name"),
-                );
-                tokens.skip_to_next_expr();
-                return None;
-            }
-        };
-    }
-    macro_rules! token_ensure_type {
-        ($token: expr, $token_type: expr) => {
-            if $token_type != $token.content {
-                err_collector.add_err(
-                    ErrorType::Syntax,
-                    $token.position,
-                    $token.len,
-                    format!("expecting a `{:?}`", $token_type),
-                );
-                tokens.skip_to_next_expr();
-                return None;
-            }
-        };
-        ($token: expr, $type0: expr, $type1: expr) => {
-            if $type0 != $token.content && $type1 != $token.content {
-                err_collector.add_err(
-                    ErrorType::Syntax,
-                    $token.position,
-                    $token.len,
-                    format!("expecting `{:?}` or `{:?}`", $type0, $type1),
-                );
-                tokens.skip_to_next_expr();
-                return None;
-            }
-        };
-    }
-    macro_rules! parse_sub_block {
-        ($args: expr) => {{
-            let mut code_block = CodeBlock::default();
-            loop {
-                if tokens.look_ahead(1).content == TokenContent::BigParenClose {
-                    tokens.next();
-                    break;
-                }
-                if let Some(i) = recursive_call!() {
-                    target.nodes.get_mut(i).unwrap().is_root = true;
-                    code_block.body.push(target.nodes.len() - 1);
-                }
-            }
-
-            // set owners and parents for sub blocks
-            let parent = target.nodes.len();
-            let mut ast_changes: Vec<(usize, Expression)> = Vec::new();
-            code_block
-                .body
-                .iter()
-                .map(|x| (*x, target.expr(*x)))
-                .map(|(i, expr)| (i, expr.clone()))
-                .for_each(|(ast_i, expr)| match expr {
-                    Expression::Loop(loop_block_i) => {
-                        let mut new_block = target.expr(loop_block_i).get_block_unchecked().clone();
-                        new_block.parent = parent;
-                        new_block.owner = ast_i;
-                        ast_changes.push((loop_block_i, Expression::Block(new_block)));
-                    }
-                    Expression::If(_, if_block_i, elif_blocks, else_block_i) => {
-                        let mut new_block = target.expr(if_block_i).get_block_unchecked().clone();
-                        new_block.parent = parent;
-                        new_block.owner = ast_i;
-                        ast_changes.push((if_block_i, Expression::Block(new_block)));
-                        for _ in elif_blocks {
-                            todo!();
-                        }
-                        if else_block_i == usize::MAX {
-                            return;
-                        }
-                        let mut new_block = target.expr(else_block_i).get_block_unchecked().clone();
-                        new_block.parent = parent;
-                        new_block.owner = ast_i;
-                        ast_changes.push((else_block_i, Expression::Block(new_block)));
-                    }
-                    Expression::VarInit(var_name, var_type, _) => {
-                        code_block
-                            .var_infos
-                            .insert(var_name.clone(), VarInfo::new(var_type.clone(), ast_i));
-                    }
-                    _ => (),
-                });
-            for (i, expr) in ast_changes {
-                target.node_mut(i).expr = expr;
-            }
-            code_block.args = $args.clone();
-            for arg in $args as Vec<(String, DataType)> {
-                code_block
-                    .var_infos
-                    .insert(arg.0.to_string(), VarInfo::new(arg.1.clone(), 0));
-            }
-            code_block
-        }};
-    }
-    loop {
-        token = tokens.next();
-        match &token.content {
-            TokenContent::RawASM(code) => {
-                target.new_expr(Expression::RawASM(code.clone()), token.position);
-                break;
-            }
-            TokenContent::UInt(num) => {
-                target.new_expr(Expression::NumberLiteral(*num), token.position);
-                break;
-            }
-            TokenContent::Char(ch) => {
-                target.new_expr(Expression::CharLiteral(*ch as u8), token.position);
-                break;
-            }
-            TokenContent::String(str) => {
-                target.new_expr(Expression::StringLiteral(str.clone()), token.position);
-                break;
-            }
-            TokenContent::And => {
-                let position = token.position;
-                if let Some(i) = recursive_call!() {
-                    target.new_expr(Expression::GetAddress(i), position);
-                    break;
-                } else {
-                    err_collector.add_err(
-                        ErrorType::Syntax,
-                        position,
-                        1,
-                        format!("Expected an expression"),
-                    );
-                    return None;
-                }
-            }
-            TokenContent::Dollar => {
-                let position = token.position;
-                if let Some(i) = recursive_call!() {
-                    target.new_expr(Expression::Dereference(i), position);
-                    break;
-                } else {
-                    err_collector.add_err(
-                        ErrorType::Syntax,
-                        position,
-                        1,
-                        format!("Expected an expression"),
-                    );
-                    return None;
-                }
-            }
-            TokenContent::Identifier(id) => match tokens.look_ahead(1).content {
-                TokenContent::Equal => {
-                    // variable assign
-                    let var_name = id.clone();
-                    tokens.next();
-                    recursive_call!();
-                    target.new_expr(
-                        Expression::VarAssign(var_name, target.nodes.len() - 1),
-                        token.position,
-                    );
-                    break;
-                }
-                TokenContent::RoundParenOpen => {
-                    // function call
-                    let func_name = id.clone();
-                    let position = token.position;
-                    let mut args: Vec<usize> = Vec::new();
-                    token_ensure_type!(tokens.next(), TokenContent::RoundParenOpen);
-                    if tokens.look_ahead(1).content == TokenContent::RoundParenClose {
-                        // there are no arguments
-                        target.new_expr(Expression::FuncCall(func_name, args), position);
-                        break;
-                    }
-                    loop {
-                        if let Some(i) = recursive_call!() {
-                            args.push(i);
-                        }
-                        token = tokens.next();
-                        // comma means there is another argument, closing round paren means end
-                        token_ensure_type!(
-                            token,
-                            TokenContent::Comma,
-                            TokenContent::RoundParenClose
-                        );
-                        match token.content {
-                            TokenContent::RoundParenClose => break,
-                            _ => (),
-                        }
-                    }
-                    target.new_expr(Expression::FuncCall(func_name, args), position);
-                    break;
-                }
-                TokenContent::Colon => {
-                    // Label
-                    let label_name = id.clone();
-                    let position = token.position;
-                    tokens.next();
-                    target.new_expr(Expression::Label(label_name), position);
-                    break;
-                }
-                _ => {
-                    target.new_expr(Expression::Identifier(id.clone()), token.position);
-                    break;
-                }
-            },
-            TokenContent::Return => {
-                let look_ahead = tokens.look_ahead(1);
-                if look_ahead.indicates_end_of_expr() {
-                    target.new_expr(Expression::ReturnVoid, token.position);
-                    break;
-                } else if look_ahead.content == TokenContent::Underscore {
-                    tokens.next();
-                    target.new_expr(Expression::UnsafeReturn, token.position);
-                    break;
-                } else {
-                    recursive_call!();
-                    target.new_expr(
-                        Expression::ReturnVal(target.nodes.len() - 1),
-                        token.position,
-                    );
-                    break;
-                }
-            }
-            TokenContent::Break => {
-                target.new_expr(Expression::Break, token.position);
-                break;
-            }
-            TokenContent::Continue => {
-                target.new_expr(Expression::Continue, token.position);
-                break;
-            }
-            TokenContent::Let => {
-                let var_name = token_get_id!(tokens.next());
-                let mut var_type = DataType::ToBeDetermined;
-                token = tokens.next();
-                token_ensure_type!(token, TokenContent::Colon, TokenContent::Equal);
-                match token.content {
-                    TokenContent::Colon => {
-                        var_type = token_extract_data_type!(tokens.next());
-                        token = tokens.next();
-                        if token.content != TokenContent::Equal {}
-                    }
-                    TokenContent::Equal => (),
-                    _ => (),
-                }
-                recursive_call!();
-                target.new_expr(
-                    Expression::VarInit(var_name.clone(), var_type, target.nodes.len() - 1),
-                    token.position,
-                );
-                break;
-            }
-            TokenContent::Func => {
-                let fn_def_pos = token.position;
-                token = tokens.next();
-
-                // function name and arguments
-                let fn_name = token_get_id!(token);
-                let mut fn_args: Vec<(String, DataType)> = Vec::new();
-                token_ensure_type!(tokens.next(), TokenContent::RoundParenOpen);
-                if tokens.look_ahead(1).content != TokenContent::RoundParenClose {
-                    // has ast least one arguments
-                    loop {
-                        token = tokens.next();
-                        let arg_name = token_get_id!(token);
-
-                        token = tokens.next();
-                        token_ensure_type!(token, TokenContent::Colon);
-
-                        token = tokens.next();
-                        let arg_type = token_extract_data_type!(token);
-
-                        fn_args.push((arg_name, arg_type));
-
-                        // comma means there is another argument, closing round paren means end
-                        token = tokens.next();
-                        token_ensure_type!(
-                            token,
-                            TokenContent::Comma,
-                            TokenContent::RoundParenClose
-                        );
-                        match token.content {
-                            TokenContent::RoundParenClose => break,
-                            _ => (),
-                        }
-                    }
-                } else {
-                    // no arguments
-                    tokens.next();
-                }
-
-                token = tokens.next();
-                token_ensure_type!(token, TokenContent::BigParenOpen, TokenContent::ReturnArrow);
-                let return_type: DataType;
-                if token.content == TokenContent::ReturnArrow {
-                    return_type = token_extract_data_type!(tokens.next());
-                    token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
-                } else {
-                    return_type = DataType::default();
-                }
-
-                // function body
-                let mut code_block = parse_sub_block!(fn_args);
-                code_block.return_type = return_type;
-                code_block.owner = target.nodes.len() + 1;
-                target.new_expr(Expression::Block(code_block), fn_def_pos);
-                target.new_expr(
-                    Expression::FuncDef(fn_name, target.nodes.len() - 1),
-                    fn_def_pos,
-                );
-                break;
-            }
-            TokenContent::Loop => {
-                let loop_pos = token.position;
-                token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
-                let mut code_block = parse_sub_block!(Vec::new());
-                code_block.owner = target.nodes.len() + 1;
-                target.new_expr(Expression::Block(code_block), loop_pos);
-                target.new_expr(Expression::Loop(target.nodes.len() - 1), loop_pos);
-                break;
-            }
-            TokenContent::If => {
-                let if_pos = token.position;
-                let mut else_block: Option<CodeBlock> = None;
-                let condition = if let Some(i) = recursive_call!() {
-                    i
-                } else {
-                    usize::MAX
-                };
-                token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
-                let if_block = parse_sub_block!(Vec::new());
-                if tokens.look_ahead(1).content == TokenContent::Else {
-                    tokens.next();
-                    token_ensure_type!(tokens.next(), TokenContent::BigParenOpen);
-                    else_block = Some(parse_sub_block!(Vec::new()));
-                }
-                target.new_expr(Expression::Block(if_block), if_pos);
-                let if_block_i = target.nodes.len() - 1; // index of the if block in AST
-                let else_block_i: usize = if let Some(b) = else_block {
-                    // index of the else block in AST
-                    target.new_expr(Expression::Block(b), if_pos);
-                    target.nodes.len() - 1
-                } else {
-                    usize::MAX
-                };
-                target.new_expr(
-                    Expression::If(condition, if_block_i, Vec::new(), else_block_i),
-                    if_pos,
-                );
-                break;
-            }
-            TokenContent::EOF => return None,
-            _ => {
-                if !token.indicates_end_of_expr() {
-                    err_collector.add_err(
-                        ErrorType::Syntax,
-                        token.position,
-                        token.len,
-                        format!("what is this?"),
-                    );
-                    tokens.skip_to_next_expr();
-                }
-                return None;
-            }
-        }
-    }
-    if tokens.look_ahead(1).content == TokenContent::Squiggle {
-        // type cast
-        let position = tokens.next().position;
-        let casted_type = token_extract_data_type!(tokens.next());
-        target.new_expr(
-            Expression::TypeCast(target.nodes.len() - 1, casted_type),
-            position,
-        );
-    }
-    return Some(target.nodes.len() - 1);
-}
-
-pub fn construct_ast(mut tokens: TokenStream, err_collector: &mut ErrorCollector) -> AST {
-    let mut ast = AST::default();
-    loop {
-        if let Some(i) = recursive_parse_exprs(&mut tokens, &mut ast, err_collector) {
-            ast.nodes.get_mut(i).unwrap().is_top_level = true;
-        }
-        if tokens.look_ahead(1).content.is_eof() {
-            break;
-        }
-    }
-    ast
 }

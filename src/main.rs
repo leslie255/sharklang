@@ -1,61 +1,16 @@
+#![allow(unused)]
+
 use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+use std::rc::Weak;
+
+use compiler::tokens::*;
+
+use crate::compiler::ast::*;
 
 mod compiler;
-
-fn compile(src_path: String, output_path: String, file_format: mir::fileformat::FileFormat) {
-    let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
-    let output = compiler::compiler::compile(source, src_path, file_format);
-
-    if Path::new(&output_path).exists() {
-        fs::remove_file(output_path.clone()).unwrap_or_else(|_| {
-            panic!(
-                "Output file {} already exists and cannot be deleted",
-                output_path
-            )
-        });
-    }
-
-    let mut output_file = fs::File::create(output_path.clone())
-        .unwrap_or_else(|_| panic!("cannot write to file (0) {}", output_path));
-    write!(output_file, "{}", output)
-        .unwrap_or_else(|_| panic!("cannot write to file (1) {}", output_path));
-}
-
-fn print_tree(src_path: String) {
-    let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
-    let tokens = compiler::preprocess::preprocess(compiler::tokens::parse_tokens(&source));
-    let mut err_collector = compiler::error::ErrorCollector::new(src_path, &source);
-    let mut ast = compiler::ast::construct_ast(tokens, &mut err_collector);
-    compiler::typeinfer::infer_type(&mut ast, &mut err_collector);
-    print_ast!(ast.nodes);
-    if !err_collector.errors.is_empty() {
-        err_collector.print_errs();
-    }
-}
-
-fn print_tokens(src_path: String) {
-    let source = fs::read_to_string(src_path).expect("cannot read file");
-    let tokens = compiler::tokens::parse_tokens(&source).tokens;
-    for token in tokens {
-        println!("{}\t{:?}", token.position, token.content);
-    }
-}
-
-fn print_help(arg0: String) {
-    println!("SHARK COMPILER v0.0.1");
-    println!("\nTo compile a file:");
-    println!("{} source_file.shark \\", arg0);
-    println!("\t-o / --output: output_file.asm");
-    println!("\t-f / --format: elf64 for GNU/Linux, macho64 for macOS");
-    println!("\nDebug:");
-    println!("-t / --tokens: print tokens");
-    println!("-a / --ast: print AST");
-    println!("\n-h / --help: print this message");
-}
-
 fn main() {
     let mut args = env::args();
     let arg0 = args.next().expect("what the fuck?");
@@ -97,7 +52,7 @@ fn main() {
             }
             "-a" | "--ast" => {
                 if !src_path.is_empty() {
-                    print_tree(src_path);
+                    print_ast(src_path);
                     return;
                 } else {
                     print_help(arg0);
@@ -137,5 +92,34 @@ fn main() {
         panic!();
     }
 
-    compile(src_path, output_path, file_format);
+    //compile(src_path, output_path, file_format);
+}
+
+fn print_help(src_path: String) {
+    todo!()
+}
+
+fn print_ast(src_path: String) {
+    let source = fs::read_to_string(src_path).unwrap();
+    let tokens = parse_into_tokens(&source);
+    let mut token_stream = TokenStream::from(&tokens);
+
+    let mut ast = parse_tokens_into_ast(&mut token_stream);
+
+    println!("String literals:");
+    for (i, str) in ast.strliteral_pool.iter().enumerate() {
+        println!("{}\t{:?}", i, str);
+    }
+    println!("-------------");
+    for root_node in ast.root_nodes.iter().filter_map(|n| n.upgrade()) {
+        println!("{:?}\t{}", root_node.expr, root_node.pos);
+    }
+}
+
+fn print_tokens(src_path: String) {
+    let source = fs::read_to_string(src_path).unwrap();
+    let tokens = parse_into_tokens(&source);
+    for token in &tokens {
+        println!("{:?}\t{}\t{}", token.content, token.position, token.len);
+    }
 }

@@ -1,7 +1,5 @@
-func lol(a: uint64) -> int32 {
-	return 255;
-}
+main: (args: [[u8]]) -> i32 = {
+    a: i64 = 0;
+    println("hello, world");
+};
 
-func main(argc: int32, argv: ptr) -> int32 {
-    return lol(0);
-}
