@@ -6,6 +6,7 @@ use std::io::Write;
 use std::path::Path;
 use std::rc::Weak;
 
+use compiler::compiler::ast_into_shir;
 use compiler::tokens::*;
 
 use crate::compiler::ast::*;
@@ -61,6 +62,17 @@ fn main() {
                     panic!();
                 }
             }
+            "-i" | "--ir" => {
+                if !src_path.is_empty() {
+                    print_ir(src_path);
+                    return;
+                } else {
+                    print_help(arg0);
+                    println!();
+                    println!("expects a source file");
+                    panic!();
+                }
+            }
             "-f" | "--format" => {
                 file_format = match args.next() {
                     Some(f) => match f.to_lowercase().as_str() {
@@ -95,6 +107,16 @@ fn main() {
     //compile(src_path, output_path, file_format);
 }
 
+fn print_ir(src_path: String) {
+    let source = fs::read_to_string(src_path).unwrap();
+    let tokens = parse_into_tokens(&source);
+    let mut token_stream = TokenStream::from(&tokens);
+
+    let ast = parse_tokens_into_ast(&mut token_stream);
+    let ir = ast_into_shir(ast);
+    println!("{:#?}", ir);
+}
+
 fn print_help(src_path: String) {
     todo!()
 }
@@ -104,7 +126,7 @@ fn print_ast(src_path: String) {
     let tokens = parse_into_tokens(&source);
     let mut token_stream = TokenStream::from(&tokens);
 
-    let mut ast = parse_tokens_into_ast(&mut token_stream);
+    let ast = parse_tokens_into_ast(&mut token_stream);
 
     println!("String literals:");
     for (i, str) in ast.strliteral_pool.iter().enumerate() {

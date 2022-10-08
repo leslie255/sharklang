@@ -6,6 +6,8 @@ use std::{
     rc::{Rc, Weak},
 };
 
+use mir::ir::DataType as BasicType;
+
 use super::tokens::*;
 
 #[derive(Clone, Copy)]
@@ -47,6 +49,8 @@ pub enum TypeExpr {
     i16,
     i32,
     i64,
+    f64,
+    f32,
     none,
 
     Ptr(Box<Self>),
@@ -58,6 +62,41 @@ impl TypeExpr {
     fn is_equivalent(&self, rhs: &Self) -> bool {
         todo!()
     }
+    fn as_block(&self) -> Option<(&Vec<(Rc<String>, TypeExpr)>, &Box<TypeExpr>)> {
+        if let Self::Block(args, ret_type) = self {
+            Some((args, ret_type))
+        } else {
+            None
+        }
+    }
+
+    /// Returns a BasicType (aka mir::ir::DataType) if `self` is a basic type (u64, f32, i16, ...)
+    /// and not a compound type (slice, struct, block, ...). If `self` is a pointer of any type
+    /// returns BasicType::Unsigned64, as currently Madeline doesn't have pointer types
+    pub fn into_basic_type(&self) -> Option<BasicType> {
+        match self {
+            Self::u64 => Some(BasicType::Unsigned64),
+            Self::u32 => Some(BasicType::Unsigned32),
+            Self::u16 => Some(BasicType::Unsigned16),
+            Self::u8 => Some(BasicType::Unsigned8),
+            Self::i64 => Some(BasicType::Signed64),
+            Self::i32 => Some(BasicType::Signed32),
+            Self::i16 => Some(BasicType::Signed16),
+            Self::i8 => Some(BasicType::Signed8),
+            Self::f64 => Some(BasicType::Float64),
+            Self::f32 => Some(BasicType::Float32),
+            Self::Ptr(..) => Some(BasicType::Unsigned64),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the type expr is [`Block`].
+    ///
+    /// [`Block`]: TypeExpr::Block
+    #[must_use]
+    pub fn is_block(&self) -> bool {
+        matches!(self, Self::Block(..))
+    }
 }
 
 #[derive(Clone)]
@@ -67,9 +106,19 @@ pub enum Expression {
     StrLiteral(usize),
     CharLiteral(u8),
 
-    Def(Rc<String>, Option<TypeExpr>, Option<Weak<ASTNode>>), // Name, Type, RHS
-    Assign(Weak<ASTNode>, Weak<ASTNode>),                     // LHS, RHS
-    FnCall(Rc<String>, Vec<Weak<ASTNode>>),
+    Def {
+        name: Rc<String>,
+        dtype: Option<TypeExpr>,
+        rhs: Option<Weak<ASTNode>>,
+    }, // Name, Type, RHS
+    Assign {
+        lhs: Weak<ASTNode>,
+        rhs: Weak<ASTNode>,
+    }, // LHS, RHS
+    FnCall {
+        name: Rc<String>,
+        args: Vec<Weak<ASTNode>>,
+    },
 
     Deref(Weak<ASTNode>),
     TakeAddr(Weak<ASTNode>),
@@ -87,6 +136,54 @@ pub enum Expression {
     RawASM(Rc<String>),
 }
 
+impl Expression {
+    pub fn as_block(&self) -> Option<&Vec<Weak<ASTNode>>> {
+        if let Self::Block(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+    pub fn as_fn_def(
+        &self,
+    ) -> Option<(
+        &Rc<String>,                  // name
+        &Vec<(Rc<String>, TypeExpr)>, // args
+        &TypeExpr,                    // return type
+        &Vec<Weak<ASTNode>>,          // body
+    )> {
+        if let Self::Def { name, dtype, rhs } = self {
+            if let Some((args, ret_type)) = dtype.as_ref()?.as_block() {
+                let body: &Vec<Weak<ASTNode>> =
+                    unsafe { rhs.as_ref()?.as_ptr().as_ref()?.expr.as_block()? };
+                return Some((
+                    name,
+                    args,
+                    ret_type,
+                    unsafe { rhs.as_ref()?.as_ptr().as_ref()? }.expr.as_block()?,
+                ));
+            }
+        }
+        None
+    }
+
+    pub fn as_identifier(&self) -> Option<&Rc<String>> {
+        if let Self::Identifier(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_deref(&self) -> Option<&Weak<ASTNode>> {
+        if let Self::Deref(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
 impl Debug for Expression {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -94,28 +191,34 @@ impl Debug for Expression {
             Self::NumLiteral(arg0) => formatter.debug_tuple("NumLiteral").field(arg0).finish(),
             Self::StrLiteral(arg0) => formatter.debug_tuple("StrLiteral").field(arg0).finish(),
             Self::CharLiteral(arg0) => formatter.debug_tuple("CharLiteral").field(arg0).finish(),
-            Self::Def(arg0, arg1, arg2) => {
-                if let Some(x) = arg2 {
+            Self::Def { name, dtype, rhs } => {
+                if let Some(x) = rhs {
                     formatter
                         .debug_tuple("Def")
-                        .field(arg0)
-                        .field(arg1)
+                        .field(name)
+                        .field(dtype)
                         .field(&x.upgrade().unwrap().expr)
                         .finish()
                 } else {
                     formatter
                         .debug_tuple("Def")
-                        .field(arg0)
-                        .field(arg1)
+                        .field(name)
+                        .field(dtype)
                         .finish()
                 }
             }
-            Self::Assign(arg0, arg1) => formatter
+            Self::Assign {
+                lhs: arg0,
+                rhs: arg1,
+            } => formatter
                 .debug_tuple("Assign")
                 .field(&arg0.upgrade().unwrap().expr)
                 .field(&arg1.upgrade().unwrap().expr)
                 .finish(),
-            Self::FnCall(arg0, arg1) => formatter
+            Self::FnCall {
+                name: arg0,
+                args: arg1,
+            } => formatter
                 .debug_tuple("FnCall")
                 .field(arg0)
                 .field(
@@ -177,9 +280,9 @@ pub struct ASTNode {
 
 #[derive(Debug, Clone)]
 pub struct AST {
-    pub node_pool: Vec<Rc<ASTNode>>,
+    node_pool: Vec<Rc<ASTNode>>,
     pub root_nodes: Vec<Weak<ASTNode>>,
-    pub strliteral_pool: Vec<Rc<String>>,
+    pub strliteral_pool: Vec<String>,
 }
 
 impl AST {
@@ -231,7 +334,7 @@ fn parse_expressions(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AS
             node = Some(ASTNode {
                 pos: current_token.position,
                 expr: Expression::StrLiteral({
-                    ast.strliteral_pool.push(Rc::new(parse_str_content(&str)));
+                    ast.strliteral_pool.push(parse_str_content(&str));
                     ast.strliteral_pool.len() - 1
                 }),
             });
@@ -388,7 +491,11 @@ fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AST
             }
             Some(ASTNode {
                 pos,
-                expr: Expression::Def(name, type_expr, rhs),
+                expr: Expression::Def {
+                    name,
+                    dtype: type_expr,
+                    rhs,
+                },
             })
         }
         TokenContent::Equal => {
@@ -400,10 +507,10 @@ fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AST
             token_stream.next(); // equal sign
             let rhs_pos = token_stream.next().position; // token after equal sign
             let rhs_node = parse_expressions(ast, token_stream).unwrap(); // TODO: error prompt if
-            let assign_expr = Expression::Assign(
-                ast.add_to_node_pool(lhs_node),
-                ast.add_to_node_pool(rhs_node),
-            );
+            let assign_expr = Expression::Assign {
+                lhs: ast.add_to_node_pool(lhs_node),
+                rhs: ast.add_to_node_pool(rhs_node),
+            };
             Some(ASTNode {
                 pos,
                 expr: assign_expr,
@@ -433,7 +540,10 @@ fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AST
             }
             Some(ASTNode {
                 pos,
-                expr: Expression::FnCall(fn_name, fn_args),
+                expr: Expression::FnCall {
+                    name: fn_name,
+                    args: fn_args,
+                },
             })
         }
         _ => Some(ASTNode {
