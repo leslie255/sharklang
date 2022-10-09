@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 use std::rc::Weak;
 
-use compiler::compiler::ast_into_shir;
+use compiler::shir::ast_into_shir;
 use compiler::tokens::*;
 
 use crate::compiler::ast::*;

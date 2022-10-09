@@ -1,4 +1,8 @@
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::rc::Rc;
 use std::rc::Weak;
 
@@ -80,10 +84,10 @@ pub struct SymbolTable {
 }
 
 impl SymbolTable {
-    fn loopup(&self, id: &Rc<String>) -> Option<&Symbol> {
-        if let Some(s) = self.local.get(id) {
+    fn lookup(&self, id: &Rc<String>) -> Option<(&Rc<String>, &Symbol)> {
+        if let Some(s) = self.local.get_key_value(id) {
             Some(s)
-        } else if let Some(s) = self.global.get(id) {
+        } else if let Some(s) = self.global.get_key_value(id) {
             Some(s)
         } else {
             None
@@ -125,7 +129,12 @@ impl Symbol {
 pub fn ast_into_shir(ast: AST) -> SHIRProgram {
     let mut program = SHIRProgram::default();
     let mut symbols = SymbolTable::default();
-    for root_node in ast.root_nodes.iter().filter_map(|w| w.upgrade()) {
+    for (i, root_node) in ast
+        .root_nodes
+        .iter()
+        .filter_map(|w| w.upgrade())
+        .enumerate()
+    {
         if let Some((name, args, ret_type, body)) = root_node.expr.as_fn_def() {
             // --- if it is a function definition
             symbols
@@ -138,13 +147,14 @@ pub fn ast_into_shir(ast: AST) -> SHIRProgram {
                 .filter_map(|w| unsafe { w.as_ptr().as_ref() })
                 .map(|n| &n.expr)
             {
-                let s = convert_body(expr, &mut fn_body, &mut symbols);
+                let s = convert_body(expr, &mut fn_body, &mut symbols, i);
                 if let Some(s) = s {
                     fn_body.push(s);
                 } else {
                     panic!("failed to convert to SHIR: {:?}", expr);
                 }
             }
+            symbols.local.clear();
             program.body.push(SHIRTopLevel::Fn {
                 local: false,
                 name: Rc::clone(name),
@@ -160,11 +170,12 @@ fn convert_body(
     expr: &Expression,
     parent: &mut Vec<SHIR>,
     symbols: &mut SymbolTable,
+    i: usize,
 ) -> Option<SHIR> {
     match expr {
         Expression::Identifier(id) => Some(SHIR::Var(
             Rc::clone(id),
-            symbols.loopup(id)?.as_variable()?.into_basic_type()?,
+            symbols.lookup(id)?.1.as_variable()?.into_basic_type()?,
         )),
         Expression::NumLiteral(val) => Some(SHIR::Const(SHIRConst::Number(*val))),
         Expression::StrLiteral(str) => Some(SHIR::Const(SHIRConst::String(*str))),
@@ -184,7 +195,7 @@ fn convert_body(
             };
             if let Some(rhs) = rhs {
                 parent.push(var_def);
-                let rhs_shir = convert_body(&rhs.upgrade()?.expr, parent, symbols)?;
+                let rhs_shir = convert_body(&rhs.upgrade()?.expr, parent, symbols, i)?;
                 Some(SHIR::VarAssign {
                     lhs: Rc::clone(name),
                     dtype: dtype.into_basic_type()?,
@@ -196,16 +207,12 @@ fn convert_body(
         }
         Expression::Assign { lhs, rhs } => {
             let lhs_expr = &lhs.upgrade()?.expr;
-            if let Some(name) = lhs_expr.as_identifier() {
-                if let Some(Symbol::Variable(dtype)) = symbols.loopup(name) {
-                    Some(SHIR::VarAssign {
-                        lhs: Rc::clone(name),
-                        dtype: dtype.into_basic_type()?,
-                        rhs: Box::new(convert_body(&rhs.upgrade()?.expr, parent, symbols)?),
-                    })
-                } else {
-                    None
-                }
+            if let Some((name, symbol)) = symbols.lookup(lhs_expr.as_identifier()?) {
+                Some(SHIR::VarAssign {
+                    lhs: Rc::clone(name),
+                    dtype: symbol.as_variable()?.into_basic_type()?,
+                    rhs: Box::new(convert_body(&rhs.upgrade()?.expr, parent, symbols, i)?),
+                })
             } else if let Some(deref) = lhs_expr.as_deref() {
                 todo!()
             } else {
@@ -213,14 +220,39 @@ fn convert_body(
             }
         }
         Expression::FnCall { name, args } => {
-            let ret_type = symbols.loopup(name)?.as_function()?.into_basic_type()?;
+            let mut args_shir = Vec::<SHIR>::new();
+            for (j, arg) in args.iter().enumerate() {
+                let mut arg_shir = convert_body(&arg.upgrade()?.expr, parent, symbols, i)?;
+                if let SHIR::FnCall {
+                    name,
+                    args,
+                    ret_type,
+                } = &arg_shir
+                {
+                    let mut hasher = DefaultHasher::new();
+                    name.as_bytes().hash(&mut hasher);
+                    i.hash(&mut hasher);
+                    j.hash(&mut hasher);
+                    let mangle = hasher.finish();
+                    let temp_var_name = Rc::new(format!("__temp_{}", mangle));
+                    parent.push(SHIR::VarDef {
+                        name: Rc::clone(&temp_var_name),
+                        dtype: *ret_type,
+                    });
+                    parent.push(SHIR::VarAssign {
+                        lhs: Rc::clone(&temp_var_name),
+                        dtype: *ret_type,
+                        rhs: Box::new(arg_shir.clone()),
+                    });
+                    arg_shir = SHIR::Var(temp_var_name, *ret_type);
+                }
+                args_shir.push(arg_shir);
+            }
+            let (name, symbol) = symbols.lookup(name)?;
+            let ret_type = symbol.as_function()?.into_basic_type()?;
             Some(SHIR::FnCall {
                 name: Rc::clone(name),
-                args: args
-                    .iter()
-                    .map(|a| convert_body(&a.upgrade().unwrap().expr, parent, symbols).unwrap())
-                    // TODO: flatten recursive statements
-                    .collect(),
+                args: args_shir,
                 ret_type,
             })
         }
@@ -229,7 +261,7 @@ fn convert_body(
         Expression::DataType(_) => None,
         Expression::TypeCast(n, t) => {
             let child = &unsafe { n.as_ptr().as_ref()? }.expr;
-            let mut s = convert_body(child, parent, symbols)?;
+            let mut s = convert_body(child, parent, symbols, i)?;
             s.type_cast(t.into_basic_type()?);
             Some(s)
         }

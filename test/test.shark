@@ -1,3 +1,6 @@
+test: () -> i64 = {
+}
+
 main: (args: [[u8]]) -> i32 = {
-    main();
-};
+    test(main());
+}

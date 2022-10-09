@@ -160,7 +160,9 @@ impl Expression {
                     name,
                     args,
                     ret_type,
-                    unsafe { rhs.as_ref()?.as_ptr().as_ref()? }.expr.as_block()?,
+                    unsafe { rhs.as_ref()?.as_ptr().as_ref()? }
+                        .expr
+                        .as_block()?,
                 ));
             }
         }
@@ -211,9 +213,9 @@ impl Debug for Expression {
                 lhs: arg0,
                 rhs: arg1,
             } => formatter
-                .debug_tuple("Assign")
-                .field(&arg0.upgrade().unwrap().expr)
-                .field(&arg1.upgrade().unwrap().expr)
+                .debug_struct("Assign")
+                .field("lhs", &arg0.upgrade().unwrap().expr)
+                .field("rhs", &arg1.upgrade().unwrap().expr)
                 .finish(),
             Self::FnCall {
                 name: arg0,
@@ -439,23 +441,22 @@ fn parse_expressions(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AS
 
     // parse type cast
     if let Some(node) = node {
-        match token_stream.peek(1).content {
-            TokenContent::Squiggle => {
-                let pos = token_stream.next().position;
-                let n = ast.add_to_node_pool(node);
-                token_stream.next();
-                Some(ASTNode {
-                    pos,
-                    expr: Expression::TypeCast(
-                        n,
-                        parse_type_expr(token_stream).unwrap_or_else(|| todo!()),
-                    ),
-                })
-            }
-            _ => Some(node),
+        if token_stream.peek(1).content == TokenContent::Squiggle {
+            let pos = token_stream.next().position;
+            let n = ast.add_to_node_pool(node);
+            token_stream.next();
+            Some(ASTNode {
+                pos,
+                expr: Expression::TypeCast(
+                    n,
+                    parse_type_expr(token_stream).unwrap_or_else(|| todo!()),
+                ),
+            })
+        } else {
+            Some(node)
         }
     } else {
-        node
+        None
     }
 }
 
@@ -535,8 +536,6 @@ fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AST
                         todo!();
                     }
                 }
-            } else {
-                token_stream.next();
             }
             Some(ASTNode {
                 pos,
@@ -611,6 +610,8 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
                         todo!();
                     }
                 }
+            }else {
+                token_stream.next();
             }
             // parse return type
             let peek = token_stream.peek(1);
