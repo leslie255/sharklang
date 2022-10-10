@@ -26,6 +26,15 @@ impl std::fmt::Debug for NumValue {
         return Ok(());
     }
 }
+impl NumValue {
+    pub fn into_u64_bytes(self) -> u64 {
+        return u64::from_le_bytes(match self {
+            NumValue::U(u) => u.to_le_bytes(),
+            NumValue::I(i) => i.to_le_bytes(),
+            NumValue::F(f) => f.to_le_bytes(),
+        });
+    }
+}
 
 impl std::fmt::Display for NumValue {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -610,7 +619,7 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
                         todo!();
                     }
                 }
-            }else {
+            } else {
                 token_stream.next();
             }
             // parse return type

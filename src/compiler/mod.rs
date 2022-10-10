@@ -6,3 +6,4 @@ pub mod error;
 pub mod preprocess;
 pub mod tokens;
 pub mod typeinfer;
+pub mod compiler;

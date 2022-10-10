@@ -20,9 +20,10 @@ pub struct SHIRProgram {
 #[derive(Debug, Clone)]
 pub enum SHIRTopLevel {
     Fn {
-        local: bool,
+        is_local: bool,
         name: Rc<String>,
         body: Vec<SHIR>,
+        ret_type: BasicType,
     },
     StaticVar {
         name: Rc<String>,
@@ -42,7 +43,7 @@ pub enum SHIR {
     Var(Rc<String>, BasicType),
     Const(SHIRConst),
     VarAssign {
-        lhs: Rc<String>,
+        name: Rc<String>,
         dtype: BasicType,
         rhs: Box<Self>,
     },
@@ -55,6 +56,8 @@ pub enum SHIR {
         args: Vec<Self>,
         ret_type: BasicType,
     },
+    ReturnVoid,
+    ReturnValue(Box<Self>),
 }
 
 impl SHIR {
@@ -62,7 +65,7 @@ impl SHIR {
         match self {
             SHIR::Var(_, dtype)
             | SHIR::VarAssign {
-                lhs: _,
+                name: _,
                 dtype,
                 rhs: _,
             }
@@ -72,7 +75,7 @@ impl SHIR {
                 args: _,
                 ret_type: dtype,
             } => *dtype = t,
-            SHIR::Const(_) => (),
+            SHIR::Const(_) | SHIR::ReturnVoid | SHIR::ReturnValue(_) => (),
         }
     }
 }
@@ -156,9 +159,10 @@ pub fn ast_into_shir(ast: AST) -> SHIRProgram {
             }
             symbols.local.clear();
             program.body.push(SHIRTopLevel::Fn {
-                local: false,
+                is_local: false,
                 name: Rc::clone(name),
                 body: fn_body,
+                ret_type: ret_type.into_basic_type().unwrap(), // TODO: return structures
             });
         }
     }
@@ -197,7 +201,7 @@ fn convert_body(
                 parent.push(var_def);
                 let rhs_shir = convert_body(&rhs.upgrade()?.expr, parent, symbols, i)?;
                 Some(SHIR::VarAssign {
-                    lhs: Rc::clone(name),
+                    name: Rc::clone(name),
                     dtype: dtype.into_basic_type()?,
                     rhs: Box::new(rhs_shir),
                 })
@@ -209,7 +213,7 @@ fn convert_body(
             let lhs_expr = &lhs.upgrade()?.expr;
             if let Some((name, symbol)) = symbols.lookup(lhs_expr.as_identifier()?) {
                 Some(SHIR::VarAssign {
-                    lhs: Rc::clone(name),
+                    name: Rc::clone(name),
                     dtype: symbol.as_variable()?.into_basic_type()?,
                     rhs: Box::new(convert_body(&rhs.upgrade()?.expr, parent, symbols, i)?),
                 })
@@ -240,7 +244,7 @@ fn convert_body(
                         dtype: *ret_type,
                     });
                     parent.push(SHIR::VarAssign {
-                        lhs: Rc::clone(&temp_var_name),
+                        name: Rc::clone(&temp_var_name),
                         dtype: *ret_type,
                         rhs: Box::new(arg_shir.clone()),
                     });
@@ -267,7 +271,15 @@ fn convert_body(
         }
         Expression::Block(_) => None,
         Expression::Loop(body) => todo!(),
-        Expression::Return(_) => todo!(),
+        Expression::Return(node) => {
+            if let Some(node) = node {
+                let node = &unsafe { node.as_ptr().as_ref()? }.expr;
+                let mut s = convert_body(node, parent, symbols, i)?;
+                Some(SHIR::ReturnValue(Box::new(s)))
+            } else {
+                Some(SHIR::ReturnVoid)
+            }
+        }
         Expression::Break => todo!(),
         Expression::Continue => todo!(),
         Expression::RawASM(_) => todo!(),

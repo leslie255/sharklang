@@ -6,8 +6,10 @@ use std::io::Write;
 use std::path::Path;
 use std::rc::Weak;
 
+use compiler::compiler::compile_shir_into_mir;
 use compiler::shir::ast_into_shir;
 use compiler::tokens::*;
+use mir::fileformat::FileFormat;
 
 use crate::compiler::ast::*;
 
@@ -17,7 +19,7 @@ fn main() {
     let arg0 = args.next().expect("what the fuck?");
     let mut src_path = String::new();
     let mut output_path = String::from("output.asm");
-    let mut file_format = mir::fileformat::FileFormat::Elf64;
+    let mut file_format = FileFormat::Elf64;
 
     loop {
         let arg = match args.next() {
@@ -76,8 +78,8 @@ fn main() {
             "-f" | "--format" => {
                 file_format = match args.next() {
                     Some(f) => match f.to_lowercase().as_str() {
-                        "elf64" => mir::fileformat::FileFormat::Elf64,
-                        "macho64" => mir::fileformat::FileFormat::Macho64,
+                        "elf64" => FileFormat::Elf64,
+                        "macho64" => FileFormat::Macho64,
                         _ => {
                             print_help(arg0);
                             println!();
@@ -104,7 +106,22 @@ fn main() {
         panic!();
     }
 
-    //compile(src_path, output_path, file_format);
+    compile(src_path, output_path, file_format);
+}
+
+fn compile(src_path: String, output_path: String, file_format: FileFormat) {
+    let source = fs::read_to_string(src_path).unwrap();
+    let tokens = parse_into_tokens(&source);
+    let mut token_stream = TokenStream::from(&tokens);
+
+    let ast = parse_tokens_into_ast(&mut token_stream);
+    let shir = ast_into_shir(ast);
+    let mir = compile_shir_into_mir(shir);
+    let compiled_asm = mir::generation::x86_64::generate_asm(mir, file_format);
+    if fs::write(output_path, compiled_asm).is_err() {
+        println!("unable to write to output file path");
+        std::process::exit(1);
+    }
 }
 
 fn print_ir(src_path: String) {
