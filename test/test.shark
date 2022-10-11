@@ -1,7 +1,4 @@
-test: () -> i64 = {
-    return 1;
-}
-
 main: (args: [[u8]]) -> i32 = {
+    a: u64 = 0;
     return 0;
 }

@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use super::{ast::NumValue, shir::*};
 use mir::ir::{
     DataType, Instruction as MIRInstr, Operand, OperandContent, OperationType as MIROpcode,
@@ -33,7 +35,7 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
                 }
                 mir_program
                     .content
-                    .push(MIRTopLevel::FnDef(name.to_string(), fn_body));
+                    .push(MIRTopLevel::FnDef(Rc::clone(name), fn_body));
             }
             SHIRTopLevel::StaticVar { name, val } => todo!(),
         }
@@ -44,8 +46,22 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
 fn compile_instr(shir: &SHIR, context: &Context) -> MIRInstr {
     match shir {
         SHIR::Var(_, _) | SHIR::Const(_) => panic!(),
-        SHIR::VarAssign { name, dtype, rhs } => todo!(),
-        SHIR::VarDef { name, dtype } => todo!(),
+        SHIR::VarAssign { id, dtype, rhs } => MIRInstr {
+            operation: MIROpcode::SetVar,
+            operand0: Operand {
+                dtype: *dtype,
+                content: OperandContent::Var(*id),
+            },
+            operand1: compile_oper(rhs, *dtype),
+        },
+        SHIR::VarDef { id, dtype } => MIRInstr {
+            operation: MIROpcode::DefVar,
+            operand0: Operand {
+                dtype: *dtype,
+                content: OperandContent::Var(*id),
+            },
+            operand1: Operand::default(),
+        },
         SHIR::FnCall {
             name,
             args,
@@ -66,9 +82,9 @@ fn compile_instr(shir: &SHIR, context: &Context) -> MIRInstr {
 
 fn compile_oper(shir: &SHIR, expected_type: DataType) -> Operand {
     match shir {
-        SHIR::Var(name, dtype) => Operand {
+        SHIR::Var(id, dtype) => Operand {
             dtype: *dtype,
-            content: OperandContent::Var(name.to_string()),
+            content: OperandContent::Var(*id),
         },
         SHIR::Const(const_val) => match const_val {
             SHIRConst::Number(numval) => Operand {
@@ -77,7 +93,7 @@ fn compile_oper(shir: &SHIR, expected_type: DataType) -> Operand {
             },
             SHIRConst::String(str_id) => Operand {
                 dtype: expected_type,
-                content: OperandContent::SVar(format!("strliteral_{str_id}")),
+                content: OperandContent::SVar(Rc::new(format!("strliteral_{str_id}"))),
             },
             SHIRConst::Char(ch) => todo!(),
         },

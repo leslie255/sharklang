@@ -40,15 +40,15 @@ pub enum SHIRConst {
 
 #[derive(Debug, Clone)]
 pub enum SHIR {
-    Var(Rc<String>, BasicType),
+    Var(u64, BasicType),
     Const(SHIRConst),
     VarAssign {
-        name: Rc<String>,
+        id: u64,
         dtype: BasicType,
         rhs: Box<Self>,
     },
     VarDef {
-        name: Rc<String>,
+        id: u64,
         dtype: BasicType,
     },
     FnCall {
@@ -65,11 +65,11 @@ impl SHIR {
         match self {
             SHIR::Var(_, dtype)
             | SHIR::VarAssign {
-                name: _,
+                id: _,
                 dtype,
                 rhs: _,
             }
-            | SHIR::VarDef { name: _, dtype }
+            | SHIR::VarDef { id: _, dtype }
             | SHIR::FnCall {
                 name: _,
                 args: _,
@@ -101,7 +101,7 @@ impl SymbolTable {
 #[derive(Debug, Clone)]
 pub enum Symbol {
     Function(TypeExpr),
-    Variable(TypeExpr),
+    Variable(TypeExpr, u64),
     TypeName(TypeExpr),
 }
 
@@ -113,9 +113,9 @@ impl Symbol {
             None
         }
     }
-    pub fn as_variable(&self) -> Option<&TypeExpr> {
-        if let Self::Variable(v) = self {
-            Some(v)
+    pub fn as_variable(&self) -> Option<(&TypeExpr, u64)> {
+        if let Self::Variable(a, b) = self {
+            Some((a, *b))
         } else {
             None
         }
@@ -177,10 +177,10 @@ fn convert_body(
     i: usize,
 ) -> Option<SHIR> {
     match expr {
-        Expression::Identifier(id) => Some(SHIR::Var(
-            Rc::clone(id),
-            symbols.lookup(id)?.1.as_variable()?.into_basic_type()?,
-        )),
+        Expression::Identifier(id) => {
+            let (dtype, num_id) = symbols.lookup(id)?.1.as_variable()?;
+            Some(SHIR::Var(num_id, dtype.into_basic_type()?))
+        }
         Expression::NumLiteral(val) => Some(SHIR::Const(SHIRConst::Number(*val))),
         Expression::StrLiteral(str) => Some(SHIR::Const(SHIRConst::String(*str))),
         Expression::CharLiteral(ch) => Some(SHIR::Const(SHIRConst::Char(*ch))),
@@ -190,18 +190,23 @@ fn convert_body(
             } else {
                 return None;
             };
+            let var_id = {
+                let mut hasher = DefaultHasher::new();
+                name.hash(&mut hasher);
+                hasher.finish()
+            };
             symbols
                 .local
-                .insert(Rc::clone(name), Symbol::Variable(dtype.clone()));
+                .insert(Rc::clone(name), Symbol::Variable(dtype.clone(), var_id));
             let var_def = SHIR::VarDef {
-                name: Rc::clone(name),
+                id: var_id,
                 dtype: dtype.into_basic_type().unwrap_or_else(|| todo!()),
             };
             if let Some(rhs) = rhs {
                 parent.push(var_def);
                 let rhs_shir = convert_body(&rhs.upgrade()?.expr, parent, symbols, i)?;
                 Some(SHIR::VarAssign {
-                    name: Rc::clone(name),
+                    id: var_id,
                     dtype: dtype.into_basic_type()?,
                     rhs: Box::new(rhs_shir),
                 })
@@ -212,9 +217,10 @@ fn convert_body(
         Expression::Assign { lhs, rhs } => {
             let lhs_expr = &lhs.upgrade()?.expr;
             if let Some((name, symbol)) = symbols.lookup(lhs_expr.as_identifier()?) {
+                let (var_type, var_id) = symbol.as_variable()?;
                 Some(SHIR::VarAssign {
-                    name: Rc::clone(name),
-                    dtype: symbol.as_variable()?.into_basic_type()?,
+                    id: var_id,
+                    dtype: var_type.into_basic_type()?,
                     rhs: Box::new(convert_body(&rhs.upgrade()?.expr, parent, symbols, i)?),
                 })
             } else if let Some(deref) = lhs_expr.as_deref() {
@@ -233,22 +239,26 @@ fn convert_body(
                     ret_type,
                 } = &arg_shir
                 {
-                    let mut hasher = DefaultHasher::new();
-                    name.as_bytes().hash(&mut hasher);
-                    i.hash(&mut hasher);
-                    j.hash(&mut hasher);
-                    let mangle = hasher.finish();
-                    let temp_var_name = Rc::new(format!("__temp_{}", mangle));
+                    // recursive function call,
+                    // declare another variable before function call, assign it with the function
+                    // essentially expanding `f(g(x))` into...
+                    // temp: = g(x); f(temp);
+                    let temp_var_id = {
+                        let mut hasher = DefaultHasher::new();
+                        i.hash(&mut hasher);
+                        j.hash(&mut hasher);
+                        hasher.finish()
+                    };
                     parent.push(SHIR::VarDef {
-                        name: Rc::clone(&temp_var_name),
+                        id: temp_var_id,
                         dtype: *ret_type,
                     });
                     parent.push(SHIR::VarAssign {
-                        name: Rc::clone(&temp_var_name),
+                        id: temp_var_id,
                         dtype: *ret_type,
                         rhs: Box::new(arg_shir.clone()),
                     });
-                    arg_shir = SHIR::Var(temp_var_name, *ret_type);
+                    arg_shir = SHIR::Var(temp_var_id, *ret_type);
                 }
                 args_shir.push(arg_shir);
             }
