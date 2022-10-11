@@ -31,7 +31,7 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
                     fn_ret_type: *ret_type,
                 };
                 for shir in body {
-                    fn_body.push(compile_instr(shir, &context));
+                    fn_body.append(&mut compile_instr(shir, &context));
                 }
                 mir_program
                     .content
@@ -43,40 +43,61 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
     mir_program
 }
 
-fn compile_instr(shir: &SHIR, context: &Context) -> MIRInstr {
+fn compile_instr(shir: &SHIR, context: &Context) -> Vec<MIRInstr> {
     match shir {
         SHIR::Var(_, _) | SHIR::Const(_) => panic!(),
-        SHIR::VarAssign { id, dtype, rhs } => MIRInstr {
+        SHIR::VarAssign { id, dtype, rhs } => vec![MIRInstr {
             operation: MIROpcode::SetVar,
             operand0: Operand {
                 dtype: *dtype,
                 content: OperandContent::Var(*id),
             },
             operand1: compile_oper(rhs, *dtype),
-        },
-        SHIR::VarDef { id, dtype } => MIRInstr {
+        }],
+        SHIR::VarDef { id, dtype } => vec![MIRInstr {
             operation: MIROpcode::DefVar,
             operand0: Operand {
                 dtype: *dtype,
                 content: OperandContent::Var(*id),
             },
             operand1: Operand::default(),
-        },
+        }],
         SHIR::FnCall {
             name,
             args,
             ret_type,
-        } => todo!(),
-        SHIR::ReturnVoid => MIRInstr {
+        } => {
+            let mut result = Vec::<MIRInstr>::new();
+            for (i, (arg_shir, arg_t)) in args.iter().enumerate() {
+                result.push(MIRInstr {
+                    operation: MIROpcode::SetArg,
+                    operand0: Operand {
+                        dtype: *arg_t,
+                        content: OperandContent::Arg(i as u64),
+                    },
+                    operand1: compile_oper(arg_shir, *arg_t),
+                });
+            }
+            result.push(MIRInstr {
+                operation: MIROpcode::CallFn,
+                operand0: Operand {
+                    dtype: DataType::Irrelavent,
+                    content: OperandContent::Fn(Rc::clone(name)),
+                },
+                operand1: Operand::default(),
+            });
+            result
+        }
+        SHIR::ReturnVoid => vec![MIRInstr {
             operation: MIROpcode::RetVoid,
             operand0: Operand::default(),
             operand1: Operand::default(),
-        },
-        SHIR::ReturnValue(val) => MIRInstr {
+        }],
+        SHIR::ReturnValue(val) => vec![MIRInstr {
             operation: MIROpcode::RetVal,
             operand0: compile_oper(val, context.fn_ret_type),
             operand1: Operand::default(),
-        },
+        }],
     }
 }
 

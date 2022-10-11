@@ -53,7 +53,7 @@ pub enum SHIR {
     },
     FnCall {
         name: Rc<String>,
-        args: Vec<Self>,
+        args: Vec<(Self, BasicType)>, // argument, expected_type
         ret_type: BasicType,
     },
     ReturnVoid,
@@ -100,15 +100,15 @@ impl SymbolTable {
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
-    Function(TypeExpr),
-    Variable(TypeExpr, u64),
+    Function(Vec<TypeExpr>, TypeExpr), // name, expected type
+    Variable(TypeExpr, u64),           // type, id
     TypeName(TypeExpr),
 }
 
 impl Symbol {
-    pub fn as_function(&self) -> Option<&TypeExpr> {
-        if let Self::Function(v) = self {
-            Some(v)
+    pub fn as_function(&self) -> Option<(&Vec<TypeExpr>, &TypeExpr)> {
+        if let Self::Function(a, b) = self {
+            Some((a, b))
         } else {
             None
         }
@@ -140,9 +140,13 @@ pub fn ast_into_shir(ast: AST) -> SHIRProgram {
     {
         if let Some((name, args, ret_type, body)) = root_node.expr.as_fn_def() {
             // --- if it is a function definition
-            symbols
-                .global
-                .insert(Rc::clone(name), Symbol::Function(ret_type.clone()));
+            symbols.global.insert(
+                Rc::clone(name),
+                Symbol::Function(
+                    args.iter().map(|(_, t)| t.clone()).collect(),
+                    ret_type.clone(),
+                ),
+            );
 
             let mut fn_body = Vec::<SHIR>::new();
             for expr in body
@@ -230,9 +234,13 @@ fn convert_body(
             }
         }
         Expression::FnCall { name, args } => {
-            let mut args_shir = Vec::<SHIR>::new();
+            let mut args_shir = Vec::<(SHIR, BasicType)>::new();
+            let (name, symbol) = symbols.lookup(name)?;
+            let name = Rc::clone(name);
+            let symbol = symbol.clone();
+            let (arg_types, ret_type) = symbol.as_function()?;
             for (j, arg) in args.iter().enumerate() {
-                let mut arg_shir = convert_body(&arg.upgrade()?.expr, parent, symbols, i)?;
+                let mut arg_shir = convert_body(&arg.upgrade()?.expr, parent, symbols, i + 1 + j)?;
                 if let SHIR::FnCall {
                     name,
                     args,
@@ -260,14 +268,12 @@ fn convert_body(
                     });
                     arg_shir = SHIR::Var(temp_var_id, *ret_type);
                 }
-                args_shir.push(arg_shir);
+                args_shir.push((arg_shir, arg_types[j].into_basic_type()?));
             }
-            let (name, symbol) = symbols.lookup(name)?;
-            let ret_type = symbol.as_function()?.into_basic_type()?;
             Some(SHIR::FnCall {
-                name: Rc::clone(name),
+                name,
                 args: args_shir,
-                ret_type,
+                ret_type: ret_type.into_basic_type()?,
             })
         }
         Expression::Deref(_) => todo!(),

@@ -95,6 +95,7 @@ impl TypeExpr {
             Self::f64 => Some(BasicType::Float64),
             Self::f32 => Some(BasicType::Float32),
             Self::Ptr(..) => Some(BasicType::Unsigned64),
+            Self::none => Some(BasicType::Irrelavent),
             _ => None,
         }
     }
