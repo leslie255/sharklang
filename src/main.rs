@@ -105,8 +105,8 @@ fn main() {
 }
 
 fn compile(src_path: String, output_path: String, file_format: FileFormat) {
-    let source = fs::read_to_string(src_path).unwrap();
-    let tokens = parse_into_tokens(&source);
+    let source = fs::read_to_string(src_path.clone()).unwrap();
+    let tokens = parse_into_tokens(&source, &src_path);
     let mut token_stream = TokenStream::from(&tokens);
 
     let ast = parse_tokens_into_ast(&mut token_stream);
@@ -120,8 +120,8 @@ fn compile(src_path: String, output_path: String, file_format: FileFormat) {
 }
 
 fn print_ir(src_path: String) {
-    let source = fs::read_to_string(src_path).unwrap();
-    let tokens = parse_into_tokens(&source);
+    let source = fs::read_to_string(src_path.clone()).unwrap();
+    let tokens = parse_into_tokens(&source, &src_path);
     let mut token_stream = TokenStream::from(&tokens);
 
     let ast = parse_tokens_into_ast(&mut token_stream);
@@ -135,8 +135,8 @@ fn print_help(src_path: String) {
 }
 
 fn print_ast(src_path: String) {
-    let source = fs::read_to_string(src_path).unwrap();
-    let tokens = parse_into_tokens(&source);
+    let source = fs::read_to_string(src_path.clone()).unwrap();
+    let tokens = parse_into_tokens(&source, &src_path);
     let mut token_stream = TokenStream::from(&tokens);
 
     let ast = parse_tokens_into_ast(&mut token_stream);
@@ -152,8 +152,8 @@ fn print_ast(src_path: String) {
 }
 
 fn print_tokens(src_path: String) {
-    let source = fs::read_to_string(src_path).unwrap();
-    let tokens = parse_into_tokens(&source);
+    let source = fs::read_to_string(src_path.clone()).unwrap();
+    let tokens = parse_into_tokens(&source, &src_path);
     for token in &tokens {
         println!("{:?}\t{}\t{}", token.content, token.position, token.len);
     }

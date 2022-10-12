@@ -1,6 +1,16 @@
-extern printf: (str: *u8);
+#include std.sharkh
 
 main: (args: [[u8]]) -> i32 = {
-    printf("hello, world\n");
+    num: u64 = 12345;
+    num2: u64 = 123;
+    printf("num  = %llu\n", num);
+    printf("num2 = %llu\n", num2);
+    
+    heap_str: *u8 = malloc(100);
+    strcpy(heap_str, "A string stored on the heap!!!\n");
+    strcat(heap_str, "Hello, world!!!\n");
+    printf("%s", heap_str);
+    free(heap_str);
     return 0;
 }
+

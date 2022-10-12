@@ -1,0 +1,6 @@
+extern malloc: (len: u64) -> *none;
+extern free: (ptr: *none);
+extern strcpy: (dest: *u8, src: *u8);
+extern strcat: (dest: *u8, str: *u8);
+extern memmove: (dest: *none, src: *none);
+extern printf: (fmt: *u8, arg: u64, arg: u64, arg: u64, arg: u64, arg: u64);

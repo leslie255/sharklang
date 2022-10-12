@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{fs, path::Path, rc::Rc};
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone)]
@@ -281,6 +281,9 @@ fn should_keep_looking(word: &String) -> bool {
         | "break" | "continue" | "~" | "&" | "$" | "*" | "//" | "\n" => return true,
         _ => (),
     }
+    if first_ch == '#' {
+        return chars.next_back() != Some('\n');
+    }
     // is a number
     if first_ch.is_numeric() {
         let mut has_dot = false;
@@ -303,13 +306,48 @@ fn should_keep_looking(word: &String) -> bool {
     false
 }
 
-pub fn parse_into_tokens(source: &String) -> Vec<Token> {
+pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Token> {
+    let source_file_parent_path = Path::new(source_file_path).parent().unwrap();
     let mut tokens = Vec::<Token>::new();
 
     let mut word_start = 0usize;
     let mut word = String::new();
     for (i, ch) in source.char_indices() {
         if !should_keep_looking(&word) {
+            let mut chars = word.chars();
+            if chars.next() == Some('#') {
+                let mut keyword = String::new();
+                while let Some(c) = chars.next() {
+                    if c.is_whitespace() {
+                        break;
+                    }
+                    keyword.push(c);
+                }
+                match keyword.as_str() {
+                    "include" => {
+                        let file_name = chars.take_while(|c| *c != '\n').collect::<String>();
+                        let joined_path = String::from(
+                            if let Some(s) = source_file_parent_path
+                                .clone()
+                                .join(file_name.clone())
+                                .to_str()
+                            {
+                                s
+                            } else {
+                                panic!("unable to resolve path for {file_name}");
+                            },
+                        );
+                        let file_content = if let Ok(s) = fs::read_to_string(joined_path.clone()) {
+                            s
+                        } else {
+                            panic!("unable to read file");
+                        };
+                        let mut included_tokens = parse_into_tokens(&file_content, &joined_path);
+                        tokens.append(&mut included_tokens);
+                    }
+                    _ => panic!("{keyword} is not a valid preprocessor keyword"),
+                }
+            }
             let last_ch = word.pop();
             if word.len() == 0 {
                 word.push(ch);
