@@ -1,10 +1,5 @@
-#![allow(unused)]
-
 use std::env;
 use std::fs;
-use std::io::Write;
-use std::path::Path;
-use std::rc::Weak;
 
 use compiler::compiler::compile_shir_into_mir;
 use compiler::shir::ast_into_shir;
@@ -134,6 +129,7 @@ fn print_ir(src_path: String) {
     println!("{:#?}", ir);
 }
 
+#[allow(unused_variables)]
 fn print_help(src_path: String) {
     todo!()
 }

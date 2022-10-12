@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenContent {
     RoundParenOpen,
@@ -167,13 +168,6 @@ pub struct Token {
 }
 
 impl Token {
-    fn new(content: TokenContent, position: usize, len: usize) -> Token {
-        Token {
-            content,
-            position,
-            len,
-        }
-    }
     fn eof() -> Token {
         Token {
             content: TokenContent::EOF,

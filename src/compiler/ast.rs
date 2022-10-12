@@ -1,8 +1,5 @@
 use std::{
-    cell::RefCell,
     fmt::Debug,
-    io::Cursor,
-    num::NonZeroU16,
     rc::{Rc, Weak},
 };
 
@@ -19,9 +16,9 @@ pub enum NumValue {
 impl std::fmt::Debug for NumValue {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::U(num) => write!(formatter, "{}u", num),
-            Self::I(num) => write!(formatter, "{}i", num),
-            Self::F(num) => write!(formatter, "{}f", num),
+            Self::U(num) => write!(formatter, "{}u", num)?,
+            Self::I(num) => write!(formatter, "{}i", num)?,
+            Self::F(num) => write!(formatter, "{}f", num)?,
         };
         return Ok(());
     }
@@ -39,16 +36,16 @@ impl NumValue {
 impl std::fmt::Display for NumValue {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::U(num) => write!(formatter, "{}u", num),
-            Self::I(num) => write!(formatter, "{}i", num),
-            Self::F(num) => write!(formatter, "{}f", num),
+            Self::U(num) => write!(formatter, "{}u", num)?,
+            Self::I(num) => write!(formatter, "{}i", num)?,
+            Self::F(num) => write!(formatter, "{}f", num)?,
         };
         return Ok(());
     }
 }
 
 #[derive(Debug, Clone)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, dead_code)]
 pub enum TypeExpr {
     u8,
     u16,
@@ -68,6 +65,7 @@ pub enum TypeExpr {
     Block(Vec<(Rc<String>, TypeExpr)>, Box<Self>), // args, return type
 }
 impl TypeExpr {
+    #[allow(unused)]
     fn is_equivalent(&self, rhs: &Self) -> bool {
         todo!()
     }
@@ -99,16 +97,9 @@ impl TypeExpr {
             _ => None,
         }
     }
-
-    /// Returns `true` if the type expr is [`Block`].
-    ///
-    /// [`Block`]: TypeExpr::Block
-    #[must_use]
-    pub fn is_block(&self) -> bool {
-        matches!(self, Self::Block(..))
-    }
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub enum Expression {
     Identifier(Rc<String>),
@@ -164,8 +155,6 @@ impl Expression {
     )> {
         if let Self::Def { name, dtype, rhs } = self {
             if let Some((args, ret_type)) = dtype.as_ref()?.as_block() {
-                let body: &Vec<Weak<ASTNode>> =
-                    unsafe { rhs.as_ref()?.as_ptr().as_ref()?.expr.as_block()? };
                 return Some((
                     name,
                     args,
@@ -334,7 +323,7 @@ pub fn parse_tokens_into_ast(token_stream: &mut TokenStream) -> AST {
 
 fn parse_expressions(ast: &mut AST, token_stream: &mut TokenStream) -> Option<ASTNode> {
     let current_token = token_stream.current();
-    let mut node: Option<ASTNode>;
+    let node: Option<ASTNode>;
     match &current_token.content {
         TokenContent::Number(num_str) => {
             node = Some(ASTNode {
@@ -357,7 +346,7 @@ fn parse_expressions(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AS
                 expr: Expression::CharLiteral(*val),
             });
         }
-        TokenContent::Identifier(id_name) => {
+        TokenContent::Identifier(_) => {
             node = parse_identifier(ast, token_stream);
         }
         TokenContent::Star => {
@@ -516,7 +505,6 @@ fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AST
                 expr: Expression::Identifier(Rc::clone(current_token.content.as_identifier()?)),
             };
             token_stream.next(); // equal sign
-            let rhs_pos = token_stream.next().position; // token after equal sign
             let rhs_node = parse_expressions(ast, token_stream).unwrap(); // TODO: error prompt if
             let assign_expr = Expression::Assign {
                 lhs: ast.add_to_node_pool(lhs_node),
@@ -590,9 +578,8 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
             _ => return None,
         }),
         TokenContent::RoundParenOpen => {
-            let pos = token_stream.current().position;
             let mut args = Vec::<(Rc<String>, TypeExpr)>::new();
-            let mut ret_type: Box<TypeExpr>;
+            let ret_type: Box<TypeExpr>;
             // parse arguments
             if token_stream.peek(1).content != TokenContent::RoundParenClose {
                 loop {

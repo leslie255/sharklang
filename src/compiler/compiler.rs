@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::{ast::NumValue, shir::*};
+use super::shir::*;
 use mir::ir::{
     DataType, Instruction as MIRInstr, Operand, OperandContent, OperationType as MIROpcode,
     Program as MIRProgram, TopLevelElement as MIRTopLevel,
@@ -21,7 +21,7 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
     for shir_top_level in &shir_program.body {
         match shir_top_level {
             SHIRTopLevel::Fn {
-                is_local,
+                is_local: _,
                 name,
                 body,
                 ret_type,
@@ -31,77 +31,58 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
                     fn_ret_type: *ret_type,
                 };
                 for shir in body {
-                    fn_body.append(&mut compile_instr(shir, &context));
+                    let instr = compile_instr(shir, &context, &mut fn_body);
+                    fn_body.push(instr);
                 }
                 mir_program
                     .content
                     .push(MIRTopLevel::FnDef(Rc::clone(name), fn_body));
             }
-            SHIRTopLevel::StaticVar { name, val } => todo!(),
+            SHIRTopLevel::StaticVar { name: _, val: _ } => todo!(),
         }
     }
     mir_program
 }
 
-fn compile_instr(shir: &SHIR, context: &Context) -> Vec<MIRInstr> {
+fn compile_instr(shir: &SHIR, context: &Context, target: &mut Vec<MIRInstr>) -> MIRInstr {
+    // TODO: when an operand is a function
     match shir {
         SHIR::Var(_, _) | SHIR::Const(_) => panic!(),
-        SHIR::VarAssign { id, dtype, rhs } => vec![MIRInstr {
+        SHIR::VarAssign { id, dtype, rhs } => MIRInstr {
             operation: MIROpcode::SetVar,
             operand0: Operand {
                 dtype: *dtype,
                 content: OperandContent::Var(*id),
             },
-            operand1: compile_oper(rhs, *dtype),
-        }],
-        SHIR::VarDef { id, dtype } => vec![MIRInstr {
+            operand1: compile_oper(rhs, *dtype, target),
+        },
+        SHIR::VarDef { id, dtype } => MIRInstr {
             operation: MIROpcode::DefVar,
             operand0: Operand {
                 dtype: *dtype,
                 content: OperandContent::Var(*id),
             },
             operand1: Operand::default(),
-        }],
+        },
         SHIR::FnCall {
             name,
             args,
-            ret_type,
-        } => {
-            let mut result = Vec::<MIRInstr>::new();
-            for (i, (arg_shir, arg_t)) in args.iter().enumerate() {
-                result.push(MIRInstr {
-                    operation: MIROpcode::SetArg,
-                    operand0: Operand {
-                        dtype: *arg_t,
-                        content: OperandContent::Arg(i as u64),
-                    },
-                    operand1: compile_oper(arg_shir, *arg_t),
-                });
-            }
-            result.push(MIRInstr {
-                operation: MIROpcode::CallFn,
-                operand0: Operand {
-                    dtype: DataType::Irrelavent,
-                    content: OperandContent::Fn(Rc::clone(name)),
-                },
-                operand1: Operand::default(),
-            });
-            result
-        }
-        SHIR::ReturnVoid => vec![MIRInstr {
+            ret_type: _,
+        } => compile_fn_call(name, args, target),
+        SHIR::ReturnVoid => MIRInstr {
             operation: MIROpcode::RetVoid,
             operand0: Operand::default(),
             operand1: Operand::default(),
-        }],
-        SHIR::ReturnValue(val) => vec![MIRInstr {
+        },
+        SHIR::ReturnValue(val) => MIRInstr {
             operation: MIROpcode::RetVal,
-            operand0: compile_oper(val, context.fn_ret_type),
+            operand0: compile_oper(val, context.fn_ret_type, target),
             operand1: Operand::default(),
-        }],
+        },
     }
 }
 
-fn compile_oper(shir: &SHIR, expected_type: DataType) -> Operand {
+fn compile_oper(shir: &SHIR, expected_type: DataType, target: &mut Vec<MIRInstr>) -> Operand {
     match shir {
         SHIR::Var(id, dtype) => Operand {
             dtype: *dtype,
@@ -116,8 +97,47 @@ fn compile_oper(shir: &SHIR, expected_type: DataType) -> Operand {
                 dtype: expected_type,
                 content: OperandContent::SVar(Rc::new(format!("strliteral_{str_id}"))),
             },
-            SHIRConst::Char(ch) => todo!(),
+            SHIRConst::Char(_) => todo!(),
         },
+        SHIR::FnCall {
+            name,
+            args,
+            ret_type,
+        } => {
+            let fn_call = compile_fn_call(name, args, target);
+            target.push(fn_call);
+            Operand {
+                dtype: *ret_type,
+                content: OperandContent::Result,
+            }
+        }
         _ => panic!(),
+    }
+}
+
+#[must_use]
+fn compile_fn_call(
+    name: &Rc<String>,
+    args: &Vec<(SHIR, DataType)>,
+    target: &mut Vec<MIRInstr>,
+) -> MIRInstr {
+    for (i, (arg_shir, arg_t)) in args.iter().enumerate() {
+        let rhs_oper = compile_oper(arg_shir, *arg_t, target);
+        target.push(MIRInstr {
+            operation: MIROpcode::SetArg,
+            operand0: Operand {
+                dtype: *arg_t,
+                content: OperandContent::Arg(i as u64),
+            },
+            operand1: rhs_oper,
+        });
+    }
+    MIRInstr {
+        operation: MIROpcode::CallFn,
+        operand0: Operand {
+            dtype: DataType::Irrelavent,
+            content: OperandContent::Fn(Rc::clone(name)),
+        },
+        operand1: Operand::default(),
     }
 }

@@ -1,15 +1,12 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::hash;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::rc::Rc;
-use std::rc::Weak;
 
 use mir::ir::DataType as BasicType;
 
 use super::ast::*;
-use super::tokens::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct SHIRProgram {
@@ -17,6 +14,7 @@ pub struct SHIRProgram {
     pub strliteral_pool: Vec<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum SHIRTopLevel {
     Fn {
@@ -98,6 +96,7 @@ impl SymbolTable {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Symbol {
     Function(Vec<TypeExpr>, TypeExpr), // name, expected type
@@ -120,6 +119,7 @@ impl Symbol {
             None
         }
     }
+    #[allow(dead_code)]
     pub fn as_type_name(&self) -> Option<&TypeExpr> {
         if let Self::TypeName(v) = self {
             Some(v)
@@ -220,14 +220,14 @@ fn convert_body(
         }
         Expression::Assign { lhs, rhs } => {
             let lhs_expr = &lhs.upgrade()?.expr;
-            if let Some((name, symbol)) = symbols.lookup(lhs_expr.as_identifier()?) {
+            if let Some((_, symbol)) = symbols.lookup(lhs_expr.as_identifier()?) {
                 let (var_type, var_id) = symbol.as_variable()?;
                 Some(SHIR::VarAssign {
                     id: var_id,
                     dtype: var_type.into_basic_type()?,
                     rhs: Box::new(convert_body(&rhs.upgrade()?.expr, parent, symbols, i)?),
                 })
-            } else if let Some(deref) = lhs_expr.as_deref() {
+            } else if let Some(_) = lhs_expr.as_deref() {
                 todo!()
             } else {
                 None
@@ -242,8 +242,8 @@ fn convert_body(
             for (j, arg) in args.iter().enumerate() {
                 let mut arg_shir = convert_body(&arg.upgrade()?.expr, parent, symbols, i + 1 + j)?;
                 if let SHIR::FnCall {
-                    name,
-                    args,
+                    name: _,
+                    args: _,
                     ret_type,
                 } = &arg_shir
                 {
@@ -286,11 +286,11 @@ fn convert_body(
             Some(s)
         }
         Expression::Block(_) => None,
-        Expression::Loop(body) => todo!(),
+        Expression::Loop(_) => todo!(),
         Expression::Return(node) => {
             if let Some(node) = node {
                 let node = &unsafe { node.as_ptr().as_ref()? }.expr;
-                let mut s = convert_body(node, parent, symbols, i)?;
+                let s = convert_body(node, parent, symbols, i)?;
                 Some(SHIR::ReturnValue(Box::new(s)))
             } else {
                 Some(SHIR::ReturnVoid)
