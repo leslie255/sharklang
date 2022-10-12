@@ -1,6 +1,4 @@
-test: (i: i64) -> i64 = {
-    return 1;
-}
+extern printf: (str: *u8);
 
 main: (args: [[u8]]) -> i32 = {
     printf("hello, world\n");

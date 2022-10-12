@@ -66,10 +66,11 @@ pub enum TypeExpr {
 }
 impl TypeExpr {
     #[allow(unused)]
-    fn is_equivalent(&self, rhs: &Self) -> bool {
+    pub fn is_equivalent(&self, rhs: &Self) -> bool {
         todo!()
     }
-    fn as_block(&self) -> Option<(&Vec<(Rc<String>, TypeExpr)>, &Box<TypeExpr>)> {
+
+    pub fn as_block(&self) -> Option<(&Vec<(Rc<String>, TypeExpr)>, &Box<TypeExpr>)> {
         if let Self::Block(args, ret_type) = self {
             Some((args, ret_type))
         } else {
@@ -97,6 +98,7 @@ impl TypeExpr {
             _ => None,
         }
     }
+
 }
 
 #[allow(dead_code)]
@@ -133,6 +135,8 @@ pub enum Expression {
     Return(Option<Weak<ASTNode>>),
     Break,
     Continue,
+
+    Extern(Rc<String>, TypeExpr),
 
     RawASM(Rc<String>),
 }
@@ -179,6 +183,14 @@ impl Expression {
     pub fn as_deref(&self) -> Option<&Weak<ASTNode>> {
         if let Self::Deref(v) = self {
             Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_extern(&self) -> Option<(&Rc<String>, &TypeExpr)> {
+        if let Self::Extern(a, b) = self {
+            Some((a, b))
         } else {
             None
         }
@@ -269,6 +281,7 @@ impl Debug for Expression {
             }
             Self::Break => formatter.debug_tuple("Break").finish(),
             Self::Continue => formatter.debug_tuple("Continue").finish(),
+            Self::Extern(arg0, arg1) => formatter.debug_tuple("Extern").field(arg0).field(arg1).finish(),
         }
     }
 }
@@ -325,6 +338,19 @@ fn parse_expressions(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AS
     let current_token = token_stream.current();
     let node: Option<ASTNode>;
     match &current_token.content {
+        TokenContent::Extern => {
+            let pos = current_token.position;
+            let name = Rc::clone(token_stream.next().content.as_identifier()?);
+            if token_stream.next().content != TokenContent::Colon {
+                todo!()
+            }
+            token_stream.next();
+            let dtype = parse_type_expr(token_stream)?;
+            node = Some(ASTNode {
+                pos,
+                expr: Expression::Extern(name, dtype),
+            })
+        }
         TokenContent::Number(num_str) => {
             node = Some(ASTNode {
                 pos: current_token.position,

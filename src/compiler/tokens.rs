@@ -26,6 +26,7 @@ pub enum TokenContent {
     If,
     Else,
     Func,
+    Extern,
     Return,
     ReturnArrow,
     Break,
@@ -216,6 +217,7 @@ impl Token {
             "if" => return_token!(TokenContent::If, 1),
             "else" => return_token!(TokenContent::Else, 1),
             "func" => return_token!(TokenContent::Func, 1),
+            "extern" => return_token!(TokenContent::Extern, 1),
             "return" => return_token!(TokenContent::Return, 1),
             "->" => return_token!(TokenContent::ReturnArrow, 1),
             "break" => return_token!(TokenContent::Break, 1),
@@ -275,8 +277,8 @@ fn should_keep_looking(word: &String) -> bool {
     // is keyword
     match word.as_str() {
         "(" | ")" | "[" | "]" | "{" | "}" | "=" | "true" | "false" | ";" | "," | "." | ":"
-        | "_" | "let" | "loop" | "if" | "else" | "func" | "return" | "-" | "->" | "break"
-        | "continue" | "~" | "&" | "$" | "*" | "//" | "\n" => return true,
+        | "_" | "let" | "loop" | "if" | "else" | "func" | "extern" | "return" | "-" | "->"
+        | "break" | "continue" | "~" | "&" | "$" | "*" | "//" | "\n" => return true,
         _ => (),
     }
     // is a number

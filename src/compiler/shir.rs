@@ -27,6 +27,10 @@ pub enum SHIRTopLevel {
         name: Rc<String>,
         val: SHIRConst,
     },
+    ExternFn {
+        name: Rc<String>,
+        ret_type: BasicType,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -168,6 +172,19 @@ pub fn ast_into_shir(ast: AST) -> SHIRProgram {
                 body: fn_body,
                 ret_type: ret_type.into_basic_type().unwrap(), // TODO: return structures
             });
+        } else if let Some((name, dtype)) = root_node.expr.as_extern() {
+            let (args, ret_type) = dtype.as_block().unwrap();
+            symbols.global.insert(
+                Rc::clone(name),
+                Symbol::Function(
+                    args.iter().map(|(_, t)| t.clone()).collect(),
+                    *ret_type.clone(),
+                ),
+            );
+            program.body.push(SHIRTopLevel::ExternFn {
+                name: Rc::clone(name),
+                ret_type: ret_type.into_basic_type().unwrap(),
+            })
         }
     }
     program.strliteral_pool = ast.strliteral_pool;
@@ -298,6 +315,7 @@ fn convert_body(
         }
         Expression::Break => todo!(),
         Expression::Continue => todo!(),
+        Expression::Extern(_, _) => panic!(),
         Expression::RawASM(_) => todo!(),
     }
 }

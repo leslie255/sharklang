@@ -39,6 +39,11 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
                     .push(MIRTopLevel::FnDef(Rc::clone(name), fn_body));
             }
             SHIRTopLevel::StaticVar { name: _, val: _ } => todo!(),
+            SHIRTopLevel::ExternFn { name, ret_type: _ } => {
+                mir_program
+                    .content
+                    .push(MIRTopLevel::Extern(Rc::clone(name)));
+            }
         }
     }
     mir_program
@@ -95,7 +100,7 @@ fn compile_oper(shir: &SHIR, expected_type: DataType, target: &mut Vec<MIRInstr>
             },
             SHIRConst::String(str_id) => Operand {
                 dtype: expected_type,
-                content: OperandContent::SVar(Rc::new(format!("strliteral_{str_id}"))),
+                content: OperandContent::Label(Rc::new(format!("strliteral_{str_id}"))),
             },
             SHIRConst::Char(_) => todo!(),
         },
