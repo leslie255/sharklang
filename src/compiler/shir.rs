@@ -207,9 +207,9 @@ fn convert_body(
         Expression::CharLiteral(ch) => Some(SHIR::Const(SHIRConst::Char(*ch))),
         Expression::Def { name, dtype, rhs } => {
             let dtype = if let Some(t) = dtype {
-                t
+                t.clone()
             } else {
-                return None;
+                suggest_typeexpr(&rhs.as_ref()?.upgrade()?.expr, symbols)?
             };
             let var_id = {
                 let mut hasher = DefaultHasher::new();
@@ -317,5 +317,34 @@ fn convert_body(
         Expression::Continue => todo!(),
         Expression::Extern(_, _) => panic!(),
         Expression::RawASM(_) => todo!(),
+    }
+}
+
+#[must_use]
+fn suggest_typeexpr(expr: &Expression, symbols: &SymbolTable) -> Option<TypeExpr> {
+    match expr {
+        Expression::Identifier(id) => Some(symbols.lookup(id)?.1.as_variable()?.0.clone()),
+        Expression::NumLiteral(num) => Some(match num {
+            NumValue::U(_) => TypeExpr::u64,
+            NumValue::I(_) => TypeExpr::i64,
+            NumValue::F(_) => TypeExpr::f64,
+        }),
+        Expression::StrLiteral(_) => Some(TypeExpr::Ptr(Box::new(TypeExpr::u8))),
+        Expression::CharLiteral(_) => Some(TypeExpr::u8),
+        Expression::FnCall { name, args: _ } => {
+            Some(symbols.lookup(name)?.1.as_function()?.1.clone())
+        }
+        Expression::Deref(child) => Some(
+            *suggest_typeexpr(&child.upgrade()?.expr, symbols)?
+                .as_ptr()?
+                .clone(),
+        ),
+        Expression::TakeAddr(child) => Some(TypeExpr::Ptr(Box::new(suggest_typeexpr(
+            &child.upgrade()?.expr,
+            symbols,
+        )?))),
+        Expression::TypeCast(_, t) => Some(t.clone()),
+        Expression::Block(_) => todo!(),
+        _ => None,
     }
 }

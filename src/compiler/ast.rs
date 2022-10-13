@@ -99,6 +99,14 @@ impl TypeExpr {
         }
     }
 
+
+    pub fn as_ptr(&self) -> Option<&Box<Self>> {
+        if let Self::Ptr(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
 }
 
 #[allow(dead_code)]
