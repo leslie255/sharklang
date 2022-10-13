@@ -3,8 +3,10 @@ use std::fs;
 
 use compiler::compiler::compile_shir_into_mir;
 use compiler::shir::ast_into_shir;
+use compiler::shir::SHIRProgram;
 use compiler::tokens::*;
 use mir::fileformat::FileFormat;
+use mir::ir::Program;
 
 use crate::compiler::ast::*;
 
@@ -70,6 +72,17 @@ fn main() {
                     panic!();
                 }
             }
+            "-m" | "--mir" => {
+                if !src_path.is_empty() {
+                    print_mir(src_path);
+                    return;
+                } else {
+                    print_help(arg0);
+                    println!();
+                    println!("expects a source file");
+                    panic!();
+                }
+            }
             "-f" | "--format" => {
                 file_format = match args.next() {
                     Some(f) => match f.to_lowercase().as_str() {
@@ -104,29 +117,52 @@ fn main() {
     compile(src_path, output_path, file_format);
 }
 
-fn compile(src_path: String, output_path: String, file_format: FileFormat) {
-    let source = fs::read_to_string(src_path.clone()).unwrap();
-    let tokens = parse_into_tokens(&source, &src_path);
-    let mut token_stream = TokenStream::from(&tokens);
-
-    let ast = parse_tokens_into_ast(&mut token_stream);
-    let shir = ast_into_shir(ast);
-    let mir = compile_shir_into_mir(shir);
-    let compiled_asm = mir::generation::x86_64::generate_asm(mir, file_format);
-    if fs::write(output_path, compiled_asm).is_err() {
-        println!("unable to write to output file path");
-        std::process::exit(1);
-    }
+struct Compiler {
+    src_path: String,
+    content: Option<String>,
+    tokens: Option<Vec<Token>>,
+    ast: Option<AST>,
+    shir: Option<SHIRProgram>,
+    mir: Option<Program>,
 }
 
-fn print_ir(src_path: String) {
-    let source = fs::read_to_string(src_path.clone()).unwrap();
-    let tokens = parse_into_tokens(&source, &src_path);
-    let mut token_stream = TokenStream::from(&tokens);
-
-    let ast = parse_tokens_into_ast(&mut token_stream);
-    let ir = ast_into_shir(ast);
-    println!("{:#?}", ir);
+impl Compiler {
+    fn new(src_path: String) -> Compiler {
+        Compiler {
+            src_path: src_path.clone(),
+            content: Some(fs::read_to_string(src_path).unwrap()),
+            tokens: None,
+            ast: None,
+            shir: None,
+            mir: None,
+        }
+    }
+    fn generate_tokens(mut self) -> Compiler {
+        self.tokens = Some(parse_into_tokens(
+            &self.content.as_ref().unwrap(),
+            &self.src_path,
+        ));
+        self
+    }
+    fn generate_ast(mut self) -> Compiler {
+        let mut token_stream = TokenStream::from(&self.tokens.as_ref().unwrap());
+        self.ast = Some(parse_tokens_into_ast(&mut token_stream));
+        self.tokens = None;
+        self
+    }
+    fn generate_shir(mut self) -> Compiler {
+        self.shir = Some(ast_into_shir(self.ast.unwrap()));
+        self.ast = None;
+        self
+    }
+    fn generate_mir(mut self) -> Compiler {
+        self.mir = Some(compile_shir_into_mir(self.shir.unwrap()));
+        self.shir = None;
+        self
+    }
+    fn finish(self, file_format: FileFormat) -> String {
+        mir::generation::x86_64::generate_asm(self.mir.unwrap(), file_format)
+    }
 }
 
 #[allow(unused_variables)]
@@ -134,13 +170,46 @@ fn print_help(src_path: String) {
     todo!()
 }
 
+fn compile(src_path: String, output_path: String, file_format: FileFormat) {
+    let compiled_asm = Compiler::new(src_path)
+        .generate_tokens()
+        .generate_ast()
+        .generate_shir()
+        .generate_mir()
+        .finish(file_format);
+    if fs::write(output_path, compiled_asm).is_err() {
+        println!("unable to write to output file path");
+        std::process::exit(1);
+    }
+}
+
+fn print_mir(src_path: String) {
+    let mir = Compiler::new(src_path)
+        .generate_tokens()
+        .generate_ast()
+        .generate_shir()
+        .generate_mir()
+        .mir
+        .unwrap();
+    println!("{:#?}", mir);
+}
+
+fn print_ir(src_path: String) {
+    let ir = Compiler::new(src_path)
+        .generate_tokens()
+        .generate_ast()
+        .generate_shir()
+        .shir
+        .unwrap();
+    println!("{:#?}", ir);
+}
+
 fn print_ast(src_path: String) {
-    let source = fs::read_to_string(src_path.clone()).unwrap();
-    let tokens = parse_into_tokens(&source, &src_path);
-    let mut token_stream = TokenStream::from(&tokens);
-
-    let ast = parse_tokens_into_ast(&mut token_stream);
-
+    let ast = Compiler::new(src_path)
+        .generate_tokens()
+        .generate_ast()
+        .ast
+        .unwrap();
     println!("String literals:");
     for (i, str) in ast.strliteral_pool.iter().enumerate() {
         println!("{}\t{:?}", i, str);
@@ -152,8 +221,7 @@ fn print_ast(src_path: String) {
 }
 
 fn print_tokens(src_path: String) {
-    let source = fs::read_to_string(src_path.clone()).unwrap();
-    let tokens = parse_into_tokens(&source, &src_path);
+    let tokens = Compiler::new(src_path).generate_tokens().tokens.unwrap();
     for token in &tokens {
         println!("{:?}\t{}\t{}", token.content, token.position, token.len);
     }

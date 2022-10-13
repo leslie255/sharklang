@@ -531,7 +531,7 @@ fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AST
                 expr: Expression::Identifier(Rc::clone(current_token.content.as_identifier()?)),
             };
             token_stream.next(); // equal sign
-            let rhs_node = parse_expressions(ast, token_stream).unwrap(); // TODO: error prompt if
+            let rhs_node = parse_expressions(ast, token_stream)?; // TODO: error prompt if
             let assign_expr = Expression::Assign {
                 lhs: ast.add_to_node_pool(lhs_node),
                 rhs: ast.add_to_node_pool(rhs_node),
@@ -623,7 +623,7 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
                     } else {
                         todo!()
                     };
-                    args.push((arg_name, type_expr));
+                    args.push((arg_name.clone(), type_expr));
                     let t = token_stream.next();
                     if t.content == TokenContent::Comma {
                         continue;
@@ -655,7 +655,7 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
     }
 }
 
-fn parse_str_content<'a>(src: &String) -> String {
+fn parse_str_content(src: &String) -> String {
     let mut new_str = String::new();
     let mut iter = src.chars();
     loop {
@@ -683,7 +683,7 @@ fn parse_str_content<'a>(src: &String) -> String {
     new_str
 }
 
-fn parse_numval<'a>(src: &String) -> Option<NumValue> {
+fn parse_numval(src: &String) -> Option<NumValue> {
     if src.contains('.') {
         if let Ok(f) = src.parse::<f64>() {
             Some(NumValue::F(f))
