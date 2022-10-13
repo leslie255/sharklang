@@ -52,7 +52,7 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
 fn compile_instr(shir: &SHIR, context: &Context, target: &mut Vec<MIRInstr>) -> MIRInstr {
     // TODO: when an operand is a function
     match shir {
-        SHIR::Var(_, _) | SHIR::Const(_) => panic!(),
+        SHIR::Var(_, _) | SHIR::Const(_) | SHIR::Arg(_, _) => panic!(),
         SHIR::VarAssign { id, dtype, rhs } => MIRInstr {
             operation: MIROpcode::SetVar,
             operand0: Operand {
@@ -103,6 +103,10 @@ fn compile_oper(shir: &SHIR, expected_type: DataType, target: &mut Vec<MIRInstr>
                 content: OperandContent::Label(Rc::new(format!("strliteral_{str_id}"))),
             },
             SHIRConst::Char(_) => todo!(),
+        },
+        SHIR::Arg(id, dtype) => Operand {
+            dtype: *dtype,
+            content: OperandContent::Arg(*id),
         },
         SHIR::FnCall {
             name,

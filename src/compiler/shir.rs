@@ -44,6 +44,7 @@ pub enum SHIRConst {
 pub enum SHIR {
     Var(u64, BasicType),
     Const(SHIRConst),
+    Arg(u64, BasicType),
     VarAssign {
         id: u64,
         dtype: BasicType,
@@ -71,6 +72,7 @@ impl SHIR {
                 dtype,
                 rhs: _,
             }
+            | SHIR::Arg(_, dtype)
             | SHIR::VarDef { id: _, dtype }
             | SHIR::FnCall {
                 name: _,
@@ -153,6 +155,28 @@ pub fn ast_into_shir(ast: AST) -> SHIRProgram {
             );
 
             let mut fn_body = Vec::<SHIR>::new();
+            // load arguments into variables
+            for (i, (arg_name, arg_t)) in args.iter().enumerate() {
+                let arg_id = {
+                    let mut hasher = DefaultHasher::new();
+                    arg_name.hash(&mut hasher);
+                    hasher.finish()
+                };
+                symbols
+                    .local
+                    .insert(Rc::clone(arg_name), Symbol::Variable(arg_t.clone(), arg_id));
+                let arg_t_basic = arg_t.into_basic_type().unwrap();
+                fn_body.push(SHIR::VarDef {
+                    id: arg_id,
+                    dtype: arg_t_basic,
+                });
+                fn_body.push(SHIR::VarAssign {
+                    id: arg_id,
+                    dtype: arg_t_basic,
+                    rhs: Box::new(SHIR::Arg(i as u64, arg_t_basic)),
+                });
+            }
+            // convert body
             for expr in body
                 .iter()
                 .filter_map(|w| unsafe { w.as_ptr().as_ref() })
@@ -344,7 +368,7 @@ fn suggest_typeexpr(expr: &Expression, symbols: &SymbolTable) -> Option<TypeExpr
             symbols,
         )?))),
         Expression::TypeCast(_, t) => Some(t.clone()),
-        Expression::Block(_) => todo!(),
+        Expression::Block(_) => Some(TypeExpr::Block(Vec::new(), Box::new(TypeExpr::none))),
         _ => None,
     }
 }
