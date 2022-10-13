@@ -1,11 +1,6 @@
 #include std.sharkh
 
-println: (s: *u8) = {
-	printf("%s\n", s);
-	return;
-}
-
 main: () -> i32 = {
-    println("hello, world\n");
+    "hello, world\n";
     return 0;
 }

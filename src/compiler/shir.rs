@@ -82,6 +82,18 @@ impl SHIR {
             SHIR::Const(_) | SHIR::ReturnVoid | SHIR::ReturnValue(_) => (),
         }
     }
+    #[must_use]
+    fn as_string(&self) -> Option<usize> {
+        if let SHIR::Const(c) = self {
+            if let SHIRConst::String(s) = c {
+                Some(*s)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -138,6 +150,10 @@ impl Symbol {
 pub fn ast_into_shir(ast: AST) -> SHIRProgram {
     let mut program = SHIRProgram::default();
     let mut symbols = SymbolTable::default();
+
+    // for the implicit function call syntax
+    let println_str = Rc::new("println".to_string());
+
     for (i, root_node) in ast
         .root_nodes
         .iter()
@@ -184,7 +200,18 @@ pub fn ast_into_shir(ast: AST) -> SHIRProgram {
             {
                 let s = convert_body(expr, &mut fn_body, &mut symbols, i);
                 if let Some(s) = s {
-                    fn_body.push(s);
+                    if let Some(str_id) = s.as_string() {
+                        fn_body.push(SHIR::FnCall {
+                            name: Rc::clone(&println_str),
+                            args: vec![(
+                                SHIR::Const(SHIRConst::String(str_id)),
+                                BasicType::Unsigned64,
+                            )],
+                            ret_type: BasicType::Irrelavent,
+                        })
+                    } else {
+                        fn_body.push(s);
+                    }
                 } else {
                     panic!("failed to convert to SHIR: {:?}", expr);
                 }
