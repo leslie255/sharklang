@@ -1,6 +1,6 @@
 #include std.sharkh
 
 main: () -> i32 = {
-    "hello, world\n";
+    "hello, world\n";   // implicit `println` calling
     return 0;
 };

@@ -213,7 +213,6 @@ pub struct Token {
 }
 
 impl Token {
-    
     pub fn expects_identifier(&self) -> Result<&Rc<String>, CompileError> {
         if let TokenContent::Identifier(v) = &self.content {
             Ok(&v)
@@ -267,7 +266,8 @@ impl Token {
             ";" => return_token!(TokenContent::Semicolon, 1),
             "," => return_token!(TokenContent::Comma, 1),
             "." => return_token!(TokenContent::Period, 1),
-            ":" | "_" => return_token!(TokenContent::Colon, 1),
+            ":" => return_token!(TokenContent::Colon, 1),
+            "_" => return_token!(TokenContent::Underscore, 1),
             "let" => return_token!(TokenContent::Let, 1),
             "loop" => return_token!(TokenContent::Loop, 1),
             "if" => return_token!(TokenContent::If, 1),
@@ -367,12 +367,30 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
 
     let mut word_start = 0usize;
     let mut word = String::new();
-    for (i, ch) in source.char_indices() {
+    let mut chars = source.char_indices().peekable();
+    loop {
+        let (mut i, mut ch) = match &chars.next() {
+            Some((i, ch)) => (*i, *ch),
+            None => break,
+        };
+        if ch == '/' {
+            if let Some((_, peek)) = &chars.peek() {
+                if *peek == '/' {
+                    while ch != '\n' {
+                        (i, ch) = match &chars.next() {
+                            Some((i, ch)) => (*i, *ch),
+                            None => break,
+                        };
+                    }
+                    word.push(ch);
+                }
+            }
+        }
         if !should_keep_looking(&word) {
-            let mut chars = word.chars();
-            if chars.next() == Some('#') {
+            let mut word_chars = word.chars();
+            if word_chars.next() == Some('#') {
                 let mut keyword = String::new();
-                while let Some(c) = chars.next() {
+                while let Some(c) = word_chars.next() {
                     if c.is_whitespace() {
                         break;
                     }
@@ -380,7 +398,7 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
                 }
                 match keyword.as_str() {
                     "include" => {
-                        let file_name = chars.take_while(|c| *c != '\n').collect::<String>();
+                        let file_name = word_chars.take_while(|c| *c != '\n').collect::<String>();
                         let joined_path = String::from(
                             if let Some(s) = source_file_parent_path
                                 .clone()
