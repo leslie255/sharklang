@@ -1,7 +1,8 @@
-use std::env;
+pub(crate) use std::env;
 use std::fs;
 
 use compiler::compiler::compile_shir_into_mir;
+use compiler::error::ErrorCollector;
 use compiler::shir::ast_into_shir;
 use compiler::shir::SHIRProgram;
 use compiler::tokens::*;
@@ -118,8 +119,9 @@ fn main() {
 }
 
 struct Compiler {
+    error_collector: ErrorCollector,
     src_path: String,
-    content: Option<String>,
+    content: Box<String>,
     tokens: Option<Vec<Token>>,
     ast: Option<AST>,
     shir: Option<SHIRProgram>,
@@ -128,9 +130,14 @@ struct Compiler {
 
 impl Compiler {
     fn new(src_path: String) -> Compiler {
+        let content = fs::read_to_string(src_path.clone()).unwrap();
         Compiler {
+            error_collector: ErrorCollector {
+                file_name: src_path.clone(),
+                errors: Vec::new(),
+            },
             src_path: src_path.clone(),
-            content: Some(fs::read_to_string(src_path).unwrap()),
+            content: Box::new(content),
             tokens: None,
             ast: None,
             shir: None,
@@ -138,27 +145,46 @@ impl Compiler {
         }
     }
     fn generate_tokens(mut self) -> Compiler {
-        self.tokens = Some(parse_into_tokens(
-            &self.content.as_ref().unwrap(),
-            &self.src_path,
-        ));
+        if !self.error_collector.errors.is_empty() {
+            return self;
+        }
+        self.tokens = Some(parse_into_tokens(&self.content, &self.src_path));
         self
     }
     fn generate_ast(mut self) -> Compiler {
-        let mut token_stream = TokenStream::from(&self.tokens.as_ref().unwrap());
-        self.ast = Some(parse_tokens_into_ast(&mut token_stream));
+        if !self.error_collector.errors.is_empty() {
+            return self;
+        }
+        self.ast = Some(parse_tokens_into_ast(
+            &mut TokenStream::from(&self.tokens.as_ref().unwrap()),
+            &mut self.error_collector,
+        ));
         self.tokens = None;
         self
     }
     fn generate_shir(mut self) -> Compiler {
+        if !self.error_collector.errors.is_empty() {
+            return self;
+        }
         self.shir = Some(ast_into_shir(self.ast.unwrap()));
         self.ast = None;
         self
     }
     fn generate_mir(mut self) -> Compiler {
+        if !self.error_collector.errors.is_empty() {
+            return self;
+        }
         self.mir = Some(compile_shir_into_mir(self.shir.unwrap()));
         self.shir = None;
         self
+    }
+    fn dump_errs(mut self) -> Compiler {
+        if !self.error_collector.errors.is_empty() {
+            self.error_collector.print_errs(&self.content);
+            std::process::exit(1);
+        } else {
+            self
+        }
     }
     fn finish(self, file_format: FileFormat) -> String {
         mir::generation::x86_64::generate_asm(self.mir.unwrap(), file_format)
@@ -176,6 +202,7 @@ fn compile(src_path: String, output_path: String, file_format: FileFormat) {
         .generate_ast()
         .generate_shir()
         .generate_mir()
+        .dump_errs()
         .finish(file_format);
     if fs::write(output_path, compiled_asm).is_err() {
         println!("unable to write to output file path");
@@ -189,6 +216,7 @@ fn print_mir(src_path: String) {
         .generate_ast()
         .generate_shir()
         .generate_mir()
+        .dump_errs()
         .mir
         .unwrap();
     println!("{:#?}", mir);
@@ -199,6 +227,7 @@ fn print_ir(src_path: String) {
         .generate_tokens()
         .generate_ast()
         .generate_shir()
+        .dump_errs()
         .shir
         .unwrap();
     println!("{:#?}", ir);
@@ -208,6 +237,7 @@ fn print_ast(src_path: String) {
     let ast = Compiler::new(src_path)
         .generate_tokens()
         .generate_ast()
+        .dump_errs()
         .ast
         .unwrap();
     println!("String literals:");

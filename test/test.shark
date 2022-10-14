@@ -3,4 +3,4 @@
 main: () -> i32 = {
     "hello, world\n";
     return 0;
-}
+};

@@ -1,5 +1,7 @@
 use std::{fs, path::Path, rc::Rc};
 
+use super::error::CompileError;
+
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenContent {
@@ -37,7 +39,6 @@ pub enum TokenContent {
     Star,
 
     SingleLineCommentStart,
-    NewLine,
 
     RawASM(Rc<String>),
 
@@ -66,6 +67,49 @@ impl TokenContent {
     #[must_use]
     pub fn is_string(&self) -> bool {
         matches!(self, Self::String(..))
+    }
+
+    /// Name of the token, displayed during a syntax error
+    #[must_use]
+    pub fn name(&self) -> String {
+        match self {
+            TokenContent::RoundParenOpen => "RoundParenOpen".to_string(),
+            TokenContent::RoundParenClose => "RoundParenClose".to_string(),
+            TokenContent::RectParenOpen => "RectParenOpen".to_string(),
+            TokenContent::RectParenClose => "RectParenClose".to_string(),
+            TokenContent::BigParenOpen => "BigParenOpen".to_string(),
+            TokenContent::BigParenClose => "BigParenClose".to_string(),
+            TokenContent::Equal => "Equal".to_string(),
+            TokenContent::True => "`true`".to_string(),
+            TokenContent::False => "`false`".to_string(),
+            TokenContent::Semicolon => "Semicolon".to_string(),
+            TokenContent::Period => "Period".to_string(),
+            TokenContent::Comma => "Comma".to_string(),
+            TokenContent::Colon => "Colon".to_string(),
+            TokenContent::Underscore => "Underscore".to_string(),
+            TokenContent::Number(_) => "Number".to_string(),
+            TokenContent::String(_) => "String".to_string(),
+            TokenContent::Char(_) => "Char".to_string(),
+            TokenContent::Identifier(_) => "Identifier".to_string(),
+            TokenContent::Let => "`let`".to_string(),
+            TokenContent::Loop => "`loop`".to_string(),
+            TokenContent::If => "`if`".to_string(),
+            TokenContent::Else => "`else`".to_string(),
+            TokenContent::Func => "`func`".to_string(),
+            TokenContent::Extern => "`extern`".to_string(),
+            TokenContent::Return => "`return`".to_string(),
+            TokenContent::ReturnArrow => "ReturnArrow".to_string(),
+            TokenContent::Break => "`break`".to_string(),
+            TokenContent::Continue => "`continue`".to_string(),
+            TokenContent::Squiggle => "Squiggle".to_string(),
+            TokenContent::And => "And".to_string(),
+            TokenContent::Dollar => "Dollar".to_string(),
+            TokenContent::Star => "Star".to_string(),
+            TokenContent::SingleLineCommentStart => "SingleLineCommentStart".to_string(),
+            TokenContent::RawASM(_) => "RawASM".to_string(),
+            TokenContent::Unknown => "UNKNOWN".to_string(),
+            TokenContent::EOF => "EOF".to_string(),
+        }
     }
 }
 impl Default for TokenContent {
@@ -117,13 +161,13 @@ impl<'a> TokenStream<'a> {
             None => &self.eof,
         }
     }
-    pub fn peek(&self, i: usize) -> Token {
+    pub fn peek(&self, i: usize) -> &Token {
         match self
             .tokens
             .get(if self.has_started { self.i + i } else { 0 })
         {
-            Some(token) => token.clone(),
-            None => Token::eof(),
+            Some(token) => token,
+            None => &self.eof,
         }
     }
     pub fn current(&self) -> &Token {
@@ -169,6 +213,18 @@ pub struct Token {
 }
 
 impl Token {
+    
+    pub fn expects_identifier(&self) -> Result<&Rc<String>, CompileError> {
+        if let TokenContent::Identifier(v) = &self.content {
+            Ok(&v)
+        } else {
+            Err(CompileError::unexpected_token(
+                TokenContent::Identifier(Rc::new(String::new())),
+                self,
+            ))
+        }
+    }
+
     fn eof() -> Token {
         Token {
             content: TokenContent::EOF,
@@ -227,7 +283,6 @@ impl Token {
             "$" => return_token!(TokenContent::Dollar, 1),
             "*" => return_token!(TokenContent::Star, 1),
             "//" => return_token!(TokenContent::SingleLineCommentStart, 1),
-            "\n" => return_token!(TokenContent::NewLine, 1),
             _ => {}
         }
         let first_ch = word.chars().next()?;

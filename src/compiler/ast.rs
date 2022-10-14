@@ -1,11 +1,14 @@
 use std::{
-    fmt::Debug,
+    fmt::{Debug, Display},
     rc::{Rc, Weak},
 };
 
 use mir::ir::DataType as BasicType;
 
-use super::tokens::*;
+use super::{
+    error::{CompileError, ErrorCollector, ErrorContent},
+    tokens::*,
+};
 
 #[derive(Clone, Copy)]
 pub enum NumValue {
@@ -20,7 +23,7 @@ impl std::fmt::Debug for NumValue {
             Self::I(num) => write!(formatter, "{}i", num)?,
             Self::F(num) => write!(formatter, "{}f", num)?,
         };
-        return Ok(());
+        Ok(())
     }
 }
 impl NumValue {
@@ -40,7 +43,7 @@ impl std::fmt::Display for NumValue {
             Self::I(num) => write!(formatter, "{}i", num)?,
             Self::F(num) => write!(formatter, "{}f", num)?,
         };
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -99,13 +102,46 @@ impl TypeExpr {
         }
     }
 
-
     pub fn as_ptr(&self) -> Option<&Box<Self>> {
         if let Self::Ptr(v) = self {
             Some(v)
         } else {
             None
         }
+    }
+}
+
+impl Display for TypeExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeExpr::u8 => write!(f, "u8")?,
+            TypeExpr::u16 => write!(f, "u16")?,
+            TypeExpr::u32 => write!(f, "u32")?,
+            TypeExpr::u64 => write!(f, "u64")?,
+            TypeExpr::i8 => write!(f, "i8")?,
+            TypeExpr::i16 => write!(f, "i16")?,
+            TypeExpr::i32 => write!(f, "i32")?,
+            TypeExpr::i64 => write!(f, "i64")?,
+            TypeExpr::f64 => write!(f, "f64")?,
+            TypeExpr::f32 => write!(f, "f32")?,
+            TypeExpr::none => write!(f, "none")?,
+            TypeExpr::Ptr(t) => write!(f, "*{}", t)?,
+            TypeExpr::Slice(t) => write!(f, "[{}]", t)?,
+            TypeExpr::Block(args, ret_t) => {
+                write!(f, "(")?;
+                let count = args.len();
+                for (i, (_, t)) in args.iter().enumerate() {
+                    if i == count - 1 {
+                        // is last one
+                        write!(f, "{}", t)?;
+                    } else {
+                        write!(f, "{}, ", t)?;
+                    }
+                }
+                write!(f, ") -> {}", ret_t)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -289,7 +325,11 @@ impl Debug for Expression {
             }
             Self::Break => formatter.debug_tuple("Break").finish(),
             Self::Continue => formatter.debug_tuple("Continue").finish(),
-            Self::Extern(arg0, arg1) => formatter.debug_tuple("Extern").field(arg0).field(arg1).finish(),
+            Self::Extern(arg0, arg1) => formatter
+                .debug_tuple("Extern")
+                .field(arg0)
+                .field(arg1)
+                .finish(),
         }
     }
 }
@@ -328,202 +368,216 @@ impl AST {
     }
 }
 
-pub fn parse_tokens_into_ast(token_stream: &mut TokenStream) -> AST {
+pub fn parse_tokens_into_ast(
+    token_stream: &mut TokenStream,
+    err_collector: &mut ErrorCollector,
+) -> AST {
     let mut ast = AST::empty();
     loop {
         if token_stream.next().content.is_eof() {
             break;
         }
-        if let Some(n) = parse_expressions(&mut ast, token_stream) {
-            let node = ast.add_to_node_pool(n);
-            ast.root_nodes.push(node);
+        match parse_expressions(&mut ast, token_stream, true) {
+            Ok(n) => {
+                let node = ast.add_to_node_pool(n);
+                ast.root_nodes.push(node);
+            }
+            Err(e) => {
+                err_collector.errors.push(e);
+                break;
+            }
         }
     }
     ast
 }
 
-fn parse_expressions(ast: &mut AST, token_stream: &mut TokenStream) -> Option<ASTNode> {
+fn parse_expressions(
+    ast: &mut AST,
+    token_stream: &mut TokenStream,
+    expects_semicolon: bool,
+) -> Result<ASTNode, CompileError> {
     let current_token = token_stream.current();
-    let node: Option<ASTNode>;
+    let node: ASTNode;
     match &current_token.content {
         TokenContent::Extern => {
             let pos = current_token.position;
-            let name = Rc::clone(token_stream.next().content.as_identifier()?);
+            let name = Rc::clone(token_stream.next().expects_identifier()?);
             if token_stream.next().content != TokenContent::Colon {
-                todo!()
+                return Err(CompileError::unexpected_token(
+                    TokenContent::Colon,
+                    token_stream.current(),
+                ));
             }
             token_stream.next();
             let dtype = parse_type_expr(token_stream)?;
-            node = Some(ASTNode {
+            node = ASTNode {
                 pos,
                 expr: Expression::Extern(name, dtype),
-            })
+            }
         }
         TokenContent::Number(num_str) => {
-            node = Some(ASTNode {
+            node = ASTNode {
                 pos: current_token.position,
-                expr: Expression::NumLiteral(parse_numval(&num_str)?),
-            });
+                expr: Expression::NumLiteral(parse_numval(&num_str, current_token)?),
+            };
         }
         TokenContent::String(str) => {
-            node = Some(ASTNode {
+            node = ASTNode {
                 pos: current_token.position,
                 expr: Expression::StrLiteral({
                     ast.strliteral_pool.push(parse_str_content(&str));
                     ast.strliteral_pool.len() - 1
                 }),
-            });
+            };
         }
         TokenContent::Char(val) => {
-            node = Some(ASTNode {
+            node = ASTNode {
                 pos: current_token.position,
                 expr: Expression::CharLiteral(*val),
-            });
+            };
         }
         TokenContent::Identifier(_) => {
-            node = parse_identifier(ast, token_stream);
+            node = parse_identifier(ast, token_stream)?;
         }
         TokenContent::Star => {
             let pos = current_token.position;
             token_stream.next();
-            if let Some(n) = parse_expressions(ast, token_stream) {
-                node = Some(ASTNode {
-                    pos,
-                    expr: Expression::Deref(ast.add_to_node_pool(n)),
-                })
-            } else {
-                node = None
+            let n = parse_expressions(ast, token_stream, false)?;
+            node = ASTNode {
+                pos,
+                expr: Expression::Deref(ast.add_to_node_pool(n)),
             }
         }
         TokenContent::And => {
             let pos = current_token.position;
             token_stream.next();
-            if let Some(n) = parse_expressions(ast, token_stream) {
-                node = Some(ASTNode {
-                    pos,
-                    expr: Expression::TakeAddr(ast.add_to_node_pool(n)),
-                })
-            } else {
-                node = None
-            }
+            let n = parse_expressions(ast, token_stream, false)?;
+            node = ASTNode {
+                pos,
+                expr: Expression::TakeAddr(ast.add_to_node_pool(n)),
+            };
         }
         TokenContent::BigParenOpen => {
             let pos = current_token.position;
             let mut body = Vec::<Weak<ASTNode>>::new();
             while token_stream.next().content != TokenContent::BigParenClose {
-                if let Some(n) = parse_expressions(ast, token_stream) {
-                    body.push(ast.add_to_node_pool(n));
-                }
+                let n = parse_expressions(ast, token_stream, true)?;
+                body.push(ast.add_to_node_pool(n));
             }
-            node = Some(ASTNode {
+            node = ASTNode {
                 pos,
                 expr: Expression::Block(body),
-            })
+            };
         }
         TokenContent::Return => {
             let pos = current_token.position;
-            token_stream.next();
-            let n = parse_expressions(ast, token_stream);
-            node = Some(ASTNode {
-                pos,
-                expr: Expression::Return(if let Some(n) = n {
-                    Some(ast.add_to_node_pool(n))
-                } else {
-                    None
-                }),
-            });
+            if token_stream.peek(1).indicates_end_of_expr() {
+                node = ASTNode {
+                    pos,
+                    expr: Expression::Return(None),
+                };
+            } else {
+                token_stream.next();
+                let n = parse_expressions(ast, token_stream, false)?;
+                node = ASTNode {
+                    pos,
+                    expr: Expression::Return(Some(ast.add_to_node_pool(n))),
+                };
+            }
         }
         TokenContent::Continue => {
-            node = Some(ASTNode {
+            node = ASTNode {
                 pos: current_token.position,
                 expr: Expression::Continue,
-            })
+            };
         }
         TokenContent::Break => {
-            node = Some(ASTNode {
+            node = ASTNode {
                 pos: current_token.position,
                 expr: Expression::Break,
-            })
+            }
         }
         TokenContent::Loop => {
             let pos = current_token.position;
             token_stream.next();
-            let n = parse_expressions(ast, token_stream);
-            node = Some(ASTNode {
+            let n = parse_expressions(ast, token_stream, true)?;
+            node = ASTNode {
                 pos,
-                expr: Expression::Loop(if let Some(n) = n {
-                    ast.add_to_node_pool(n)
-                } else {
-                    todo!();
-                }),
-            });
+                expr: Expression::Loop(ast.add_to_node_pool(n)),
+            };
         }
         TokenContent::If => todo!(),
-        TokenContent::Func => todo!(),
-        TokenContent::Squiggle => node = None,
-        TokenContent::SingleLineCommentStart => node = None,
-        TokenContent::NewLine => node = None,
         TokenContent::RawASM(asm_code) => {
-            node = Some(ASTNode {
+            node = ASTNode {
                 pos: current_token.position,
                 expr: Expression::RawASM(Rc::clone(asm_code)),
-            });
+            };
         }
-        _ => node = None,
+        _ => return Err(CompileError::unexpected_token0(token_stream.current())),
     }
 
-    // parse type cast
-    if let Some(node) = node {
-        if token_stream.peek(1).content == TokenContent::Squiggle {
-            let pos = token_stream.next().position;
-            let n = ast.add_to_node_pool(node);
-            token_stream.next();
-            Some(ASTNode {
-                pos,
-                expr: Expression::TypeCast(
-                    n,
-                    parse_type_expr(token_stream).unwrap_or_else(|| todo!()),
-                ),
-            })
-        } else {
-            Some(node)
+    let node = if token_stream.peek(1).content == TokenContent::Squiggle {
+        let pos = token_stream.next().position;
+        let n = ast.add_to_node_pool(node);
+        token_stream.next();
+        ASTNode {
+            pos,
+            expr: Expression::TypeCast(n, parse_type_expr(token_stream)?),
         }
     } else {
-        None
+        node
+    };
+
+    if expects_semicolon {
+        if token_stream.next().content != TokenContent::Semicolon {
+            return Err(CompileError::unexpected_token0(token_stream.current()));
+        }
     }
+    Ok(node)
 }
 
-fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<ASTNode> {
+fn parse_identifier(
+    ast: &mut AST,
+    token_stream: &mut TokenStream,
+) -> Result<ASTNode, CompileError> {
     let current_token = token_stream.current();
     match token_stream.peek(1).content {
         TokenContent::Colon => {
             let pos = current_token.position;
-            let name = Rc::clone(current_token.content.as_identifier()?);
+            let name = Rc::clone(current_token.expects_identifier()?);
             token_stream.next();
             let mut type_expr = Option::<TypeExpr>::None;
-            let mut rhs = Option::<Weak<ASTNode>>::None;
             if token_stream.peek(1).content != TokenContent::Equal {
                 token_stream.next();
                 // the token after colon
                 // if it's not equal sign means it has an explicit type expression
-                type_expr = Some(parse_type_expr(token_stream).unwrap_or_else(|| todo!()));
+                type_expr = Some(parse_type_expr(token_stream)?);
                 // TODO: report error when invalid type expression
             }
             let peek = token_stream.peek(1);
-            if peek.content == TokenContent::Equal {
+            let rhs = if peek.content == TokenContent::Equal {
                 token_stream.next();
                 token_stream.next();
-                if let Some(n) = parse_expressions(ast, token_stream) {
-                    rhs = Some(ast.add_to_node_pool(n));
-                }
+                let n = parse_expressions(ast, token_stream, false)?;
+                Some(ast.add_to_node_pool(n))
             } else if peek.indicates_end_of_expr() {
+                None
             } else {
-                todo!()
-            }
+                return Err(CompileError::unexpected_token_multiple(
+                    vec![TokenContent::Equal, TokenContent::Semicolon],
+                    &peek,
+                ));
+            };
             if type_expr.is_none() && rhs.is_none() {
-                return None;
+                return Err(CompileError {
+                    content: ErrorContent::UnableToInferType {
+                        var_name: Rc::clone(&name),
+                    },
+                    position: token_stream.current().position,
+                    length: token_stream.current().len,
+                });
             }
-            Some(ASTNode {
+            Ok(ASTNode {
                 pos,
                 expr: Expression::Def {
                     name,
@@ -536,40 +590,42 @@ fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AST
             let pos = current_token.position;
             let lhs_node = ASTNode {
                 pos,
-                expr: Expression::Identifier(Rc::clone(current_token.content.as_identifier()?)),
+                expr: Expression::Identifier(Rc::clone(current_token.expects_identifier()?)),
             };
             token_stream.next(); // equal sign
-            let rhs_node = parse_expressions(ast, token_stream)?; // TODO: error prompt if
+            let rhs_node = parse_expressions(ast, token_stream, false)?;
             let assign_expr = Expression::Assign {
                 lhs: ast.add_to_node_pool(lhs_node),
                 rhs: ast.add_to_node_pool(rhs_node),
             };
-            Some(ASTNode {
+            Ok(ASTNode {
                 pos,
                 expr: assign_expr,
             })
         }
         TokenContent::RoundParenOpen => {
             let pos: usize = current_token.position;
-            let fn_name = Rc::clone(current_token.content.as_identifier()?);
+            let fn_name = Rc::clone(current_token.expects_identifier()?);
             let mut fn_args = Vec::<Weak<ASTNode>>::new();
             token_stream.next();
             if token_stream.next().content != TokenContent::RoundParenClose {
                 loop {
-                    if let Some(n) = parse_expressions(ast, token_stream) {
-                        fn_args.push(ast.add_to_node_pool(n));
-                    }
+                    let n = parse_expressions(ast, token_stream, false)?;
+                    fn_args.push(ast.add_to_node_pool(n));
                     token_stream.next();
                     if token_stream.current().content == TokenContent::RoundParenClose {
                         break;
                     } else if token_stream.current().content == TokenContent::Comma {
                         token_stream.next();
                     } else {
-                        todo!();
+                        return Err(CompileError::unexpected_token_multiple(
+                            vec![TokenContent::RoundParenClose, TokenContent::Comma],
+                            token_stream.current(),
+                        ));
                     }
                 }
             }
-            Some(ASTNode {
+            Ok(ASTNode {
                 pos,
                 expr: Expression::FnCall {
                     name: fn_name,
@@ -577,29 +633,32 @@ fn parse_identifier(ast: &mut AST, token_stream: &mut TokenStream) -> Option<AST
                 },
             })
         }
-        _ => Some(ASTNode {
+        _ => Ok(ASTNode {
             pos: current_token.position,
-            expr: Expression::Identifier(Rc::clone(current_token.content.as_identifier()?)),
+            expr: Expression::Identifier(Rc::clone(current_token.expects_identifier()?)),
         }),
     }
 }
 
-fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
+fn parse_type_expr(token_stream: &mut TokenStream) -> Result<TypeExpr, CompileError> {
     match &token_stream.current().content {
         TokenContent::Star => {
             token_stream.next();
             let t = parse_type_expr(token_stream)?;
-            Some(TypeExpr::Ptr(Box::new(t)))
+            Ok(TypeExpr::Ptr(Box::new(t)))
         }
         TokenContent::RectParenOpen => {
             token_stream.next();
             let t = parse_type_expr(token_stream)?;
             if token_stream.next().content != TokenContent::RectParenClose {
-                return None;
+                return Err(CompileError::unexpected_token(
+                    TokenContent::RectParenClose,
+                    token_stream.current(),
+                ));
             }
-            Some(TypeExpr::Slice(Box::new(t)))
+            Ok(TypeExpr::Slice(Box::new(t)))
         }
-        TokenContent::Identifier(id) => Some(match id.as_str() {
+        TokenContent::Identifier(id) => Ok(match id.as_str() {
             "u64" => TypeExpr::u64,
             "u32" => TypeExpr::u32,
             "u16" => TypeExpr::u16,
@@ -609,7 +668,13 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
             "i16" => TypeExpr::i16,
             "i8" => TypeExpr::i8,
             "none" => TypeExpr::none,
-            _ => return None,
+            _ => {
+                return Err(CompileError {
+                    content: ErrorContent::TypeNameNotExist(Rc::clone(id)),
+                    position: token_stream.current().position,
+                    length: token_stream.current().len,
+                });
+            }
         }),
         TokenContent::RoundParenOpen => {
             let mut args = Vec::<(Rc<String>, TypeExpr)>::new();
@@ -620,17 +685,19 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
                     let arg_name = if let Some(s) = token_stream.next().content.as_identifier() {
                         Rc::clone(s)
                     } else {
-                        todo!();
+                        return Err(CompileError::unexpected_token(
+                            TokenContent::Identifier(Rc::new(String::new())),
+                            token_stream.current(),
+                        ));
                     };
                     if token_stream.next().content != TokenContent::Colon {
-                        todo!();
+                        return Err(CompileError::unexpected_token(
+                            TokenContent::Colon,
+                            token_stream.current(),
+                        ));
                     }
                     token_stream.next();
-                    let type_expr = if let Some(t) = parse_type_expr(token_stream) {
-                        t
-                    } else {
-                        todo!()
-                    };
+                    let type_expr = parse_type_expr(token_stream)?;
                     args.push((arg_name.clone(), type_expr));
                     let t = token_stream.next();
                     if t.content == TokenContent::Comma {
@@ -638,7 +705,10 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
                     } else if t.content == TokenContent::RoundParenClose {
                         break;
                     } else {
-                        todo!();
+                        return Err(CompileError::unexpected_token_multiple(
+                            vec![TokenContent::Comma, TokenContent::RoundParenClose],
+                            token_stream.current(),
+                        ));
                     }
                 }
             } else {
@@ -649,17 +719,13 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Option<TypeExpr> {
             if peek.content == TokenContent::ReturnArrow {
                 token_stream.next();
                 token_stream.next();
-                ret_type = if let Some(t) = parse_type_expr(token_stream) {
-                    Box::new(t)
-                } else {
-                    todo!();
-                };
+                ret_type = Box::new(parse_type_expr(token_stream)?);
             } else {
                 ret_type = Box::new(TypeExpr::none);
             }
-            Some(TypeExpr::Block(args, ret_type))
+            Ok(TypeExpr::Block(args, ret_type))
         }
-        _ => None,
+        _ => Err(CompileError::unexpected_token0(token_stream.current())),
     }
 }
 
@@ -682,6 +748,7 @@ fn parse_str_content(src: &String) -> String {
                 'n' => new_str.push('\n'),
                 '\\' => new_str.push('\\'),
                 '0' => new_str.push('\0'),
+                't' => new_str.push('\t'),
                 _ => new_str.push(ch),
             }
         } else {
@@ -691,24 +758,23 @@ fn parse_str_content(src: &String) -> String {
     new_str
 }
 
-fn parse_numval(src: &String) -> Option<NumValue> {
+fn parse_numval(src: &String, current_token: &Token) -> Result<NumValue, CompileError> {
     if src.contains('.') {
         if let Ok(f) = src.parse::<f64>() {
-            Some(NumValue::F(f))
-        } else {
-            None
+            return Ok(NumValue::F(f));
         }
     } else if src.chars().next() == Some('-') {
         if let Ok(i) = src.parse::<i64>() {
-            Some(NumValue::I(i))
-        } else {
-            None
+            return Ok(NumValue::I(i));
         }
     } else {
         if let Ok(u) = src.parse::<u64>() {
-            Some(NumValue::U(u))
-        } else {
-            None
+            return Ok(NumValue::U(u));
         }
     }
+    Err(CompileError {
+        content: ErrorContent::InvalidNumberFormat(src.to_string()),
+        position: current_token.position,
+        length: current_token.len,
+    })
 }
