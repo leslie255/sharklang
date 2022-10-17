@@ -1,8 +1,9 @@
-#include std.sharkh
+#include cstd.sharkh
 
-main: () -> i32 = {
-    /* multi-line /* nested */ comment */
-    printf("hello, world\n");
+#alias lol printf
+
+main: () -> u32 = {
+    #lol("hello, world\n");
     return 0;
 };
 

@@ -1,4 +1,4 @@
-use std::{fs, path::Path, rc::Rc};
+use std::{collections::HashMap, fs, path::Path, rc::Rc};
 
 use super::error::CompileError;
 
@@ -306,6 +306,7 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
     let mut i = 0usize;
     let mut ch: char;
     let mut word = String::new();
+    let mut alias_map = HashMap::<String, String>::new();
     word.reserve(64);
     macro_rules! next {
         () => {
@@ -443,7 +444,7 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
             word.clear();
         } else if ch == '#' {
             // Macro
-            while let Some((_, ch)) = chars.next_if(|(_, c)| !c.is_whitespace()) {
+            while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore()) {
                 word.push(ch);
             }
             match word.as_str() {
@@ -459,7 +460,28 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
                     let included_content = fs::read_to_string(joined_path.clone()).unwrap();
                     tokens.append(&mut parse_into_tokens(&included_content, &joined_path));
                 }
-                _ => panic!(),
+                "alias" => {
+                    // go to the next non-whitespace character
+                    while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
+                    // get alias name
+                    let mut name = String::new();
+                    while let Some((_, ch)) = chars.next_if(|(_, c)| !c.is_whitespace()) {
+                        name.push(ch);
+                    }
+                    let mut content = String::new();
+                    while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+                        content.push(ch);
+                    }
+                    alias_map.insert(name, content);
+                }
+                id => {
+                    if let Some(aliased_content) = alias_map.get(id) {
+                        let mut aliased_tokens = parse_into_tokens(aliased_content, source_file_path);
+                        tokens.append(&mut aliased_tokens);
+                    }else {
+                        panic!("Cannot recogize macro keyword {id}");
+                    }
+                }
             }
             word.clear();
         } else {
