@@ -1,10 +1,7 @@
 #include cstd.sharkh
 
-#alias lol printf
-
 main: () -> u32 = {
-    a: u64 = 0;
-    a = 1;
+    printf("hello, world\n%llu\n", 25);
     return 0;
 };
 

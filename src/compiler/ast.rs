@@ -27,12 +27,20 @@ impl std::fmt::Debug for NumValue {
     }
 }
 impl NumValue {
-    pub fn into_u64_bytes(self) -> u64 {
-        return u64::from_le_bytes(match self {
-            NumValue::U(u) => u.to_le_bytes(),
-            NumValue::I(i) => i.to_le_bytes(),
-            NumValue::F(f) => f.to_le_bytes(),
-        });
+    pub fn into_u64_bytes(&self) -> u64 {
+        match self {
+            Self::U(u) => u.clone(),
+            Self::I(i) => unsafe {
+                let ptr = i as *const i64;
+                let ptr = ptr as *const u64;
+                *ptr
+            },
+            Self::F(f) => unsafe {
+                let ptr = f as *const f64;
+                let ptr = ptr as *const u64;
+                *ptr
+            },
+        }
     }
 }
 
@@ -673,6 +681,8 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Result<TypeExpr, CompileEr
             "i32" => TypeExpr::i32,
             "i16" => TypeExpr::i16,
             "i8" => TypeExpr::i8,
+            "f64" => TypeExpr::f64,
+            "f32" => TypeExpr::f32,
             "none" => TypeExpr::none,
             _ => {
                 return Err(CompileError {

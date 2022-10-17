@@ -130,7 +130,7 @@ fn compile_fn_call(
     args: &Vec<(SHIR, DataType)>,
     target: &mut Vec<MIRInstr>,
 ) -> MIRInstr {
-    for (i, (arg_shir, arg_t)) in args.iter().rev().enumerate() {
+    for (i, (arg_shir, arg_t)) in args.iter().enumerate().rev() {
         let rhs_oper = compile_oper(arg_shir, *arg_t, target);
         target.push(MIRInstr {
             operation: MIROpcode::SetArg,

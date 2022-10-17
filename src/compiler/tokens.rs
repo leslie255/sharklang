@@ -114,12 +114,16 @@ impl Default for TokenContent {
 
 trait CharCustomFuncs {
     fn is_alphanumeric_or_underscore(&self) -> bool;
+    fn is_alphanumeric_or_underscore_or_dot(&self) -> bool;
     fn is_alphabetic_or_underscore(&self) -> bool;
     fn is_paren(&self) -> bool;
 }
 impl CharCustomFuncs for char {
     fn is_alphanumeric_or_underscore(&self) -> bool {
         self.is_alphanumeric() || *self == '_'
+    }
+    fn is_alphanumeric_or_underscore_or_dot(&self) -> bool {
+        self.is_alphanumeric() || *self == '_' || *self == '.'
     }
     fn is_alphabetic_or_underscore(&self) -> bool {
         self.is_alphabetic() || *self == '_'
@@ -386,7 +390,7 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
             // Number
             word.push(ch);
             word_start = i;
-            while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore()) {
+            while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore_or_dot()) {
                 word.push(ch);
             }
             tokens.push(Token {
@@ -476,9 +480,10 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
                 }
                 id => {
                     if let Some(aliased_content) = alias_map.get(id) {
-                        let mut aliased_tokens = parse_into_tokens(aliased_content, source_file_path);
+                        let mut aliased_tokens =
+                            parse_into_tokens(aliased_content, source_file_path);
                         tokens.append(&mut aliased_tokens);
-                    }else {
+                    } else {
                         panic!("Cannot recogize macro keyword {id}");
                     }
                 }
