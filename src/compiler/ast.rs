@@ -530,7 +530,10 @@ fn parse_expressions(
 
     if expects_semicolon {
         if token_stream.next().content != TokenContent::Semicolon {
-            return Err(CompileError::unexpected_token0(token_stream.current()));
+            return Err(CompileError::unexpected_token(
+                TokenContent::Semicolon,
+                token_stream.current(),
+            ));
         }
     }
     Ok(node)
@@ -590,9 +593,12 @@ fn parse_identifier(
             let pos = current_token.position;
             let lhs_node = ASTNode {
                 pos,
-                expr: Expression::Identifier(Rc::clone(current_token.expects_identifier()?)),
+                expr: Expression::Identifier(Rc::clone(
+                    token_stream.current().expects_identifier()?,
+                )),
             };
             token_stream.next(); // equal sign
+            token_stream.next(); // token after equal sign
             let rhs_node = parse_expressions(ast, token_stream, false)?;
             let assign_expr = Expression::Assign {
                 lhs: ast.add_to_node_pool(lhs_node),
