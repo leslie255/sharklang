@@ -1,6 +1,8 @@
 #include std.sharkh
 
 main: () -> i32 = {
-    "hello, world\n";   // implicit `println` calling
+    /* multi-line /* nested */ comment */
+    printf("hello, world\n");
     return 0;
 };
+

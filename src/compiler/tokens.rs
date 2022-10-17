@@ -37,6 +37,7 @@ pub enum TokenContent {
     And,
     Dollar,
     Star,
+    Minus,
 
     SingleLineCommentStart,
 
@@ -61,54 +62,47 @@ impl TokenContent {
         }
     }
 
-    /// Returns `true` if the token content is [`String`].
-    ///
-    /// [`String`]: TokenContent::String
-    #[must_use]
-    pub fn is_string(&self) -> bool {
-        matches!(self, Self::String(..))
-    }
-
     /// Name of the token, displayed during a syntax error
     #[must_use]
     pub fn name(&self) -> String {
         match self {
-            TokenContent::RoundParenOpen => "RoundParenOpen".to_string(),
-            TokenContent::RoundParenClose => "RoundParenClose".to_string(),
-            TokenContent::RectParenOpen => "RectParenOpen".to_string(),
-            TokenContent::RectParenClose => "RectParenClose".to_string(),
-            TokenContent::BigParenOpen => "BigParenOpen".to_string(),
-            TokenContent::BigParenClose => "BigParenClose".to_string(),
-            TokenContent::Equal => "Equal".to_string(),
-            TokenContent::True => "`true`".to_string(),
-            TokenContent::False => "`false`".to_string(),
-            TokenContent::Semicolon => "Semicolon".to_string(),
-            TokenContent::Period => "Period".to_string(),
-            TokenContent::Comma => "Comma".to_string(),
-            TokenContent::Colon => "Colon".to_string(),
-            TokenContent::Underscore => "Underscore".to_string(),
-            TokenContent::Number(_) => "Number".to_string(),
-            TokenContent::String(_) => "String".to_string(),
-            TokenContent::Char(_) => "Char".to_string(),
-            TokenContent::Identifier(_) => "Identifier".to_string(),
-            TokenContent::Let => "`let`".to_string(),
-            TokenContent::Loop => "`loop`".to_string(),
-            TokenContent::If => "`if`".to_string(),
-            TokenContent::Else => "`else`".to_string(),
-            TokenContent::Func => "`func`".to_string(),
-            TokenContent::Extern => "`extern`".to_string(),
-            TokenContent::Return => "`return`".to_string(),
-            TokenContent::ReturnArrow => "ReturnArrow".to_string(),
-            TokenContent::Break => "`break`".to_string(),
-            TokenContent::Continue => "`continue`".to_string(),
-            TokenContent::Squiggle => "Squiggle".to_string(),
-            TokenContent::And => "And".to_string(),
-            TokenContent::Dollar => "Dollar".to_string(),
-            TokenContent::Star => "Star".to_string(),
-            TokenContent::SingleLineCommentStart => "SingleLineCommentStart".to_string(),
-            TokenContent::RawASM(_) => "RawASM".to_string(),
-            TokenContent::Unknown => "UNKNOWN".to_string(),
-            TokenContent::EOF => "EOF".to_string(),
+            Self::RoundParenOpen => "RoundParenOpen".to_string(),
+            Self::RoundParenClose => "RoundParenClose".to_string(),
+            Self::RectParenOpen => "RectParenOpen".to_string(),
+            Self::RectParenClose => "RectParenClose".to_string(),
+            Self::BigParenOpen => "BigParenOpen".to_string(),
+            Self::BigParenClose => "BigParenClose".to_string(),
+            Self::Equal => "Equal".to_string(),
+            Self::True => "`true`".to_string(),
+            Self::False => "`false`".to_string(),
+            Self::Semicolon => "Semicolon".to_string(),
+            Self::Period => "Period".to_string(),
+            Self::Comma => "Comma".to_string(),
+            Self::Colon => "Colon".to_string(),
+            Self::Underscore => "Underscore".to_string(),
+            Self::Number(_) => "Number".to_string(),
+            Self::String(_) => "String".to_string(),
+            Self::Char(_) => "Char".to_string(),
+            Self::Identifier(_) => "Identifier".to_string(),
+            Self::Let => "`let`".to_string(),
+            Self::Loop => "`loop`".to_string(),
+            Self::If => "`if`".to_string(),
+            Self::Else => "`else`".to_string(),
+            Self::Func => "`func`".to_string(),
+            Self::Extern => "`extern`".to_string(),
+            Self::Return => "`return`".to_string(),
+            Self::ReturnArrow => "ReturnArrow".to_string(),
+            Self::Break => "`break`".to_string(),
+            Self::Continue => "`continue`".to_string(),
+            Self::Squiggle => "Squiggle".to_string(),
+            Self::And => "And".to_string(),
+            Self::Dollar => "Dollar".to_string(),
+            Self::Minus => "Minus".to_string(),
+            Self::Star => "Star".to_string(),
+            Self::SingleLineCommentStart => "SingleLineCommentStart".to_string(),
+            Self::RawASM(_) => "RawASM".to_string(),
+            Self::Unknown => "UNKNOWN".to_string(),
+            Self::EOF => "EOF".to_string(),
         }
     }
 }
@@ -120,11 +114,15 @@ impl Default for TokenContent {
 
 trait CharCustomFuncs {
     fn is_alphanumeric_or_underscore(&self) -> bool;
+    fn is_alphabetic_or_underscore(&self) -> bool;
     fn is_paren(&self) -> bool;
 }
 impl CharCustomFuncs for char {
     fn is_alphanumeric_or_underscore(&self) -> bool {
         self.is_alphanumeric() || *self == '_'
+    }
+    fn is_alphabetic_or_underscore(&self) -> bool {
+        self.is_alphabetic() || *self == '_'
     }
     fn is_paren(&self) -> bool {
         *self == '(' || *self == ')' || *self == '[' || *self == ']' || *self == '{' || *self == '}'
@@ -243,7 +241,7 @@ impl Token {
             _ => false,
         }
     }
-    fn from_word(word: &String, i: usize) -> Option<Token> {
+    fn from_operator(word: &String, i: usize) -> Option<Token> {
         macro_rules! return_token {
             ($content: expr, $len: expr) => {{
                 return Some(Token {
@@ -261,199 +259,228 @@ impl Token {
             "{" => return_token!(TokenContent::BigParenOpen, 1),
             "}" => return_token!(TokenContent::BigParenClose, 1),
             "=" => return_token!(TokenContent::Equal, 1),
-            "true" => return_token!(TokenContent::True, 1),
-            "false" => return_token!(TokenContent::False, 1),
             ";" => return_token!(TokenContent::Semicolon, 1),
             "," => return_token!(TokenContent::Comma, 1),
             "." => return_token!(TokenContent::Period, 1),
             ":" => return_token!(TokenContent::Colon, 1),
             "_" => return_token!(TokenContent::Underscore, 1),
-            "let" => return_token!(TokenContent::Let, 1),
-            "loop" => return_token!(TokenContent::Loop, 1),
-            "if" => return_token!(TokenContent::If, 1),
-            "else" => return_token!(TokenContent::Else, 1),
-            "func" => return_token!(TokenContent::Func, 1),
-            "extern" => return_token!(TokenContent::Extern, 1),
-            "return" => return_token!(TokenContent::Return, 1),
-            "->" => return_token!(TokenContent::ReturnArrow, 1),
-            "break" => return_token!(TokenContent::Break, 1),
-            "continue" => return_token!(TokenContent::Continue, 1),
+            "-" => return_token!(TokenContent::Minus, 2),
+            "->" => return_token!(TokenContent::ReturnArrow, 2),
             "~" => return_token!(TokenContent::Squiggle, 1),
             "&" => return_token!(TokenContent::And, 1),
             "$" => return_token!(TokenContent::Dollar, 1),
             "*" => return_token!(TokenContent::Star, 1),
-            "//" => return_token!(TokenContent::SingleLineCommentStart, 1),
-            _ => {}
-        }
-        let first_ch = word.chars().next()?;
-        if first_ch.is_alphabetic() || first_ch == '_' {
-            let len = word.len();
-            Some(Token {
-                content: TokenContent::Identifier(Rc::new(word.clone())),
-                position: i,
-                len,
-            })
-        } else if first_ch.is_numeric() {
-            let len = word.len();
-            return_token!(TokenContent::Number(Rc::new(word.clone())), len);
-        } else if first_ch == '\"' {
-            let len = word.len();
-            let str_content = String::from(&word[1..len]);
-            return_token!(TokenContent::String(str_content), len);
-        } else {
-            None
+            _ => None,
         }
     }
-}
-
-fn should_keep_looking(word: &String) -> bool {
-    if word.is_empty() {
-        return true;
-    }
-    let mut chars = word.chars();
-    let first_ch = if let Some(c) = chars.next() {
-        c
-    } else {
-        return false;
-    };
-    // is string
-    if first_ch == '\"' {
-        if word.len() == 1 {
-            return true;
+    fn is_it_a_keyword(word: &String, i: usize) -> Option<Token> {
+        macro_rules! return_token {
+            ($content: expr, $len: expr) => {{
+                return Some(Token {
+                    content: $content,
+                    position: i,
+                    len: $len,
+                });
+            }};
         }
-        let c = chars.next_back();
-        if c == Some('\"') {
-            if chars.next_back() != Some('\\') {
-                return false;
-            }
+        match word.as_str() {
+            "true" => return_token!(TokenContent::True, 1),
+            "false" => return_token!(TokenContent::False, 5),
+            "break" => return_token!(TokenContent::Break, 5),
+            "continue" => return_token!(TokenContent::Continue, 8),
+            "return" => return_token!(TokenContent::Return, 6),
+            "loop" => return_token!(TokenContent::Loop, 4),
+            "if" => return_token!(TokenContent::If, 2),
+            "extern" => return_token!(TokenContent::Extern, 6),
+            _ => None,
         }
-        return true;
     }
-    // is keyword
-    match word.as_str() {
-        "(" | ")" | "[" | "]" | "{" | "}" | "=" | "true" | "false" | ";" | "," | "." | ":"
-        | "_" | "let" | "loop" | "if" | "else" | "func" | "extern" | "return" | "-" | "->"
-        | "break" | "continue" | "~" | "&" | "$" | "*" | "//" | "\n" => return true,
-        _ => (),
-    }
-    if first_ch == '#' {
-        return chars.next_back() != Some('\n');
-    }
-    // is a number
-    if first_ch.is_numeric() {
-        let mut has_dot = false;
-        for ch in word.chars() {
-            if ch == '.' {
-                if has_dot {
-                    return false;
-                }
-                has_dot = true;
-            } else if !ch.is_alphanumeric() {
-                return false;
-            }
-        }
-        return true;
-    }
-    // is a symbol
-    if word.is_alphanumeric_or_underscore() {
-        return true;
-    }
-    false
 }
 
 pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Token> {
     let source_file_parent_path = Path::new(source_file_path).parent().unwrap();
     let mut tokens = Vec::<Token>::new();
 
-    let mut word_start = 0usize;
-    let mut word = String::new();
+    let mut word_start: usize;
     let mut chars = source.char_indices().peekable();
-    loop {
-        let (mut i, mut ch) = match &chars.next() {
-            Some((i, ch)) => (*i, *ch),
-            None => break,
-        };
-        if ch == '/' {
-            if let Some((_, peek)) = &chars.peek() {
-                if *peek == '/' {
-                    while ch != '\n' {
-                        (i, ch) = match &chars.next() {
-                            Some((i, ch)) => (*i, *ch),
-                            None => break,
-                        };
-                    }
-                    word.push(ch);
+    let mut i = 0usize;
+    let mut ch: char;
+    let mut word = String::new();
+    word.reserve(64);
+    macro_rules! next {
+        () => {
+            match &chars.next() {
+                Some((j, c)) => {
+                    i = *j;
+                    ch = *c;
+                }
+                None => {
+                    i += 1;
+                    ch = '\0';
                 }
             }
+        };
+    }
+    macro_rules! peek {
+        () => {
+            match &chars.peek() {
+                Some((_, c)) => *c,
+                _ => '\0',
+            }
+        };
+    }
+    loop {
+        next!();
+        if ch == '/' {
+            match peek!() {
+                '/' => {
+                    while chars.next_if(|(_, c)| *c != '\n').is_some() {}
+                    next!();
+                }
+                '*' => {
+                    let mut comment_layers = 1usize;
+                    chars.next();
+                    while comment_layers > 0 {
+                        next!();
+                        if ch == '*' {
+                            next!();
+                            if ch == '/' {
+                                comment_layers -= 1;
+                            }
+                        }
+                        if ch == '/' {
+                            next!();
+                            if ch == '*' {
+                                comment_layers += 1;
+                            }
+                        }
+                    }
+                    next!();
+                }
+                _ => (),
+            }
         }
-        if !should_keep_looking(&word) {
-            let mut word_chars = word.chars();
-            if word_chars.next() == Some('#') {
-                let mut keyword = String::new();
-                while let Some(c) = word_chars.next() {
-                    if c.is_whitespace() {
+        if ch == '\0' {
+            break;
+        } else if ch.is_whitespace() {
+            continue;
+        } else if ch.is_alphabetic_or_underscore() {
+            // Identifier or keyword
+            word.push(ch);
+            word_start = i;
+            while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore()) {
+                word.push(ch);
+            }
+            tokens.push(if let Some(t) = Token::is_it_a_keyword(&word, i) {
+                t
+            } else {
+                Token {
+                    content: TokenContent::Identifier(Rc::new(word.clone())),
+                    position: word_start,
+                    len: word.len(),
+                }
+            });
+            word.clear();
+        } else if ch.is_ascii_digit() {
+            // Number
+            word.push(ch);
+            word_start = i;
+            while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore()) {
+                word.push(ch);
+            }
+            tokens.push(Token {
+                content: TokenContent::Number(Rc::new(word.clone())),
+                position: word_start,
+                len: word.len(),
+            });
+            word.clear();
+        } else if ch == '\"' {
+            // String
+            word_start = i;
+            let mut len = 1usize;
+            while peek!() != '\0' {
+                next!();
+                len += 1;
+                if ch == '\"' {
+                    if word.chars().next_back() != Some('\\') {
                         break;
                     }
-                    keyword.push(c);
                 }
-                match keyword.as_str() {
-                    "include" => {
-                        let file_name = word_chars.take_while(|c| *c != '\n').collect::<String>();
-                        let joined_path = String::from(
-                            if let Some(s) = source_file_parent_path
-                                .clone()
-                                .join(file_name.clone())
-                                .to_str()
-                            {
-                                s
-                            } else {
-                                panic!("unable to resolve path for {file_name}");
-                            },
-                        );
-                        let file_content = if let Ok(s) = fs::read_to_string(joined_path.clone()) {
-                            s
-                        } else {
-                            panic!("unable to read file");
-                        };
-                        let mut included_tokens = parse_into_tokens(&file_content, &joined_path);
-                        tokens.append(&mut included_tokens);
-                    }
-                    _ => panic!("{keyword} is not a valid preprocessor keyword"),
-                }
-            }
-            let last_ch = word.pop();
-            if word.len() == 0 {
                 word.push(ch);
-                continue;
             }
-            if let Some(t) = Token::from_word(&word, word_start) {
-                tokens.push(t);
+            tokens.push(Token {
+                content: TokenContent::String(word.clone()),
+                position: word_start,
+                len,
+            });
+            word.clear();
+        } else if ch == '\'' {
+            // Char
+            word_start = i;
+            let mut len = 1usize;
+            next!();
+            let char_value = if ch == '\\' {
+                next!();
+                len += 1;
+                match ch {
+                    'n' => '\n' as u8,
+                    '0' => '\0' as u8,
+                    '\\' => '\\' as u8,
+                    '\'' => '\'' as u8,
+                    '\"' => '\"' as u8,
+                    _ => panic!(),
+                }
+            } else {
+                ch as u8
+            };
+            next!();
+            assert!(ch == '\'');
+            tokens.push(Token {
+                content: TokenContent::Char(char_value),
+                position: word_start,
+                len,
+            });
+            word.clear();
+        } else if ch == '#' {
+            // Macro
+            while let Some((_, ch)) = chars.next_if(|(_, c)| !c.is_whitespace()) {
+                word.push(ch);
+            }
+            match word.as_str() {
+                "include" => {
+                    // go to the next non-whitespace character
+                    while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
+                    // get file name
+                    word.clear();
+                    while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+                        word.push(ch);
+                    }
+                    let joined_path = cat_path(&source_file_parent_path, &word);
+                    let included_content = fs::read_to_string(joined_path.clone()).unwrap();
+                    tokens.append(&mut parse_into_tokens(&included_content, &joined_path));
+                }
+                _ => panic!(),
             }
             word.clear();
-            if let Some(last_ch) = last_ch {
-                if !last_ch.is_whitespace()
-                    && if let Some(t) = tokens.last() {
-                        !t.content.is_string()
-                    } else {
-                        false
-                    }
-                {
-                    word.push(last_ch);
-                    word_start = i - 1;
-                } else {
-                    word_start = i;
-                }
-            }
         } else {
-        }
-        word.push(ch);
-    }
-    word = word.trim_end().to_string();
-    if !word.is_empty() {
-        if let Some(t) = Token::from_word(&word, word_start) {
-            tokens.push(t);
+            // Operator
+            word.push(ch);
+            word_start = i;
+            let mut token = Token::from_operator(&word, word_start).unwrap(); // TODO: error prompt if invalid token
+            word.push(peek!());
+            while let Some(t) = Token::from_operator(&word, word_start) {
+                chars.next();
+                token = t;
+                word.push(peek!());
+            }
+            tokens.push(token);
+            word.clear();
         }
     }
 
     tokens
+}
+
+fn cat_path(original: &Path, tail: &String) -> String {
+    original.join(tail.clone()).to_str().unwrap().to_string()
 }
