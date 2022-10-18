@@ -84,6 +84,8 @@ fn compile_instr(shir: &SHIR, context: &Context, target: &mut Vec<MIRInstr>) -> 
             operand0: compile_oper(val, context.fn_ret_type, target),
             operand1: Operand::default(),
         },
+        SHIR::Deref(_, _) => todo!(),
+        SHIR::TakeAddr(_) => todo!(),
     }
 }
 

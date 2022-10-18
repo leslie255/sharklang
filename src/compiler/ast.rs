@@ -68,6 +68,8 @@ pub enum TypeExpr {
     i64,
     f64,
     f32,
+    usize,
+    isize,
     none,
 
     Ptr(Box<Self>),
@@ -104,7 +106,9 @@ impl TypeExpr {
             Self::i8 => Some(BasicType::Signed8),
             Self::f64 => Some(BasicType::Float64),
             Self::f32 => Some(BasicType::Float32),
-            Self::Ptr(..) => Some(BasicType::Unsigned64),
+            Self::usize => Some(BasicType::UnsignedSize),
+            Self::isize => Some(BasicType::SignedSize),
+            Self::Ptr(..) => Some(BasicType::Pointer),
             Self::none => Some(BasicType::Irrelavent),
             _ => None,
         }
@@ -122,20 +126,22 @@ impl TypeExpr {
 impl Display for TypeExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TypeExpr::u8 => write!(f, "u8")?,
-            TypeExpr::u16 => write!(f, "u16")?,
-            TypeExpr::u32 => write!(f, "u32")?,
-            TypeExpr::u64 => write!(f, "u64")?,
-            TypeExpr::i8 => write!(f, "i8")?,
-            TypeExpr::i16 => write!(f, "i16")?,
-            TypeExpr::i32 => write!(f, "i32")?,
-            TypeExpr::i64 => write!(f, "i64")?,
-            TypeExpr::f64 => write!(f, "f64")?,
-            TypeExpr::f32 => write!(f, "f32")?,
-            TypeExpr::none => write!(f, "none")?,
-            TypeExpr::Ptr(t) => write!(f, "*{}", t)?,
-            TypeExpr::Slice(t) => write!(f, "[{}]", t)?,
-            TypeExpr::Block(args, ret_t) => {
+            Self::u8 => write!(f, "u8")?,
+            Self::u16 => write!(f, "u16")?,
+            Self::u32 => write!(f, "u32")?,
+            Self::u64 => write!(f, "u64")?,
+            Self::i8 => write!(f, "i8")?,
+            Self::i16 => write!(f, "i16")?,
+            Self::i32 => write!(f, "i32")?,
+            Self::i64 => write!(f, "i64")?,
+            Self::f64 => write!(f, "f64")?,
+            Self::f32 => write!(f, "f32")?,
+            Self::usize => write!(f, "usize")?,
+            Self::isize => write!(f, "isize")?,
+            Self::none => write!(f, "none")?,
+            Self::Ptr(t) => write!(f, "*{}", t)?,
+            Self::Slice(t) => write!(f, "[{}]", t)?,
+            Self::Block(args, ret_t) => {
                 write!(f, "(")?;
                 let count = args.len();
                 for (i, (_, t)) in args.iter().enumerate() {
@@ -683,6 +689,8 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Result<TypeExpr, CompileEr
             "i8" => TypeExpr::i8,
             "f64" => TypeExpr::f64,
             "f32" => TypeExpr::f32,
+            "usize" => TypeExpr::usize,
+            "isize" => TypeExpr::isize,
             "none" => TypeExpr::none,
             _ => {
                 return Err(CompileError {

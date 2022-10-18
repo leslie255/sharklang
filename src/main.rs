@@ -219,7 +219,9 @@ fn print_mir(src_path: String) {
         .dump_errs()
         .mir
         .unwrap();
-    println!("{:#?}", mir);
+    for top_lvl in mir.content {
+        println!("{top_lvl}")
+    }
 }
 
 fn print_ir(src_path: String) {

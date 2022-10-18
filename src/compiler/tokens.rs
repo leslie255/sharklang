@@ -310,7 +310,7 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
     let mut i = 0usize;
     let mut ch: char;
     let mut word = String::new();
-    let mut alias_map = HashMap::<String, String>::new();
+    let mut macro_map = HashMap::<String, String>::new();
     word.reserve(64);
     macro_rules! next {
         () => {
@@ -464,10 +464,10 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
                     let included_content = fs::read_to_string(joined_path.clone()).unwrap();
                     tokens.append(&mut parse_into_tokens(&included_content, &joined_path));
                 }
-                "alias" => {
+                "macro" => {
                     // go to the next non-whitespace character
                     while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
-                    // get alias name
+                    // get macro name
                     let mut name = String::new();
                     while let Some((_, ch)) = chars.next_if(|(_, c)| !c.is_whitespace()) {
                         name.push(ch);
@@ -476,13 +476,13 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
                     while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
                         content.push(ch);
                     }
-                    alias_map.insert(name, content);
+                    macro_map.insert(name, content);
                 }
                 id => {
-                    if let Some(aliased_content) = alias_map.get(id) {
-                        let mut aliased_tokens =
-                            parse_into_tokens(aliased_content, source_file_path);
-                        tokens.append(&mut aliased_tokens);
+                    if let Some(expanded_content) = macro_map.get(id) {
+                        let mut expanded_tokens =
+                            parse_into_tokens(expanded_content, source_file_path);
+                        tokens.append(&mut expanded_tokens);
                     } else {
                         panic!("Cannot recogize macro keyword {id}");
                     }

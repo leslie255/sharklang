@@ -1,7 +1,7 @@
-#include cstd.sharkh
-
 main: () -> u32 = {
-    printf("hello, world\n%llu\n", 25);
+    a: usize = 100;
+    b: = &a;
+    c: = *b;
     return 0;
 };
 

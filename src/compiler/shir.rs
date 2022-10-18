@@ -61,6 +61,8 @@ pub enum SHIR {
     },
     ReturnVoid,
     ReturnValue(Box<Self>),
+    Deref(Box<SHIR>, BasicType),
+    TakeAddr(Box<SHIR>),
 }
 
 impl SHIR {
@@ -78,8 +80,9 @@ impl SHIR {
                 name: _,
                 args: _,
                 ret_type: dtype,
-            } => *dtype = t,
-            SHIR::Const(_) | SHIR::ReturnVoid | SHIR::ReturnValue(_) => (),
+            }
+            | SHIR::Deref(_, dtype) => *dtype = t,
+            SHIR::Const(_) | SHIR::ReturnVoid | SHIR::ReturnValue(_) | Self::TakeAddr(_) => (),
         }
     }
     #[must_use]
@@ -344,8 +347,21 @@ fn convert_body(
                 ret_type: ret_type.into_basic_type()?,
             })
         }
-        Expression::Deref(_) => todo!(),
-        Expression::TakeAddr(_) => todo!(),
+        Expression::Deref(child) => {
+            let child_expr = &child.upgrade().unwrap().expr;
+            let s = convert_body(child_expr, parent, symbols, i)?;
+            let dtype = if let Some(TypeExpr::Ptr(t)) = suggest_typeexpr(child_expr, symbols) {
+                t
+            } else {
+                panic!("dereferencing expression of non-pointer type")
+            };
+            Some(SHIR::Deref(Box::new(s), dtype.into_basic_type()?))
+        }
+        Expression::TakeAddr(child) => {
+            let child_expr = &child.upgrade().unwrap().expr;
+            let s = convert_body(child_expr, parent, symbols, i)?;
+            Some(SHIR::TakeAddr(Box::new(s)))
+        }
         Expression::DataType(_) => None,
         Expression::TypeCast(n, t) => {
             let child = &unsafe { n.as_ptr().as_ref()? }.expr;
@@ -376,8 +392,8 @@ fn suggest_typeexpr(expr: &Expression, symbols: &SymbolTable) -> Option<TypeExpr
     match expr {
         Expression::Identifier(id) => Some(symbols.lookup(id)?.1.as_variable()?.0.clone()),
         Expression::NumLiteral(num) => Some(match num {
-            NumValue::U(_) => TypeExpr::u64,
-            NumValue::I(_) => TypeExpr::i64,
+            NumValue::U(_) => TypeExpr::usize,
+            NumValue::I(_) => TypeExpr::isize,
             NumValue::F(_) => TypeExpr::f64,
         }),
         Expression::StrLiteral(_) => Some(TypeExpr::Ptr(Box::new(TypeExpr::u8))),
