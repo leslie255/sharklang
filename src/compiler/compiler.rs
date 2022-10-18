@@ -52,7 +52,11 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
 fn compile_instr(shir: &SHIR, context: &Context, target: &mut Vec<MIRInstr>) -> MIRInstr {
     // TODO: when an operand is a function
     match shir {
-        SHIR::Var(_, _) | SHIR::Const(_) | SHIR::Arg(_, _) => panic!(),
+        SHIR::Var(_, _)
+        | SHIR::Const(_)
+        | SHIR::Arg(_, _)
+        | SHIR::Deref(_, _)
+        | SHIR::TakeAddr(_) => panic!(),
         SHIR::VarAssign { id, dtype, rhs } => MIRInstr {
             operation: MIROpcode::SetVar,
             operand0: Operand {
@@ -84,8 +88,6 @@ fn compile_instr(shir: &SHIR, context: &Context, target: &mut Vec<MIRInstr>) -> 
             operand0: compile_oper(val, context.fn_ret_type, target),
             operand1: Operand::default(),
         },
-        SHIR::Deref(_, _) => todo!(),
-        SHIR::TakeAddr(_) => todo!(),
     }
 }
 
@@ -119,6 +121,33 @@ fn compile_oper(shir: &SHIR, expected_type: DataType, target: &mut Vec<MIRInstr>
             target.push(fn_call);
             Operand {
                 dtype: *ret_type,
+                content: OperandContent::Result,
+            }
+        }
+        SHIR::Deref(shir, dtype) => {
+            let oper = compile_oper(&shir, DataType::Pointer, target);
+            target.push(MIRInstr {
+                operation: MIROpcode::Deref,
+                operand0: oper,
+                operand1: Operand {
+                    dtype: *dtype,
+                    content: OperandContent::Irrelavent,
+                },
+            });
+            Operand {
+                dtype: *dtype,
+                content: OperandContent::Result,
+            }
+        }
+        SHIR::TakeAddr(shir) => {
+            let oper = compile_oper(&shir, DataType::Irrelavent, target);
+            target.push(MIRInstr {
+                operation: MIROpcode::TakeAddr,
+                operand0: oper,
+                operand1: Operand::default(),
+            });
+            Operand {
+                dtype: DataType::Pointer,
                 content: OperandContent::Result,
             }
         }
