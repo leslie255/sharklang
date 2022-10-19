@@ -76,7 +76,11 @@ pub enum TypeExpr {
     Ptr(Box<Self>),
     Slice(Box<Self>),
 
-    Block(Vec<(Rc<String>, TypeExpr)>, Box<Self>), // args, return type
+    Fn {
+        args: Vec<(Rc<String>, TypeExpr)>,
+        ret_type: Box<Self>,
+        is_variadic: bool,
+    }, // args, return type, is variadic?
 }
 impl TypeExpr {
     #[must_use]
@@ -97,7 +101,11 @@ impl TypeExpr {
             TypeExpr::none => false,
             TypeExpr::Ptr(_) => false,
             TypeExpr::Slice(_) => false,
-            TypeExpr::Block(_, _) => false,
+            TypeExpr::Fn {
+                args: _,
+                ret_type: _,
+                is_variadic: _,
+            } => false,
         }
     }
 
@@ -119,7 +127,7 @@ impl TypeExpr {
             TypeExpr::none => false,
             TypeExpr::Ptr(_) => false,
             TypeExpr::Slice(_) => false,
-            TypeExpr::Block(_, _) => false,
+            TypeExpr::Fn { .. } => false,
         }
     }
 
@@ -160,9 +168,7 @@ impl TypeExpr {
                     .1
                     .matches_expr(expr, symbols)
             }
-            Expression::TypeCast(_, casted_type) => {
-                casted_type.is_equvalent(self)
-            }
+            Expression::TypeCast(_, casted_type) => casted_type.is_equvalent(self),
 
             Expression::Def { .. } => false,
             Expression::Assign { .. } => false,
@@ -197,7 +203,21 @@ impl TypeExpr {
             (Self::Ptr(lhs), Self::Ptr(rhs)) => lhs.is_equvalent(rhs),
             (Self::Slice(lhs), Self::Slice(rhs)) => lhs.is_equvalent(rhs),
 
-            (Self::Block(lhs_args, lhs_ret_type), Self::Block(rhs_args, rhs_ret_type)) => {
+            (
+                Self::Fn {
+                    args: lhs_args,
+                    ret_type: lhs_ret_type,
+                    is_variadic: lhs_is_variadic,
+                },
+                Self::Fn {
+                    args: rhs_args,
+                    ret_type: rhs_ret_type,
+                    is_variadic: rhs_is_variadic,
+                },
+            ) => {
+                if lhs_is_variadic != rhs_is_variadic {
+                    return false;
+                }
                 if !lhs_ret_type.is_equvalent(rhs_ret_type) {
                     return false;
                 }
@@ -217,9 +237,14 @@ impl TypeExpr {
         }
     }
 
-    pub fn as_block(&self) -> Option<(&Vec<(Rc<String>, TypeExpr)>, &Box<TypeExpr>)> {
-        if let Self::Block(args, ret_type) = self {
-            Some((args, ret_type))
+    pub fn as_block(&self) -> Option<(&Vec<(Rc<String>, TypeExpr)>, &Box<TypeExpr>, bool)> {
+        if let Self::Fn {
+            args,
+            ret_type,
+            is_variadic,
+        } = self
+        {
+            Some((args, ret_type, *is_variadic))
         } else {
             None
         }
@@ -275,7 +300,11 @@ impl Display for TypeExpr {
             Self::none => write!(f, "none")?,
             Self::Ptr(t) => write!(f, "*{}", t)?,
             Self::Slice(t) => write!(f, "[{}]", t)?,
-            Self::Block(args, ret_t) => {
+            Self::Fn {
+                args,
+                ret_type,
+                is_variadic,
+            } => {
                 write!(f, "(")?;
                 let count = args.len();
                 for (i, (_, t)) in args.iter().enumerate() {
@@ -286,7 +315,11 @@ impl Display for TypeExpr {
                         write!(f, "{}, ", t)?;
                     }
                 }
-                write!(f, ") -> {}", ret_t)?;
+                if *is_variadic {
+                    write!(f, "..) -> {}", ret_type)?;
+                } else {
+                    write!(f, ") -> {}", ret_type)?;
+                }
             }
         }
         Ok(())
@@ -348,9 +381,10 @@ impl Expression {
         &Vec<(Rc<String>, TypeExpr)>, // args
         &TypeExpr,                    // return type
         &Vec<Weak<ASTNode>>,          // body
+        bool,                         // is variadic?
     )> {
         if let Self::Def { name, dtype, rhs } = self {
-            if let Some((args, ret_type)) = dtype.as_ref()?.as_block() {
+            if let Some((args, ret_type, is_variadic)) = dtype.as_ref()?.as_block() {
                 return Some((
                     name,
                     args,
@@ -358,6 +392,7 @@ impl Expression {
                     unsafe { rhs.as_ref()?.as_ptr().as_ref()? }
                         .expr
                         .as_block()?,
+                    is_variadic,
                 ));
             }
         }
@@ -846,6 +881,7 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Result<TypeExpr, CompileEr
             }
         }),
         TokenContent::RoundParenOpen => {
+            let mut is_variadic = false;
             let mut args = Vec::<(Rc<String>, TypeExpr)>::new();
             let ret_type: Box<TypeExpr>;
             // parse arguments
@@ -873,9 +909,22 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Result<TypeExpr, CompileEr
                         continue;
                     } else if t.content == TokenContent::RoundParenClose {
                         break;
+                    } else if t.content == TokenContent::DotDot {
+                        is_variadic = true;
+                        if token_stream.next().content != TokenContent::RoundParenClose {
+                            return Err(CompileError::unexpected_token(
+                                TokenContent::DotDot,
+                                token_stream.current(),
+                            ));
+                        }
+                        break;
                     } else {
                         return Err(CompileError::unexpected_token_multiple(
-                            vec![TokenContent::Comma, TokenContent::RoundParenClose],
+                            vec![
+                                TokenContent::Comma,
+                                TokenContent::RoundParenClose,
+                                TokenContent::DotDot,
+                            ],
                             token_stream.current(),
                         ));
                     }
@@ -892,7 +941,11 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Result<TypeExpr, CompileEr
             } else {
                 ret_type = Box::new(TypeExpr::none);
             }
-            Ok(TypeExpr::Block(args, ret_type))
+            Ok(TypeExpr::Fn {
+                args,
+                ret_type,
+                is_variadic,
+            })
         }
         _ => Err(CompileError::unexpected_token0(token_stream.current())),
     }

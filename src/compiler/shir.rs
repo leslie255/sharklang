@@ -123,15 +123,15 @@ impl SymbolTable {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Symbol {
-    Function(Vec<TypeExpr>, TypeExpr), // name, expected type
-    Variable(TypeExpr, u64),           // type, id
-    TypeName(TypeExpr),                // type content
+    Function(Vec<TypeExpr>, TypeExpr, bool), // args, return type, is variadic?
+    Variable(TypeExpr, u64),                 // type, id
+    TypeName(TypeExpr),                      // type content
 }
 
 impl Symbol {
-    pub fn as_function(&self) -> Option<(&Vec<TypeExpr>, &TypeExpr)> {
-        if let Self::Function(a, b) = self {
-            Some((a, b))
+    pub fn as_function(&self) -> Option<(&Vec<TypeExpr>, &TypeExpr, bool)> {
+        if let Self::Function(a, b, c) = self {
+            Some((a, b, *c))
         } else {
             None
         }
@@ -176,7 +176,7 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
         .filter_map(|w| w.upgrade())
         .enumerate()
     {
-        if let Some((name, args, ret_type, body)) = root_node.expr.as_fn_def() {
+        if let Some((name, args, ret_type, body, is_variadic)) = root_node.expr.as_fn_def() {
             context.parent_fn_ret_type = Some(ret_type.clone());
             // --- if it is a function definition
             context.symbols.global.insert(
@@ -184,6 +184,7 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
                 Symbol::Function(
                     args.iter().map(|(_, t)| t.clone()).collect(),
                     ret_type.clone(),
+                    is_variadic,
                 ),
             );
 
@@ -237,12 +238,13 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
                 ret_type: ret_type.into_basic_type().unwrap(), // TODO: return structures
             });
         } else if let Some((name, dtype)) = root_node.expr.as_extern() {
-            let (args, ret_type) = dtype.as_block().unwrap();
+            let (args, ret_type, is_variadic) = dtype.as_block().unwrap();
             context.symbols.global.insert(
                 Rc::clone(name),
                 Symbol::Function(
                     args.iter().map(|(_, t)| t.clone()).collect(),
                     *ret_type.clone(),
+                    is_variadic,
                 ),
             );
             program.body.push(SHIRTopLevel::ExternFn {
@@ -334,23 +336,38 @@ fn convert_body(
             let (name, symbol) = context.symbols.lookup(name)?;
             let name = Rc::clone(name);
             let symbol = symbol.clone();
-            let (arg_types, ret_type) = symbol.as_function()?;
+            let (arg_types, ret_type, is_variadic) = symbol.as_function()?;
             // check argument count
             let expected_arg_count = arg_types.len();
             let actual_arg_count = args.len();
-            if expected_arg_count != actual_arg_count {
-                err_collector.errors.push(CompileError {
-                    content: ErrorContent::IncorrectArgCount {
-                        expected: expected_arg_count,
-                        found: actual_arg_count,
-                    },
-                    position: node.pos + name.len(),
-                    length: 1,
-                });
-                return None;
+            if !is_variadic {
+                if expected_arg_count != actual_arg_count {
+                    err_collector.errors.push(CompileError {
+                        content: ErrorContent::IncorrectArgCount {
+                            expected: expected_arg_count,
+                            found: actual_arg_count,
+                        },
+                        position: node.pos + name.len(),
+                        length: 1,
+                    });
+                    return None;
+                }
+            } else {
+                let expected_arg_count = expected_arg_count - 1;
+                if expected_arg_count > actual_arg_count {
+                    err_collector.errors.push(CompileError {
+                        content: ErrorContent::IncorrectArgCountVariadic {
+                            expected: expected_arg_count,
+                            found: actual_arg_count,
+                        },
+                        position: node.pos + name.len(),
+                        length: 1,
+                    });
+                    return None;
+                }
             }
             for (j, arg) in args.iter().enumerate() {
-                let arg_type = &arg_types[j];
+                let arg_type = &arg_types.get(j).unwrap_or(arg_types.last().unwrap());
                 let arg_node = &arg.upgrade()?;
                 check_type(arg_type, arg_node, err_collector, &context.symbols);
                 let mut arg_shir =
@@ -473,7 +490,11 @@ fn suggest_typeexpr(expr: &Expression, symbols: &SymbolTable) -> Option<TypeExpr
             symbols,
         )?))),
         Expression::TypeCast(_, t) => Some(t.clone()),
-        Expression::Block(_) => Some(TypeExpr::Block(Vec::new(), Box::new(TypeExpr::none))),
+        Expression::Block(_) => Some(TypeExpr::Fn {
+            args: Vec::new(),
+            ret_type: Box::new(TypeExpr::none),
+            is_variadic: false,
+        }),
         _ => None,
     }
 }

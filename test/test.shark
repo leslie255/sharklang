@@ -1,13 +1,7 @@
-test: (a: usize) = {
-    return;
-};
+#include cstd.sharkh
 
 main: () -> u32 = {
-    a: isize = 100;
-    b: usize = (&a) ~ usize;
-    test();
-    test(a);
-    test(a~usize);
-    return;
+    printf("hello, world\n");
+    printf("%lu\n", 42);
+    return 0;
 };
-

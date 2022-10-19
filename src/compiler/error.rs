@@ -37,12 +37,16 @@ pub enum ErrorContent {
         expected: usize,
         found: usize,
     },
+    IncorrectArgCountVariadic {
+        expected: usize,
+        found: usize,
+    },
     Raw(String),
 }
 impl Display for ErrorContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ErrorContent::UnexpectedToken { expected, found } => {
+            Self::UnexpectedToken { expected, found } => {
                 if expected.is_empty() {
                     write!(f, "Unexpected token {}", found.name());
                 } else {
@@ -66,14 +70,14 @@ impl Display for ErrorContent {
                     write!(f, "; but found {}", found.name())?;
                 }
             }
-            ErrorContent::UnableToInferType { var_name } => {
+            Self::UnableToInferType { var_name } => {
                 write!(
                     f,
                     "Enable to infer a type for variable `{}`, try manually specify a type",
                     var_name
                 )?;
             }
-            ErrorContent::MismatchedType { expected, found } => {
+            Self::MismatchedType { expected, found } => {
                 write!(
                     f,
                     "Expects expression of type {:?}{}",
@@ -85,18 +89,19 @@ impl Display for ErrorContent {
                     }
                 )?;
             }
-            ErrorContent::FuncNotExist(name) => {
+            Self::FuncNotExist(name) => {
                 write!(f, "`{name}` either don't exist or is not callable")?;
             }
-            ErrorContent::VarNotExist(name) => write!(f, "`{name}` does not exist")?,
-            ErrorContent::TypeNameNotExist(name) => write!(f, "`{name}` is not a type name")?,
-            ErrorContent::InvalidNumberFormat(s) => {
-                write!(f, "`{s}` is not a valid number format")?
-            }
+            Self::VarNotExist(name) => write!(f, "`{name}` does not exist")?,
+            Self::TypeNameNotExist(name) => write!(f, "`{name}` is not a type name")?,
+            Self::InvalidNumberFormat(s) => write!(f, "`{s}` is not a valid number format")?,
             Self::IncorrectArgCount { expected, found } => {
                 write!(f, "Expects {expected} arguments, found {found}")?
             }
-            ErrorContent::Raw(message) => message.fmt(f)?,
+            Self::IncorrectArgCountVariadic { expected, found } => {
+                write!(f, "Expects at least {expected} arguments, found {found}")?
+            }
+            Self::Raw(message) => message.fmt(f)?,
         }
         Ok(())
     }

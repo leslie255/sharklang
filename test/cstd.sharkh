@@ -4,7 +4,7 @@ extern strcpy:	(dest: *u8, src: *u8);
 extern strcat:	(dest: *u8, str: *u8);
 extern memmove:	(dest: *none, src: *none);
 extern memcpy:	(dest: *none, src: *none);
-extern printf:	(fmt: *u8, arg: u64, arg: u64, arg: u64, arg: u64, arg: u64);
+extern printf:	(fmt: *u8, args: usize ..);
 extern bzero:	(ptr: *none, size: u64);
 extern fopen:	(path: *u8, mode: *u8) -> u64;
 extern fclose:	(fp: u64);

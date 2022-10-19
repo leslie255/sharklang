@@ -39,7 +39,7 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
                     .push(MIRTopLevel::FnDef(Rc::clone(name), fn_body));
             }
             SHIRTopLevel::StaticVar { name: _, val: _ } => todo!(),
-            SHIRTopLevel::ExternFn { name, ret_type: _ } => {
+            SHIRTopLevel::ExternFn { name, .. } => {
                 mir_program
                     .content
                     .push(MIRTopLevel::Extern(Rc::clone(name)));
