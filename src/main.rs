@@ -166,7 +166,7 @@ impl Compiler {
         if !self.error_collector.errors.is_empty() {
             return self;
         }
-        self.shir = Some(ast_into_shir(self.ast.unwrap()));
+        self.shir = Some(ast_into_shir(self.ast.unwrap(), &mut self.error_collector));
         self.ast = None;
         self
     }

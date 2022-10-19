@@ -27,12 +27,16 @@ pub enum ErrorContent {
     },
     MismatchedType {
         expected: TypeExpr,
-        found: Expression,
+        found: Option<TypeExpr>,
     },
     FuncNotExist(Rc<String>),
     VarNotExist(Rc<String>),
     TypeNameNotExist(Rc<String>),
     InvalidNumberFormat(String),
+    IncorrectArgCount {
+        expected: usize,
+        found: usize,
+    },
     Raw(String),
 }
 impl Display for ErrorContent {
@@ -70,7 +74,16 @@ impl Display for ErrorContent {
                 )?;
             }
             ErrorContent::MismatchedType { expected, found } => {
-                write!(f, "Expects expression of type {:?}", expected)?;
+                write!(
+                    f,
+                    "Expects expression of type {:?}{}",
+                    expected,
+                    if let Some(t) = found {
+                        format!(", found {t}")
+                    } else {
+                        "".to_string()
+                    }
+                )?;
             }
             ErrorContent::FuncNotExist(name) => {
                 write!(f, "`{name}` either don't exist or is not callable")?;
@@ -79,6 +92,9 @@ impl Display for ErrorContent {
             ErrorContent::TypeNameNotExist(name) => write!(f, "`{name}` is not a type name")?,
             ErrorContent::InvalidNumberFormat(s) => {
                 write!(f, "`{s}` is not a valid number format")?
+            }
+            Self::IncorrectArgCount { expected, found } => {
+                write!(f, "Expects {expected} arguments, found {found}")?
             }
             ErrorContent::Raw(message) => message.fmt(f)?,
         }
@@ -192,7 +208,7 @@ impl ErrorCollector {
                     format!("{} errors listed above", err_count)
                 }
             );
-            std::process::exit(1);
+            std::process::exit(101);
         }
     }
 }

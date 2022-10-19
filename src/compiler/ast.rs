@@ -7,6 +7,7 @@ use mir::ir::DataType as BasicType;
 
 use super::{
     error::{CompileError, ErrorCollector, ErrorContent},
+    shir::SymbolTable,
     tokens::*,
 };
 
@@ -55,8 +56,8 @@ impl std::fmt::Display for NumValue {
     }
 }
 
-#[derive(Debug, Clone)]
 #[allow(non_camel_case_types, dead_code)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeExpr {
     u8,
     u16,
@@ -78,9 +79,142 @@ pub enum TypeExpr {
     Block(Vec<(Rc<String>, TypeExpr)>, Box<Self>), // args, return type
 }
 impl TypeExpr {
-    #[allow(unused)]
-    pub fn is_equivalent(&self, rhs: &Self) -> bool {
-        todo!()
+    #[must_use]
+    pub fn is_float(&self) -> bool {
+        match self {
+            TypeExpr::u8 => false,
+            TypeExpr::u16 => false,
+            TypeExpr::u32 => false,
+            TypeExpr::u64 => false,
+            TypeExpr::i8 => false,
+            TypeExpr::i16 => false,
+            TypeExpr::i32 => false,
+            TypeExpr::i64 => false,
+            TypeExpr::f64 => true,
+            TypeExpr::f32 => true,
+            TypeExpr::usize => false,
+            TypeExpr::isize => true,
+            TypeExpr::none => false,
+            TypeExpr::Ptr(_) => false,
+            TypeExpr::Slice(_) => false,
+            TypeExpr::Block(_, _) => false,
+        }
+    }
+
+    #[must_use]
+    pub fn is_int(&self) -> bool {
+        match self {
+            TypeExpr::u8 => true,
+            TypeExpr::u16 => true,
+            TypeExpr::u32 => true,
+            TypeExpr::u64 => true,
+            TypeExpr::i8 => true,
+            TypeExpr::i16 => true,
+            TypeExpr::i32 => true,
+            TypeExpr::i64 => true,
+            TypeExpr::f64 => false,
+            TypeExpr::f32 => false,
+            TypeExpr::usize => true,
+            TypeExpr::isize => true,
+            TypeExpr::none => false,
+            TypeExpr::Ptr(_) => false,
+            TypeExpr::Slice(_) => false,
+            TypeExpr::Block(_, _) => false,
+        }
+    }
+
+    #[must_use]
+    pub fn matches_expr(&self, expr: &Expression, symbols: &SymbolTable) -> bool {
+        macro_rules! if_none_return_false {
+            ($opt: expr) => {
+                if let Some(o) = $opt {
+                    o
+                } else {
+                    return false;
+                }
+            };
+        }
+        match expr {
+            Expression::Identifier(id) => {
+                if_none_return_false!(if_none_return_false!(symbols.lookup(id)).1.as_variable())
+                    .0
+                    .is_equvalent(self)
+            }
+            Expression::NumLiteral(numval) => match numval {
+                NumValue::U(_) | NumValue::I(_) => self.is_int(),
+                NumValue::F(_) => self.is_float(),
+            },
+            Expression::StrLiteral(_) => self.is_equvalent(&Self::Ptr(Box::new(TypeExpr::u8))),
+            Expression::CharLiteral(_) => self.is_equvalent(&Self::u8),
+            Expression::Deref(child) => {
+                if let Self::Ptr(t) = self {
+                    t.matches_expr(&if_none_return_false!(child.upgrade()).expr, symbols)
+                } else {
+                    false
+                }
+            }
+            Expression::TakeAddr(child) => Self::Ptr(Box::new(self.clone()))
+                .matches_expr(&if_none_return_false!(child.upgrade()).expr, symbols),
+            Expression::FnCall { name, args: _ } => {
+                if_none_return_false!(if_none_return_false!(symbols.lookup(name)).1.as_function())
+                    .1
+                    .matches_expr(expr, symbols)
+            }
+            Expression::TypeCast(_, casted_type) => {
+                casted_type.is_equvalent(self)
+            }
+
+            Expression::Def { .. } => false,
+            Expression::Assign { .. } => false,
+            Expression::DataType(_) => false,
+            Expression::Block(_) => false,
+            Expression::Loop(_) => false,
+            Expression::Return(_) => false,
+            Expression::Break => false,
+            Expression::Continue => false,
+            Expression::Extern(_, _) => false,
+            Expression::RawASM(_) => false,
+        }
+    }
+
+    #[must_use]
+    pub fn is_equvalent(&self, rhs: &Self) -> bool {
+        match (self, rhs) {
+            (Self::u8, Self::u8) => true,
+            (Self::u16, Self::u16) => true,
+            (Self::u32, Self::u32) => true,
+            (Self::u64, Self::u64) => true,
+            (Self::i8, Self::i8) => true,
+            (Self::i16, Self::i16) => true,
+            (Self::i32, Self::i32) => true,
+            (Self::i64, Self::i64) => true,
+            (Self::f64, Self::f64) => true,
+            (Self::f32, Self::f32) => true,
+            (Self::usize, Self::usize) => true,
+            (Self::isize, Self::isize) => true,
+            (Self::none, Self::none) => true,
+
+            (Self::Ptr(lhs), Self::Ptr(rhs)) => lhs.is_equvalent(rhs),
+            (Self::Slice(lhs), Self::Slice(rhs)) => lhs.is_equvalent(rhs),
+
+            (Self::Block(lhs_args, lhs_ret_type), Self::Block(rhs_args, rhs_ret_type)) => {
+                if !lhs_ret_type.is_equvalent(rhs_ret_type) {
+                    return false;
+                }
+                for (i, lhs_arg) in lhs_args.iter().enumerate() {
+                    let rhs_arg = if let Some(a) = rhs_args.get(i) {
+                        a
+                    } else {
+                        return false;
+                    };
+                    if !lhs_arg.1.is_equvalent(&rhs_arg.1) {
+                        return false;
+                    }
+                }
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn as_block(&self) -> Option<(&Vec<(Rc<String>, TypeExpr)>, &Box<TypeExpr>)> {
@@ -527,9 +661,20 @@ fn parse_expressions(
                 expr: Expression::RawASM(Rc::clone(asm_code)),
             };
         }
+        TokenContent::RoundParenOpen => {
+            token_stream.next();
+            node = parse_expressions(ast, token_stream, false)?;
+            if token_stream.next().content != TokenContent::RoundParenClose {
+                return Err(CompileError::unexpected_token(
+                    TokenContent::RoundParenClose,
+                    token_stream.current(),
+                ));
+            }
+        }
         _ => return Err(CompileError::unexpected_token0(token_stream.current())),
     }
 
+    // detect type casting
     let node = if token_stream.peek(1).content == TokenContent::Squiggle {
         let pos = token_stream.next().position;
         let n = ast.add_to_node_pool(node);

@@ -1,13 +1,13 @@
-#include cstd.sharkh
-
-print_pointer: (p: *isize) = {
-    printf("p dereference to... %lu\n", *p);
+test: (a: usize) = {
     return;
 };
 
 main: () -> u32 = {
     a: isize = 100;
-    print_pointer(&a);
-    return 0;
+    b: usize = (&a) ~ usize;
+    test();
+    test(a);
+    test(a~usize);
+    return;
 };
 
