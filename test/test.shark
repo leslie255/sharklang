@@ -1,7 +1,20 @@
 #include cstd.sharkh
 
+alloc_string: (len: usize) -> *u8 = {
+    return malloc(len) ~ *u8;
+};
+
+free_string: (str: *u8) = {
+    free(str ~ *none);
+    return;
+};
+
 main: () -> u32 = {
-    printf("hello, world\n");
-    printf("%lu\n", 42);
+    message: = alloc_string(100);
+    strcpy(message, "hello, world\n");
+    strcat(message, "this string is stored on the heap!\n");
+    printf("message: %s", message ~ usize);
+    len: = strlen(message);
+    free_string(message);
     return 0;
 };

@@ -166,7 +166,7 @@ impl TypeExpr {
             Expression::FnCall { name, args: _ } => {
                 if_none_return_false!(if_none_return_false!(symbols.lookup(name)).1.as_function())
                     .1
-                    .matches_expr(expr, symbols)
+                    .is_equvalent(self)
             }
             Expression::TypeCast(_, casted_type) => casted_type.is_equvalent(self),
 

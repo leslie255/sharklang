@@ -1,11 +1,12 @@
-extern malloc:	(len: u64) -> *none;
+extern malloc:	(len: usize) -> *none;
 extern free:	(ptr: *none);
 extern strcpy:	(dest: *u8, src: *u8);
 extern strcat:	(dest: *u8, str: *u8);
-extern memmove:	(dest: *none, src: *none);
-extern memcpy:	(dest: *none, src: *none);
+extern strlen:	(str: *u8) -> usize;
+extern memmove:	(dest: *none, src: *none, size: usize);
+extern memcpy:	(dest: *none, src: *none, size: usize);
 extern printf:	(fmt: *u8, args: usize ..);
-extern bzero:	(ptr: *none, size: u64);
+extern bzero:	(ptr: *none, size: usize);
 extern fopen:	(path: *u8, mode: *u8) -> u64;
 extern fclose:	(fp: u64);
 extern fwrite:	(str: *u8, count: u32, size: u32, fp: u64);
