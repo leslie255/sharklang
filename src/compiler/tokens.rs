@@ -105,6 +105,14 @@ impl TokenContent {
             Self::EOF => "EOF".to_string(),
         }
     }
+
+    /// Returns `true` if the token content is [`BigParenClose`].
+    ///
+    /// [`BigParenClose`]: TokenContent::BigParenClose
+    #[must_use]
+    pub fn is_big_paren_close(&self) -> bool {
+        matches!(self, Self::BigParenClose)
+    }
 }
 impl Default for TokenContent {
     fn default() -> Self {
@@ -459,6 +467,7 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
             });
             word.clear();
         } else if ch == '#' {
+            word_start = i;
             // Macro
             while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore()) {
                 word.push(ch);
@@ -490,13 +499,56 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
                     }
                     macro_map.insert(name, content);
                 }
+                "asm" => {
+                    let mut len = 4usize;
+                    let mut is_multiline = false;
+                    // go to the next non-whitespace character
+                    while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_whitespace()) {
+                        if ch == '\n' {
+                            is_multiline = true;
+                        }
+                        len += 1;
+                    }
+                    let mut content = String::new();
+                    if !is_multiline {
+                        while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+                            content.push(ch);
+                            len += 1;
+                        }
+                    } else {
+                        loop {
+                            next!();
+                            if ch == '#' {
+                                let mut next_three_chars: [char; 3] = ['\0', '\0', '\0'];
+                                next!();
+                                next_three_chars[0] = ch;
+                                next!();
+                                next_three_chars[1] = ch;
+                                next!();
+                                next_three_chars[2] = ch;
+                                if next_three_chars == ['e', 'n', 'd'] {
+                                    break;
+                                } else {
+                                    content.push_str("#end");
+                                    continue;
+                                }
+                            }
+                            content.push(ch);
+                        }
+                    }
+                    tokens.push(Token {
+                        content: TokenContent::RawASM(Rc::new(content)),
+                        position: word_start,
+                        len,
+                    });
+                }
                 id => {
                     if let Some(expanded_content) = macro_map.get(id) {
                         let mut expanded_tokens =
                             parse_into_tokens(expanded_content, source_file_path);
                         tokens.append(&mut expanded_tokens);
                     } else {
-                        panic!("Cannot recogize macro keyword {id}");
+                        panic!("Cannot recogize macro keyword `{id}`");
                     }
                 }
             }

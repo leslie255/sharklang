@@ -1,22 +1,8 @@
-#include cstd.sharkh
-
 typedef str = *u8;
 
-alloc_str: (size: usize) -> str = {
-    return malloc(size) ~ str;
-};
-
-dealloc_str: (s: str) = {
-    free(s ~ *none);
-    return;
-};
-
 main: () -> u32 = {
-    size: = 128;
-    message: = alloc_str(size);
-    strcpy(message, "hello, world\n");
-    // have to do this typecast `~usize` because of type checker
-    printf("%s", message ~ usize);
-    dealloc_str(message);
+    #asm               
+    mov     rax, 100
+    #end
     return 0;
-};
+}

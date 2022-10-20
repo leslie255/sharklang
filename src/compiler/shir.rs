@@ -66,6 +66,7 @@ pub enum SHIR {
     ReturnValue(Box<Self>),
     Deref(Box<SHIR>, BasicType),
     TakeAddr(Box<SHIR>),
+    RawASM(Rc<String>),
 }
 
 impl SHIR {
@@ -85,7 +86,11 @@ impl SHIR {
                 ret_type: dtype,
             }
             | SHIR::Deref(_, dtype) => *dtype = t,
-            SHIR::Const(_) | SHIR::ReturnVoid | SHIR::ReturnValue(_) | Self::TakeAddr(_) => (),
+            SHIR::Const(_)
+            | SHIR::ReturnVoid
+            | SHIR::ReturnValue(_)
+            | Self::TakeAddr(_)
+            | Self::RawASM(_) => (),
         }
     }
     #[must_use]
@@ -476,7 +481,7 @@ fn convert_body(
         Expression::Break => todo!(),
         Expression::Continue => todo!(),
         Expression::Extern(_, _) => panic!(),
-        Expression::RawASM(_) => todo!(),
+        Expression::RawASM(code) => Some(SHIR::RawASM(Rc::clone(code))),
     }
 }
 

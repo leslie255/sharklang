@@ -797,11 +797,22 @@ fn parse_expressions(
     };
 
     if expects_semicolon {
-        if token_stream.next().content != TokenContent::Semicolon {
+        let current_token = &token_stream.current().content;
+        let ended_with_block = current_token.is_big_paren_close();
+        let ended_with_asm = if let TokenContent::RawASM(_) = current_token {
+            true
+        } else {
+            false
+        };
+        let has_semicolon = token_stream.peek(1).content == TokenContent::Semicolon;
+        if !has_semicolon && !ended_with_block && !ended_with_asm {
             return Err(CompileError::unexpected_token(
                 TokenContent::Semicolon,
                 token_stream.current(),
             ));
+        }
+        if has_semicolon {
+            token_stream.next();
         }
     }
     Ok(node)

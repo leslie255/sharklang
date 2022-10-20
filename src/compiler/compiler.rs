@@ -56,7 +56,7 @@ fn compile_instr(shir: &SHIR, context: &Context, target: &mut Vec<MIRInstr>) -> 
         | SHIR::Const(_)
         | SHIR::Arg(_, _)
         | SHIR::Deref(_, _)
-        | SHIR::TakeAddr(_) => panic!(),
+        | SHIR::TakeAddr(_) => panic!("{shir:?}"),
         SHIR::VarAssign { id, dtype, rhs } => MIRInstr {
             operation: MIROpcode::SetVar,
             operand0: Operand {
@@ -86,6 +86,14 @@ fn compile_instr(shir: &SHIR, context: &Context, target: &mut Vec<MIRInstr>) -> 
         SHIR::ReturnValue(val) => MIRInstr {
             operation: MIROpcode::RetVal,
             operand0: compile_oper(val, context.fn_ret_type, target),
+            operand1: Operand::default(),
+        },
+        SHIR::RawASM(code) => MIRInstr {
+            operation: MIROpcode::RawASM,
+            operand0: Operand {
+                dtype: DataType::Irrelavent,
+                content: OperandContent::RawASM(Rc::clone(code)),
+            },
             operand1: Operand::default(),
         },
     }
