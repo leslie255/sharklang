@@ -143,7 +143,6 @@ impl Symbol {
             None
         }
     }
-    #[allow(dead_code)]
     pub fn as_type_name(&self) -> Option<&TypeExpr> {
         if let Self::TypeName(v) = self {
             Some(v)
@@ -200,7 +199,7 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
                     .symbols
                     .local
                     .insert(Rc::clone(arg_name), Symbol::Variable(arg_t.clone(), arg_id));
-                let arg_t_basic = arg_t.into_basic_type().unwrap();
+                let arg_t_basic = arg_t.into_basic_type(&context.symbols).unwrap();
                 fn_body.push(SHIR::VarDef {
                     id: arg_id,
                     dtype: arg_t_basic,
@@ -235,7 +234,7 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
                 is_local: false,
                 name: Rc::clone(name),
                 body: fn_body,
-                ret_type: ret_type.into_basic_type().unwrap(), // TODO: return structures
+                ret_type: ret_type.into_basic_type(&context.symbols).unwrap(), // TODO: return structures
             });
         } else if let Some((name, dtype)) = root_node.expr.as_extern() {
             let (args, ret_type, is_variadic) = dtype.as_block().unwrap();
@@ -249,8 +248,13 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
             );
             program.body.push(SHIRTopLevel::ExternFn {
                 name: Rc::clone(name),
-                ret_type: ret_type.into_basic_type().unwrap(),
+                ret_type: ret_type.into_basic_type(&context.symbols).unwrap(),
             })
+        } else if let Expression::TypeDef(name, rhs_type) = &root_node.expr {
+            context
+                .symbols
+                .global
+                .insert(Rc::clone(name), Symbol::TypeName(rhs_type.clone()));
         }
     }
     program.strliteral_pool = ast.strliteral_pool;
@@ -267,7 +271,7 @@ fn convert_body(
     match &node.expr {
         Expression::Identifier(id) => {
             let (dtype, num_id) = context.symbols.lookup(id)?.1.as_variable()?;
-            Some(SHIR::Var(num_id, dtype.into_basic_type()?))
+            Some(SHIR::Var(num_id, dtype.into_basic_type(&context.symbols)?))
         }
         Expression::NumLiteral(val) => Some(SHIR::Const(SHIRConst::Number(*val))),
         Expression::StrLiteral(str) => Some(SHIR::Const(SHIRConst::String(*str))),
@@ -294,7 +298,7 @@ fn convert_body(
                 .insert(Rc::clone(name), Symbol::Variable(dtype.clone(), var_id));
             let var_def = SHIR::VarDef {
                 id: var_id,
-                dtype: dtype.into_basic_type()?,
+                dtype: dtype.into_basic_type(&context.symbols)?,
             };
             if let Some(rhs) = rhs {
                 parent.push(var_def);
@@ -307,7 +311,7 @@ fn convert_body(
                 )?;
                 Some(SHIR::VarAssign {
                     id: var_id,
-                    dtype: dtype.into_basic_type()?,
+                    dtype: dtype.into_basic_type(&context.symbols)?,
                     rhs: Box::new(rhs_shir),
                 })
             } else {
@@ -322,7 +326,7 @@ fn convert_body(
                 check_type(var_type, rhs_node, err_collector, &context.symbols);
                 Some(SHIR::VarAssign {
                     id: var_id,
-                    dtype: var_type.into_basic_type()?,
+                    dtype: var_type.into_basic_type(&context.symbols)?,
                     rhs: Box::new(convert_body(&rhs_node, parent, context, i, err_collector)?),
                 })
             } else if let Some(_) = lhs_expr.as_deref() {
@@ -399,12 +403,12 @@ fn convert_body(
                     });
                     arg_shir = SHIR::Var(temp_var_id, *ret_type);
                 }
-                args_shir.push((arg_shir, arg_type.into_basic_type()?));
+                args_shir.push((arg_shir, arg_type.into_basic_type(&context.symbols)?));
             }
             Some(SHIR::FnCall {
                 name,
                 args: args_shir,
-                ret_type: ret_type.into_basic_type()?,
+                ret_type: ret_type.into_basic_type(&context.symbols)?,
             })
         }
         Expression::Deref(child) => {
@@ -417,7 +421,10 @@ fn convert_body(
             } else {
                 panic!("dereferencing expression of non-pointer type")
             };
-            Some(SHIR::Deref(Box::new(s), dtype.into_basic_type()?))
+            Some(SHIR::Deref(
+                Box::new(s),
+                dtype.into_basic_type(&context.symbols)?,
+            ))
         }
         Expression::TakeAddr(child) => {
             let child_node = &child.upgrade().unwrap();
@@ -428,8 +435,15 @@ fn convert_body(
         Expression::TypeCast(n, t) => {
             let child_node = &unsafe { n.as_ptr().as_ref()? };
             let mut s = convert_body(child_node, parent, context, i, err_collector)?;
-            s.type_cast(t.into_basic_type()?);
+            s.type_cast(t.into_basic_type(&context.symbols)?);
             Some(s)
+        }
+        Expression::TypeDef(name, rhs_type) => {
+            context
+                .symbols
+                .local
+                .insert(Rc::clone(name), Symbol::TypeName(rhs_type.clone()));
+            None
         }
         Expression::Block(_) => None,
         Expression::Loop(_) => todo!(),

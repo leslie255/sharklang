@@ -24,6 +24,7 @@ pub enum TokenContent {
     String(String),
     Char(u8),
     Identifier(Rc<String>),
+    Typedef,
     Loop,
     If,
     Else,
@@ -84,6 +85,7 @@ impl TokenContent {
             Self::String(_) => "String".to_string(),
             Self::Char(_) => "Char".to_string(),
             Self::Identifier(_) => "Identifier".to_string(),
+            Self::Typedef => "`typedef`".to_string(),
             Self::Loop => "`loop`".to_string(),
             Self::If => "`if`".to_string(),
             Self::Else => "`else`".to_string(),
@@ -224,6 +226,14 @@ impl Token {
         }
     }
 
+    pub fn expects_content(&self, content: TokenContent) -> Result<(), CompileError> {
+        if self.content == content {
+            Ok(())
+        } else {
+            Err(CompileError::unexpected_token(content, self))
+        }
+    }
+
     fn eof() -> Token {
         Token {
             content: TokenContent::EOF,
@@ -292,6 +302,7 @@ impl Token {
             "break" => return_token!(TokenContent::Break, 5),
             "continue" => return_token!(TokenContent::Continue, 8),
             "return" => return_token!(TokenContent::Return, 6),
+            "typedef" => return_token!(TokenContent::Typedef, 7),
             "loop" => return_token!(TokenContent::Loop, 4),
             "if" => return_token!(TokenContent::If, 2),
             "extern" => return_token!(TokenContent::Extern, 6),
@@ -389,7 +400,9 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
             // Number
             word.push(ch);
             word_start = i;
-            while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore_or_dot()) {
+            while let Some((_, ch)) =
+                chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore_or_dot())
+            {
                 word.push(ch);
             }
             tokens.push(Token {

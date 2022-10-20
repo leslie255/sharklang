@@ -81,53 +81,71 @@ pub enum TypeExpr {
         ret_type: Box<Self>,
         is_variadic: bool,
     }, // args, return type, is variadic?
+
+    Struct(Vec<(Rc<String>, TypeExpr)>),
+
+    TypeName(Rc<String>),
 }
 impl TypeExpr {
     #[must_use]
-    pub fn is_float(&self) -> bool {
+    pub fn is_float(&self, symbols: &SymbolTable) -> bool {
         match self {
-            TypeExpr::u8 => false,
-            TypeExpr::u16 => false,
-            TypeExpr::u32 => false,
-            TypeExpr::u64 => false,
-            TypeExpr::i8 => false,
-            TypeExpr::i16 => false,
-            TypeExpr::i32 => false,
-            TypeExpr::i64 => false,
-            TypeExpr::f64 => true,
-            TypeExpr::f32 => true,
-            TypeExpr::usize => false,
-            TypeExpr::isize => true,
-            TypeExpr::none => false,
-            TypeExpr::Ptr(_) => false,
-            TypeExpr::Slice(_) => false,
-            TypeExpr::Fn {
-                args: _,
-                ret_type: _,
-                is_variadic: _,
-            } => false,
+            Self::u8 => false,
+            Self::u16 => false,
+            Self::u32 => false,
+            Self::u64 => false,
+            Self::i8 => false,
+            Self::i16 => false,
+            Self::i32 => false,
+            Self::i64 => false,
+            Self::f64 => true,
+            Self::f32 => true,
+            Self::usize => false,
+            Self::isize => true,
+            Self::none => false,
+            Self::Ptr(_) => false,
+            Self::Slice(_) => false,
+            Self::Fn { .. } => false,
+            Self::Struct(_) => false,
+            Self::TypeName(name) => {
+                if let Some((_, symbol)) = symbols.lookup(name) {
+                    if let Some(t) = symbol.as_type_name() {
+                        return t.is_float(symbols);
+                    }
+                }
+                false
+            }
         }
     }
 
     #[must_use]
-    pub fn is_int(&self) -> bool {
+    pub fn is_int(&self, symbols: &SymbolTable) -> bool {
         match self {
-            TypeExpr::u8 => true,
-            TypeExpr::u16 => true,
-            TypeExpr::u32 => true,
-            TypeExpr::u64 => true,
-            TypeExpr::i8 => true,
-            TypeExpr::i16 => true,
-            TypeExpr::i32 => true,
-            TypeExpr::i64 => true,
-            TypeExpr::f64 => false,
-            TypeExpr::f32 => false,
-            TypeExpr::usize => true,
-            TypeExpr::isize => true,
-            TypeExpr::none => false,
-            TypeExpr::Ptr(_) => false,
-            TypeExpr::Slice(_) => false,
-            TypeExpr::Fn { .. } => false,
+            Self::u8 => true,
+            Self::u16 => true,
+            Self::u32 => true,
+            Self::u64 => true,
+            Self::i8 => true,
+            Self::i16 => true,
+            Self::i32 => true,
+            Self::i64 => true,
+            Self::f64 => false,
+            Self::f32 => false,
+            Self::usize => true,
+            Self::isize => true,
+            Self::none => false,
+            Self::Ptr(_) => false,
+            Self::Slice(_) => false,
+            Self::Fn { .. } => false,
+            Self::Struct(_) => false,
+            Self::TypeName(name) => {
+                if let Some((_, symbol)) = symbols.lookup(name) {
+                    if let Some(t) = symbol.as_type_name() {
+                        return t.is_int(symbols);
+                    }
+                }
+                false
+            }
         }
     }
 
@@ -146,14 +164,16 @@ impl TypeExpr {
             Expression::Identifier(id) => {
                 if_none_return_false!(if_none_return_false!(symbols.lookup(id)).1.as_variable())
                     .0
-                    .is_equvalent(self)
+                    .is_equvalent(self, symbols)
             }
             Expression::NumLiteral(numval) => match numval {
-                NumValue::U(_) | NumValue::I(_) => self.is_int(),
-                NumValue::F(_) => self.is_float(),
+                NumValue::U(_) | NumValue::I(_) => self.is_int(symbols),
+                NumValue::F(_) => self.is_float(symbols),
             },
-            Expression::StrLiteral(_) => self.is_equvalent(&Self::Ptr(Box::new(TypeExpr::u8))),
-            Expression::CharLiteral(_) => self.is_equvalent(&Self::u8),
+            Expression::StrLiteral(_) => {
+                self.is_equvalent(&Self::Ptr(Box::new(TypeExpr::u8)), symbols)
+            }
+            Expression::CharLiteral(_) => self.is_equvalent(&Self::u8, symbols),
             Expression::Deref(child) => {
                 if let Self::Ptr(t) = self {
                     t.matches_expr(&if_none_return_false!(child.upgrade()).expr, symbols)
@@ -166,10 +186,11 @@ impl TypeExpr {
             Expression::FnCall { name, args: _ } => {
                 if_none_return_false!(if_none_return_false!(symbols.lookup(name)).1.as_function())
                     .1
-                    .is_equvalent(self)
+                    .is_equvalent(self, symbols)
             }
-            Expression::TypeCast(_, casted_type) => casted_type.is_equvalent(self),
+            Expression::TypeCast(_, casted_type) => casted_type.is_equvalent(self, symbols),
 
+            Expression::TypeDef(_, _) => false,
             Expression::Def { .. } => false,
             Expression::Assign { .. } => false,
             Expression::DataType(_) => false,
@@ -184,8 +205,27 @@ impl TypeExpr {
     }
 
     #[must_use]
-    pub fn is_equvalent(&self, rhs: &Self) -> bool {
-        match (self, rhs) {
+    pub fn is_equvalent(&self, rhs: &Self, symbols: &SymbolTable) -> bool {
+        macro_rules! ret_false_if_none {
+            ($opt: expr) => {
+                if let Some(x) = $opt {
+                    x
+                } else {
+                    return false;
+                }
+            };
+        }
+        let lhs = if let Self::TypeName(name) = self {
+            ret_false_if_none!(ret_false_if_none!(symbols.lookup(name)).1.as_type_name())
+        } else {
+            self
+        };
+        let rhs = if let Self::TypeName(name) = rhs {
+            ret_false_if_none!(ret_false_if_none!(symbols.lookup(name)).1.as_type_name())
+        } else {
+            rhs
+        };
+        match (lhs, rhs) {
             (Self::u8, Self::u8) => true,
             (Self::u16, Self::u16) => true,
             (Self::u32, Self::u32) => true,
@@ -200,8 +240,8 @@ impl TypeExpr {
             (Self::isize, Self::isize) => true,
             (Self::none, Self::none) => true,
 
-            (Self::Ptr(lhs), Self::Ptr(rhs)) => lhs.is_equvalent(rhs),
-            (Self::Slice(lhs), Self::Slice(rhs)) => lhs.is_equvalent(rhs),
+            (Self::Ptr(lhs), Self::Ptr(rhs)) => lhs.is_equvalent(rhs, symbols),
+            (Self::Slice(lhs), Self::Slice(rhs)) => lhs.is_equvalent(rhs, symbols),
 
             (
                 Self::Fn {
@@ -218,7 +258,7 @@ impl TypeExpr {
                 if lhs_is_variadic != rhs_is_variadic {
                     return false;
                 }
-                if !lhs_ret_type.is_equvalent(rhs_ret_type) {
+                if !lhs_ret_type.is_equvalent(rhs_ret_type, symbols) {
                     return false;
                 }
                 for (i, lhs_arg) in lhs_args.iter().enumerate() {
@@ -227,12 +267,13 @@ impl TypeExpr {
                     } else {
                         return false;
                     };
-                    if !lhs_arg.1.is_equvalent(&rhs_arg.1) {
+                    if !lhs_arg.1.is_equvalent(&rhs_arg.1, symbols) {
                         return false;
                     }
                 }
                 true
             }
+
             _ => false,
         }
     }
@@ -253,7 +294,7 @@ impl TypeExpr {
     /// Returns a BasicType (aka mir::ir::DataType) if `self` is a basic type (u64, f32, i16, ...)
     /// and not a compound type (slice, struct, block, ...). If `self` is a pointer of any type
     /// returns BasicType::Unsigned64, as currently Madeline doesn't have pointer types
-    pub fn into_basic_type(&self) -> Option<BasicType> {
+    pub fn into_basic_type(&self, symbols: &SymbolTable) -> Option<BasicType> {
         match self {
             Self::u64 => Some(BasicType::Unsigned64),
             Self::u32 => Some(BasicType::Unsigned32),
@@ -267,8 +308,13 @@ impl TypeExpr {
             Self::f32 => Some(BasicType::Float32),
             Self::usize => Some(BasicType::UnsignedSize),
             Self::isize => Some(BasicType::SignedSize),
-            Self::Ptr(..) => Some(BasicType::Pointer),
+            Self::Ptr(_) => Some(BasicType::Pointer),
             Self::none => Some(BasicType::Irrelavent),
+            Self::TypeName(name) => symbols
+                .lookup(name)?
+                .1
+                .as_type_name()?
+                .into_basic_type(symbols),
             _ => None,
         }
     }
@@ -310,17 +356,31 @@ impl Display for TypeExpr {
                 for (i, (_, t)) in args.iter().enumerate() {
                     if i == count - 1 {
                         // is last one
-                        write!(f, "{}", t)?;
+                        write!(f, "{t}")?;
                     } else {
-                        write!(f, "{}, ", t)?;
+                        write!(f, "{t}, ")?;
                     }
                 }
                 if *is_variadic {
-                    write!(f, "..) -> {}", ret_type)?;
+                    write!(f, "..) -> {ret_type}")?;
                 } else {
-                    write!(f, ") -> {}", ret_type)?;
+                    write!(f, ") -> {ret_type}")?;
                 }
             }
+            Self::Struct(fields) => {
+                write!(f, "struct {{ ")?;
+                let count = fields.len();
+                for (i, (id, t)) in fields.iter().enumerate() {
+                    if i == count - 1 {
+                        // is last one
+                        write!(f, "{id}: {t}")?;
+                    } else {
+                        write!(f, "{id}: {t}, ")?;
+                    }
+                }
+                write!(f, " }}")?;
+            }
+            Self::TypeName(name) => write!(f, "`{name}`")?,
         }
         Ok(())
     }
@@ -353,6 +413,7 @@ pub enum Expression {
 
     DataType(TypeExpr),
     TypeCast(Weak<ASTNode>, TypeExpr),
+    TypeDef(Rc<String>, TypeExpr),
 
     Block(Vec<Weak<ASTNode>>),
     Loop(Weak<ASTNode>),
@@ -510,6 +571,11 @@ impl Debug for Expression {
             Self::Continue => formatter.debug_tuple("Continue").finish(),
             Self::Extern(arg0, arg1) => formatter
                 .debug_tuple("Extern")
+                .field(arg0)
+                .field(arg1)
+                .finish(),
+            Self::TypeDef(arg0, arg1) => formatter
+                .debug_tuple("TypeDef")
                 .field(arg0)
                 .field(arg1)
                 .finish(),
@@ -680,6 +746,17 @@ fn parse_expressions(
                 expr: Expression::Break,
             }
         }
+        TokenContent::Typedef => {
+            let pos = current_token.position;
+            let type_name = Rc::clone(token_stream.next().expects_identifier()?);
+            token_stream.next().expects_content(TokenContent::Equal)?;
+            token_stream.next();
+            let rhs_type = parse_type_expr(token_stream)?;
+            node = ASTNode {
+                pos,
+                expr: Expression::TypeDef(type_name, rhs_type),
+            }
+        }
         TokenContent::Loop => {
             let pos = current_token.position;
             token_stream.next();
@@ -699,12 +776,9 @@ fn parse_expressions(
         TokenContent::RoundParenOpen => {
             token_stream.next();
             node = parse_expressions(ast, token_stream, false)?;
-            if token_stream.next().content != TokenContent::RoundParenClose {
-                return Err(CompileError::unexpected_token(
-                    TokenContent::RoundParenClose,
-                    token_stream.current(),
-                ));
-            }
+            token_stream
+                .next()
+                .expects_content(TokenContent::RoundParenClose)?;
         }
         _ => return Err(CompileError::unexpected_token0(token_stream.current())),
     }
@@ -872,13 +946,7 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Result<TypeExpr, CompileEr
             "usize" => TypeExpr::usize,
             "isize" => TypeExpr::isize,
             "none" => TypeExpr::none,
-            _ => {
-                return Err(CompileError {
-                    content: ErrorContent::TypeNameNotExist(Rc::clone(id)),
-                    position: token_stream.current().position,
-                    length: token_stream.current().len,
-                });
-            }
+            _ => TypeExpr::TypeName(Rc::clone(id)),
         }),
         TokenContent::RoundParenOpen => {
             let mut is_variadic = false;
@@ -946,6 +1014,37 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Result<TypeExpr, CompileEr
                 ret_type,
                 is_variadic,
             })
+        }
+        TokenContent::BigParenOpen => {
+            if token_stream.peek(1).content == TokenContent::BigParenClose {
+                token_stream.next();
+                return Ok(TypeExpr::Struct(Vec::new()));
+            }
+            let mut fields = Vec::<(Rc<String>, TypeExpr)>::new();
+            loop {
+                let field_name = token_stream.next().expects_identifier()?;
+                let field_name = Rc::clone(field_name);
+                if token_stream.next().content != TokenContent::Colon {
+                    return Err(CompileError::unexpected_token(
+                        TokenContent::Colon,
+                        token_stream.current(),
+                    ));
+                }
+                token_stream.next();
+                let field_type = parse_type_expr(token_stream)?;
+                fields.push((field_name, field_type));
+                let pclose_or_comma = token_stream.next().content.clone();
+                if pclose_or_comma == TokenContent::BigParenClose {
+                    return Ok(TypeExpr::Struct(fields));
+                } else if pclose_or_comma == TokenContent::Comma {
+                    continue;
+                } else {
+                    return Err(CompileError::unexpected_token_multiple(
+                        vec![TokenContent::Comma, TokenContent::BigParenClose],
+                        token_stream.current(),
+                    ));
+                }
+            }
         }
         _ => Err(CompileError::unexpected_token0(token_stream.current())),
     }

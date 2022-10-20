@@ -80,8 +80,7 @@ impl Display for ErrorContent {
             Self::MismatchedType { expected, found } => {
                 write!(
                     f,
-                    "Expects expression of type {:?}{}",
-                    expected,
+                    "Expects expression of type {expected}{}",
                     if let Some(t) = found {
                         format!(", found {t}")
                     } else {

@@ -1,20 +1,22 @@
 #include cstd.sharkh
 
-alloc_string: (len: usize) -> *u8 = {
-    return malloc(len) ~ *u8;
+typedef str = *u8;
+
+alloc_str: (size: usize) -> str = {
+    return malloc(size) ~ str;
 };
 
-free_string: (str: *u8) = {
-    free(str ~ *none);
+dealloc_str: (s: str) = {
+    free(s ~ *none);
     return;
 };
 
 main: () -> u32 = {
-    message: = alloc_string(100);
+    size: = 128;
+    message: = alloc_str(size);
     strcpy(message, "hello, world\n");
-    strcat(message, "this string is stored on the heap!\n");
-    printf("message: %s", message ~ usize);
-    len: = strlen(message);
-    free_string(message);
+    // have to do this typecast `~usize` because of type checker
+    printf("%s", message ~ usize);
+    dealloc_str(message);
     return 0;
 };
