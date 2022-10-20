@@ -197,6 +197,7 @@ impl TypeExpr {
             Expression::Block(_) => false,
             Expression::Loop(_) => false,
             Expression::Return(_) => false,
+            Expression::UnsafeReturn => false,
             Expression::Break => false,
             Expression::Continue => false,
             Expression::Extern(_, _) => false,
@@ -419,6 +420,7 @@ pub enum Expression {
     Loop(Weak<ASTNode>),
 
     Return(Option<Weak<ASTNode>>),
+    UnsafeReturn,
     Break,
     Continue,
 
@@ -567,6 +569,7 @@ impl Debug for Expression {
                     formatter.debug_tuple("Return").field(arg0).finish()
                 }
             }
+            Self::UnsafeReturn => formatter.debug_tuple("UnsafeReturn").finish(),
             Self::Break => formatter.debug_tuple("Break").finish(),
             Self::Continue => formatter.debug_tuple("Continue").finish(),
             Self::Extern(arg0, arg1) => formatter
@@ -720,10 +723,17 @@ fn parse_expressions(
         }
         TokenContent::Return => {
             let pos = current_token.position;
-            if token_stream.peek(1).indicates_end_of_expr() {
+            let peek = token_stream.peek(1);
+            if peek.indicates_end_of_expr() {
                 node = ASTNode {
                     pos,
                     expr: Expression::Return(None),
+                };
+            } else if peek.content == TokenContent::Underscore {
+                token_stream.next();
+                node = ASTNode {
+                    pos,
+                    expr: Expression::UnsafeReturn,
                 };
             } else {
                 token_stream.next();

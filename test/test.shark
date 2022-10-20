@@ -1,8 +1,8 @@
 typedef str = *u8;
 
 main: () -> u32 = {
-    #asm               
+    #asm
     mov     rax, 100
     #end
-    return 0;
+    return _;
 }

@@ -396,6 +396,12 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
             }
             tokens.push(if let Some(t) = Token::is_it_a_keyword(&word, i) {
                 t
+            } else if word == "_" {
+                Token {
+                    content: TokenContent::Underscore,
+                    position: word_start,
+                    len: word.len(),
+                }
             } else {
                 Token {
                     content: TokenContent::Identifier(Rc::new(word.clone())),
@@ -537,7 +543,7 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
                         }
                     }
                     tokens.push(Token {
-                        content: TokenContent::RawASM(Rc::new(content)),
+                        content: TokenContent::RawASM(Rc::new(content.trim().to_string())),
                         position: word_start,
                         len,
                     });

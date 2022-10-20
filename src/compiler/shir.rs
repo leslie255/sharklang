@@ -478,6 +478,9 @@ fn convert_body(
                 Some(SHIR::ReturnVoid)
             }
         }
+        Expression::UnsafeReturn => {
+            Some(SHIR::ReturnVoid)
+        }
         Expression::Break => todo!(),
         Expression::Continue => todo!(),
         Expression::Extern(_, _) => panic!(),
