@@ -1,0 +1,3 @@
+[submodule "madeline"]
+	path = madeline
+	url = https://github.com/leslie255/madeline.git

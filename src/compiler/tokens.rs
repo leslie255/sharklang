@@ -1,3 +1,10 @@
+use std::rc::Rc;
+
+use crate::compiler::preprocess::PreProcessor;
+
+use super::error::CompileError;
+
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenContent {
     RoundParenOpen,
@@ -11,20 +18,19 @@ pub enum TokenContent {
     False,
     Semicolon,
     Period,
+    DotDot,
     Comma,
     Colon,
     Underscore,
-    UInt(u64),
-    SInt(i64),
-    Float(f64),
+    Number(Rc<String>),
     String(String),
     Char(u8),
-    Identifier(String),
-    Let,
+    Identifier(Rc<String>),
+    Typedef,
     Loop,
     If,
     Else,
-    Func,
+    Extern,
     Return,
     ReturnArrow,
     Break,
@@ -32,11 +38,12 @@ pub enum TokenContent {
     Squiggle,
     And,
     Dollar,
+    Star,
+    Minus,
 
     SingleLineCommentStart,
-    NewLine,
 
-    RawASM(String),
+    RawASM(Rc<String>),
 
     Unknown,
     EOF,
@@ -48,6 +55,66 @@ impl TokenContent {
             _ => false,
         }
     }
+
+    pub fn as_identifier(&self) -> Option<&Rc<String>> {
+        if let Self::Identifier(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    /// Name of the token, displayed during a syntax error
+    #[must_use]
+    pub fn name(&self) -> String {
+        match self {
+            Self::RoundParenOpen => "RoundParenOpen".to_string(),
+            Self::RoundParenClose => "RoundParenClose".to_string(),
+            Self::RectParenOpen => "RectParenOpen".to_string(),
+            Self::RectParenClose => "RectParenClose".to_string(),
+            Self::BigParenOpen => "BigParenOpen".to_string(),
+            Self::BigParenClose => "BigParenClose".to_string(),
+            Self::Equal => "Equal".to_string(),
+            Self::True => "`true`".to_string(),
+            Self::False => "`false`".to_string(),
+            Self::Semicolon => "Semicolon".to_string(),
+            Self::Period => "Period".to_string(),
+            Self::DotDot => "DotDot".to_string(),
+            Self::Comma => "Comma".to_string(),
+            Self::Colon => "Colon".to_string(),
+            Self::Underscore => "Underscore".to_string(),
+            Self::Number(_) => "Number".to_string(),
+            Self::String(_) => "String".to_string(),
+            Self::Char(_) => "Char".to_string(),
+            Self::Identifier(_) => "Identifier".to_string(),
+            Self::Typedef => "`typedef`".to_string(),
+            Self::Loop => "`loop`".to_string(),
+            Self::If => "`if`".to_string(),
+            Self::Else => "`else`".to_string(),
+            Self::Extern => "`extern`".to_string(),
+            Self::Return => "`return`".to_string(),
+            Self::ReturnArrow => "ReturnArrow".to_string(),
+            Self::Break => "`break`".to_string(),
+            Self::Continue => "`continue`".to_string(),
+            Self::Squiggle => "Squiggle".to_string(),
+            Self::And => "And".to_string(),
+            Self::Dollar => "Dollar".to_string(),
+            Self::Minus => "Minus".to_string(),
+            Self::Star => "Star".to_string(),
+            Self::SingleLineCommentStart => "SingleLineCommentStart".to_string(),
+            Self::RawASM(_) => "RawASM".to_string(),
+            Self::Unknown => "UNKNOWN".to_string(),
+            Self::EOF => "EOF".to_string(),
+        }
+    }
+
+    /// Returns `true` if the token content is [`BigParenClose`].
+    ///
+    /// [`BigParenClose`]: TokenContent::BigParenClose
+    #[must_use]
+    pub fn is_big_paren_close(&self) -> bool {
+        matches!(self, Self::BigParenClose)
+    }
 }
 impl Default for TokenContent {
     fn default() -> Self {
@@ -55,98 +122,98 @@ impl Default for TokenContent {
     }
 }
 
-trait CharCustomFuncs {
+pub trait CharCustomFuncs {
     fn is_alphanumeric_or_underscore(&self) -> bool;
+    fn is_alphanumeric_or_underscore_or_dot(&self) -> bool;
+    fn is_alphabetic_or_underscore(&self) -> bool;
     fn is_paren(&self) -> bool;
 }
 impl CharCustomFuncs for char {
     fn is_alphanumeric_or_underscore(&self) -> bool {
         self.is_alphanumeric() || *self == '_'
     }
+    fn is_alphanumeric_or_underscore_or_dot(&self) -> bool {
+        self.is_alphanumeric() || *self == '_' || *self == '.'
+    }
+    fn is_alphabetic_or_underscore(&self) -> bool {
+        self.is_alphabetic() || *self == '_'
+    }
     fn is_paren(&self) -> bool {
         *self == '(' || *self == ')' || *self == '[' || *self == ']' || *self == '{' || *self == '}'
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct TokenStream {
-    pub tokens: Vec<Token>,
+#[derive(Debug, Clone)]
+pub struct TokenStream<'a> {
+    pub tokens: &'a Vec<Token>,
     pub i: usize,
 
     has_started: bool,
+    eof: Token,
 }
 
-impl TokenStream {
-    pub fn next(&mut self) -> Token {
-        let t = match self.tokens.get(if self.has_started {
+impl<'a> TokenStream<'a> {
+    pub fn from(tokens: &Vec<Token>) -> TokenStream {
+        TokenStream {
+            tokens,
+            i: 0,
+            has_started: false,
+            eof: Token::eof(),
+        }
+    }
+    pub fn next(&mut self) -> &Token {
+        match self.tokens.get(if self.has_started {
             self.i += 1;
             self.i
         } else {
             self.has_started = true;
             0
         }) {
-            Some(token) => token.clone(),
-            None => Token::eof(),
-        };
-        t
+            Some(token) => token,
+            None => &self.eof,
+        }
     }
-    pub fn look_ahead(&self, i: usize) -> Token {
-        let t = match self
+    pub fn peek(&self, i: usize) -> &Token {
+        match self
             .tokens
             .get(if self.has_started { self.i + i } else { 0 })
         {
-            Some(token) => token.clone(),
-            None => Token::eof(),
-        };
-        t
+            Some(token) => token,
+            None => &self.eof,
+        }
     }
-    pub fn current(&self) -> Token {
+    pub fn current(&self) -> &Token {
         match self.tokens.get(if self.has_started { self.i } else { 0 }) {
-            Some(token) => token.clone(),
-            None => Token::eof(),
+            Some(token) => token,
+            None => &self.eof,
         }
-    }
-    pub fn skip_to_next_expr(&mut self) -> Token {
-        loop {
-            let token = self.next();
-            if token.indicates_end_of_expr() {
-                let next = self.look_ahead(1);
-                if next.indicates_end_of_expr() {
-                    break self.next();
-                }
-            }
-        }
-    }
-    pub fn from_prototypes(prototypes: Vec<TokenPrototype>) -> TokenStream {
-        let mut stream = TokenStream {
-            tokens: Vec::new(),
-            i: 0,
-            has_started: false,
-        };
-
-        for protytype in prototypes {
-            if !protytype.source.is_empty() {
-                stream.tokens.push(protytype.construct_token());
-            }
-        }
-
-        stream
     }
 }
 
 trait StringCustomFuncs {
     fn is_asm_instruction(&self) -> bool;
+    fn is_alphanumeric_or_underscore(&self) -> bool;
 }
 impl StringCustomFuncs for String {
     fn is_asm_instruction(&self) -> bool {
         match self.as_str() {
             "mov" | "push" | "pop" | "ret" | "call" | "cmp" | "add" | "sub" | "mul" | "div"
-            | "extern" | "inc" | "dec" | "jmp" | "jo" | "jno" | "js" | "jns" | "je" | "jz"
-            | "jne" | "jnz" | "jp" | "jpe" | "jnp" | "jpo" | "jcxz" | "jecxz" | "jb" | "jnae"
-            | "jc" | "jnb" | "jae" | "jnc" | "jbe" | "jna" | "ja" | "jnbe" | "jl" | "jnge"
-            | "jge" | "jnl" | "jle" | "jng" | "jg" | "jnle" | "db" | "dw" | "dq" => true,
+            | "iadd" | "isub" | "imul" | "idiv" | "extern" | "inc" | "dec" | "jmp" | "jo"
+            | "jno" | "js" | "jns" | "je" | "jz" | "jne" | "jnz" | "jp" | "jpe" | "jnp" | "jpo"
+            | "jcxz" | "jecxz" | "jb" | "jnae" | "jc" | "jnb" | "jae" | "jnc" | "jbe" | "jna"
+            | "ja" | "jnbe" | "jl" | "jnge" | "jge" | "jnl" | "jle" | "jng" | "jg" | "jnle"
+            | "db" | "dw" | "dq" | "xor" => true,
             _ => false,
         }
+    }
+
+    fn is_alphanumeric_or_underscore(&self) -> bool {
+        for ch in self.chars() {
+            if !ch.is_alphanumeric_or_underscore() {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -158,13 +225,25 @@ pub struct Token {
 }
 
 impl Token {
-    fn new(content: TokenContent, position: usize, len: usize) -> Token {
-        Token {
-            content,
-            position,
-            len,
+    pub fn expects_identifier(&self) -> Result<&Rc<String>, CompileError> {
+        if let TokenContent::Identifier(v) = &self.content {
+            Ok(&v)
+        } else {
+            Err(CompileError::unexpected_token(
+                TokenContent::Identifier(Rc::new(String::new())),
+                self,
+            ))
         }
     }
+
+    pub fn expects_content(&self, content: TokenContent) -> Result<(), CompileError> {
+        if self.content == content {
+            Ok(())
+        } else {
+            Err(CompileError::unexpected_token(content, self))
+        }
+    }
+
     fn eof() -> Token {
         Token {
             content: TokenContent::EOF,
@@ -184,299 +263,316 @@ impl Token {
             _ => false,
         }
     }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct TokenPrototype {
-    source: String,
-    position: usize,
-    len: usize,
-}
-impl TokenPrototype {
-    fn from(str: &String, position: usize) -> TokenPrototype {
-        let mut prototype = TokenPrototype::default();
-        prototype.source = str.clone();
-        prototype.position = position.saturating_sub(str.len());
-        prototype.len = str.len();
-
-        prototype
+    fn from_operator(word: &String, i: usize) -> Option<Token> {
+        macro_rules! return_token {
+            ($content: expr, $len: expr) => {{
+                return Some(Token {
+                    content: $content,
+                    position: i,
+                    len: $len,
+                });
+            }};
+        }
+        match word.as_str() {
+            "(" => return_token!(TokenContent::RoundParenOpen, 1),
+            ")" => return_token!(TokenContent::RoundParenClose, 1),
+            "[" => return_token!(TokenContent::RectParenOpen, 1),
+            "]" => return_token!(TokenContent::RectParenClose, 1),
+            "{" => return_token!(TokenContent::BigParenOpen, 1),
+            "}" => return_token!(TokenContent::BigParenClose, 1),
+            "=" => return_token!(TokenContent::Equal, 1),
+            ";" => return_token!(TokenContent::Semicolon, 1),
+            "," => return_token!(TokenContent::Comma, 1),
+            "." => return_token!(TokenContent::Period, 1),
+            ".." => return_token!(TokenContent::DotDot, 1),
+            ":" => return_token!(TokenContent::Colon, 1),
+            "_" => return_token!(TokenContent::Underscore, 1),
+            "-" => return_token!(TokenContent::Minus, 2),
+            "->" => return_token!(TokenContent::ReturnArrow, 2),
+            "~" => return_token!(TokenContent::Squiggle, 1),
+            "&" => return_token!(TokenContent::And, 1),
+            "$" => return_token!(TokenContent::Dollar, 1),
+            "*" => return_token!(TokenContent::Star, 1),
+            _ => None,
+        }
     }
-    fn is_valid(str: &String) -> bool {
-        match str.as_str() {
-            "(" | ")" | "[" | "]" | "{" | "}" | "=" | ";" | "." | "," | ":" | "->" | "~" | "_"
-            | "let" | "loop" | "if" | "else" | "func" | "true" | "false" | "return" | "break"
-            | "continue" | "//" | "&" | "$" | "\n" => return true,
-            _ => {
-                if str.is_empty() {
-                    return false;
-                }
-                let first_ch = str.chars().nth(0).unwrap();
+    fn is_it_a_keyword(word: &String, i: usize) -> Option<Token> {
+        macro_rules! return_token {
+            ($content: expr, $len: expr) => {{
+                return Some(Token {
+                    content: $content,
+                    position: i,
+                    len: $len,
+                });
+            }};
+        }
+        match word.as_str() {
+            "true" => return_token!(TokenContent::True, 1),
+            "false" => return_token!(TokenContent::False, 5),
+            "break" => return_token!(TokenContent::Break, 5),
+            "continue" => return_token!(TokenContent::Continue, 8),
+            "return" => return_token!(TokenContent::Return, 6),
+            "typedef" => return_token!(TokenContent::Typedef, 7),
+            "loop" => return_token!(TokenContent::Loop, 4),
+            "if" => return_token!(TokenContent::If, 2),
+            "extern" => return_token!(TokenContent::Extern, 6),
+            _ => None,
+        }
+    }
+}
 
-                // is it an assembly instruction?
-                let mut first_word = String::new();
-                for ch in str.chars() {
-                    if !ch.is_whitespace() {
-                        break;
-                    }
-                    first_word.push(ch);
-                }
-                if first_word.is_asm_instruction() {
-                    return true;
-                }
+pub fn parse_into_tokens(source: &String, preprocessor: &mut PreProcessor) -> Vec<Token> {
+    let mut tokens = Vec::<Token>::new();
 
-                // is it a number?
-                if first_ch.is_numeric() || first_ch == '-' {
-                    let mut dot_count: usize = 0; // number of `.`
-                    for ch in str.chars().skip(1) {
-                        if ch == '.' {
-                            dot_count += 1;
-                            if dot_count > 1 {
-                                return false;
+    let mut word_start: usize;
+    let mut chars = source.char_indices().peekable();
+    let mut i = 0usize;
+    let mut ch: char;
+    let mut word = String::with_capacity(64);
+    macro_rules! next {
+        () => {
+            match &chars.next() {
+                Some((j, c)) => {
+                    i = *j;
+                    ch = *c;
+                }
+                None => {
+                    i += 1;
+                    ch = '\0';
+                }
+            }
+        };
+    }
+    macro_rules! peek {
+        () => {
+            match &chars.peek() {
+                Some((_, c)) => *c,
+                _ => '\0',
+            }
+        };
+    }
+    loop {
+        next!();
+        if ch == '/' {
+            match peek!() {
+                '/' => {
+                    while chars.next_if(|(_, c)| *c != '\n').is_some() {}
+                    next!();
+                }
+                '*' => {
+                    let mut comment_layers = 1usize;
+                    chars.next();
+                    while comment_layers > 0 {
+                        next!();
+                        if ch == '*' {
+                            next!();
+                            if ch == '/' {
+                                comment_layers -= 1;
                             }
                         }
-                        if !ch.is_numeric() {
-                            return false;
+                        if ch == '/' {
+                            next!();
+                            if ch == '*' {
+                                comment_layers += 1;
+                            }
                         }
                     }
-                    return true;
-                }
-
-                // is it an identifier?
-                if first_ch.is_alphanumeric_or_underscore() {
-                    for ch in str.chars().skip(1) {
-                        if !ch.is_alphanumeric_or_underscore() {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-
-                return false;
-            }
-        }
-    }
-    fn construct_token(&self) -> Token {
-        match self.source.as_str() {
-            "(" => return Token::new(TokenContent::RoundParenOpen, self.position, self.len),
-            ")" => return Token::new(TokenContent::RoundParenClose, self.position, self.len),
-            "[" => return Token::new(TokenContent::RectParenOpen, self.position, self.len),
-            "]" => return Token::new(TokenContent::RectParenClose, self.position, self.len),
-            "{" => return Token::new(TokenContent::BigParenOpen, self.position, self.len),
-            "}" => return Token::new(TokenContent::BigParenClose, self.position, self.len),
-            "=" => return Token::new(TokenContent::Equal, self.position, self.len),
-            "true" => return Token::new(TokenContent::True, self.position, self.len),
-            "false" => return Token::new(TokenContent::False, self.position, self.len),
-            "let" => return Token::new(TokenContent::Let, self.position, self.len),
-            "loop" => return Token::new(TokenContent::Loop, self.position, self.len),
-            ";" => return Token::new(TokenContent::Semicolon, self.position, self.len),
-            "." => return Token::new(TokenContent::Period, self.position, self.len),
-            "," => return Token::new(TokenContent::Comma, self.position, self.len),
-            ":" => return Token::new(TokenContent::Colon, self.position, self.len),
-            "if" => return Token::new(TokenContent::If, self.position, self.len),
-            "else" => return Token::new(TokenContent::Else, self.position, self.len),
-            "func" => return Token::new(TokenContent::Func, self.position, self.len),
-            "break" => return Token::new(TokenContent::Break, self.position, self.len),
-            "continue" => return Token::new(TokenContent::Continue, self.position, self.len),
-            "return" => return Token::new(TokenContent::Return, self.position, self.len),
-            "&" => return Token::new(TokenContent::And, self.position, self.len),
-            "$" => return Token::new(TokenContent::Dollar, self.position, self.len),
-            "->" => return Token::new(TokenContent::ReturnArrow, self.position, self.len),
-            "~" => return Token::new(TokenContent::Squiggle, self.position, self.len),
-            "_" => return Token::new(TokenContent::Underscore, self.position, self.len),
-            "//" => {
-                return Token::new(
-                    TokenContent::SingleLineCommentStart,
-                    self.position,
-                    self.len,
-                )
-            }
-            "\n" => return Token::new(TokenContent::NewLine, self.position, self.len),
-            _ => {
-                let first_ch = self.source.chars().nth(0).unwrap();
-
-                // is a string
-                if first_ch == '\"' {
-                    let mut str_content = self.source.chars();
-                    str_content.next();
-                    str_content.next_back();
-                    return Token::new(
-                        TokenContent::String(str_content.as_str().to_string()),
-                        self.position,
-                        self.len,
-                    );
-                }
-
-                // is a character
-                if first_ch == '\'' {
-                    let byte: u8 = self.source.bytes().nth(1).unwrap();
-                    return Token::new(TokenContent::Char(byte), self.position, self.len);
-                }
-
-                // is a floating point number
-                if (first_ch.is_numeric() || first_ch == '-') && self.source.contains('.') {
-                    if let Ok(float) = self.source.parse() {
-                        return Token::new(TokenContent::Float(float), self.position, self.len);
-                    } else {
-                        panic!();
-                    }
-                }
-
-                // is an unsigned integar
-                if first_ch.is_numeric() {
-                    if let Ok(uint) = self.source.parse() {
-                        return Token::new(TokenContent::UInt(uint), self.position, self.len);
-                    } else {
-                        panic!();
-                    }
-                }
-
-                // is a signed integar
-                if first_ch == '-' {
-                    if let Ok(int) = self.source.parse() {
-                        return Token::new(TokenContent::SInt(int), self.position, self.len);
-                    } else {
-                        panic!();
-                    }
-                }
-
-                // is an identifier or asm instruction
-                let mut first_word = String::new();
-                for ch in self.source.chars() {
-                    if ch.is_whitespace() {
-                        break;
-                    }
-                    first_word.push(ch);
-                }
-                if first_word.is_asm_instruction() {
-                    return Token::new(
-                        TokenContent::RawASM(self.source.clone()),
-                        self.position,
-                        self.len,
-                    );
-                } else {
-                    return Token::new(
-                        TokenContent::Identifier(self.source.clone()),
-                        self.position,
-                        self.len,
-                    );
-                }
-            }
-        }
-    }
-}
-
-#[allow(unused, unused_assignments)]
-pub fn parse_tokens(source: &String) -> TokenStream {
-    let mut prototypes: Vec<TokenPrototype> = Vec::new();
-
-    let mut current_word = String::new();
-    let mut last_one_is_valid = false;
-
-    let mut iter = source.char_indices().peekable();
-
-    let mut i: usize = 0;
-    let mut ch: char = '\0';
-    let mut last_ch: char;
-
-    macro_rules! next {
-        () => {{
-            last_ch = ch;
-            (i, ch) = match iter.next() {
-                Some(x) => x,
-                None => break,
-            }
-        }};
-    }
-
-    loop {
-        // is it a comment?
-        if current_word == "//" {
-            loop {
-                next!();
-                current_word.push(ch);
-                if ch == '\n' {
-                    break;
-                }
-            }
-        }
-
-        // is it a string literal?
-        if current_word == "\"" {
-            loop {
-                next!();
-                if ch == '\\' {
                     next!();
-                    match ch {
-                        'n' => current_word.push('\n'),
-                        _ => current_word.push(ch),
-                    }
-                    continue;
                 }
-                current_word.push(ch);
-                if ch == '\"' {
-                    break;
-                }
-            }
-            prototypes.push(TokenPrototype::from(&current_word, i));
-            next!();
-            last_one_is_valid = true;
-            current_word = String::from(ch);
-        }
-
-        // is it a character literal?
-        if current_word == "'" {
-            next!();
-            if !ch.is_ascii() {
-                println!("character literal must be in ascii");
-                std::process::exit(1);
-            }
-            current_word.push(ch);
-            next!();
-            if ch != '\'' {
-                println!("character literal must be in ascii");
-                std::process::exit(1);
-            }
-            current_word.push(ch);
-            prototypes.push(TokenPrototype::from(&current_word, i));
-        }
-
-        // is it assembly instruction?
-        if let Some(peek) = iter.peek() {
-            if current_word.is_asm_instruction() && peek.1.is_whitespace() {
-                loop {
-                    next!();
-                    current_word.push(ch);
-                    if ch == '\n' {
-                        break;
-                    }
-                }
-                prototypes.push(TokenPrototype::from(&current_word, i));
-                next!();
-                last_one_is_valid = true;
-                current_word = String::from(ch);
+                _ => (),
             }
         }
-
-        if TokenPrototype::is_valid(&current_word) {
-            next!();
-            current_word.push(ch);
-            last_one_is_valid = true;
-        } else {
-            if last_one_is_valid {
-                let c = current_word.pop().unwrap();
-                prototypes.push(TokenPrototype::from(&current_word, i));
-                current_word = c.to_string();
+        if ch == '\0' {
+            break;
+        } else if ch.is_whitespace() {
+            continue;
+        } else if ch.is_alphabetic_or_underscore() {
+            // Identifier or keyword
+            word.push(ch);
+            word_start = i;
+            while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore()) {
+                word.push(ch);
+            }
+            tokens.push(if let Some(t) = Token::is_it_a_keyword(&word, i) {
+                t
+            } else if word == "_" {
+                Token {
+                    content: TokenContent::Underscore,
+                    position: word_start,
+                    len: word.len(),
+                }
             } else {
-                next!();
-                if last_ch.is_whitespace() {
-                    current_word = ch.to_string();
-                } else {
-                    current_word.push(ch);
+                Token {
+                    content: TokenContent::Identifier(Rc::new(word.clone())),
+                    position: word_start,
+                    len: word.len(),
                 }
+            });
+            word.clear();
+        } else if ch.is_ascii_digit() {
+            // Number
+            word.push(ch);
+            word_start = i;
+            while let Some((_, ch)) =
+                chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore_or_dot())
+            {
+                word.push(ch);
             }
-            last_one_is_valid = false;
+            tokens.push(Token {
+                content: TokenContent::Number(Rc::new(word.clone())),
+                position: word_start,
+                len: word.len(),
+            });
+            word.clear();
+        } else if ch == '\"' {
+            // String
+            word_start = i;
+            let mut len = 1usize;
+            while peek!() != '\0' {
+                next!();
+                len += 1;
+                if ch == '\"' {
+                    if word.chars().next_back() != Some('\\') {
+                        break;
+                    }
+                }
+                word.push(ch);
+            }
+            tokens.push(Token {
+                content: TokenContent::String(word.clone()),
+                position: word_start,
+                len,
+            });
+            word.clear();
+        } else if ch == '\'' {
+            // Char
+            word_start = i;
+            let mut len = 1usize;
+            next!();
+            let char_value = if ch == '\\' {
+                next!();
+                len += 1;
+                match ch {
+                    'n' => '\n' as u8,
+                    '0' => '\0' as u8,
+                    '\\' => '\\' as u8,
+                    '\'' => '\'' as u8,
+                    '\"' => '\"' as u8,
+                    _ => panic!(),
+                }
+            } else {
+                ch as u8
+            };
+            next!();
+            assert!(ch == '\'');
+            tokens.push(Token {
+                content: TokenContent::Char(char_value),
+                position: word_start,
+                len,
+            });
+            word.clear();
+        } else if ch == '#' {
+            tokens.append(&mut preprocessor.expand_macro(&mut chars, i));
+            // Macro
+            //while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore()) {
+            //    word.push(ch);
+            //}
+            //match word.as_str() {
+            //    "include" => {
+            //        // go to the next non-whitespace character
+            //        while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
+            //        // get file name
+            //        word.clear();
+            //        while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+            //            word.push(ch);
+            //        }
+            //        let joined_path = cat_path(&source_file_parent_path, &word);
+            //        let included_content = fs::read_to_string(joined_path.clone()).unwrap();
+            //        tokens.append(&mut parse_into_tokens(&included_content, &joined_path));
+            //    }
+            //    "macro" => {
+            //        // go to the next non-whitespace character
+            //        while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
+            //        // get macro name
+            //        let mut name = String::new();
+            //        while let Some((_, ch)) = chars.next_if(|(_, c)| !c.is_whitespace()) {
+            //            name.push(ch);
+            //        }
+            //        let mut content = String::new();
+            //        while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+            //            content.push(ch);
+            //        }
+            //        macro_map.insert(name, content);
+            //    }
+            //    "asm" => {
+            //        let mut len = 4usize;
+            //        let mut is_multiline = false;
+            //        // go to the next non-whitespace character
+            //        while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_whitespace()) {
+            //            if ch == '\n' {
+            //                is_multiline = true;
+            //            }
+            //            len += 1;
+            //        }
+            //        let mut content = String::new();
+            //        if !is_multiline {
+            //            while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+            //                content.push(ch);
+            //                len += 1;
+            //            }
+            //        } else {
+            //            loop {
+            //                next!();
+            //                if ch == '#' {
+            //                    let mut next_three_chars: [char; 3] = ['\0', '\0', '\0'];
+            //                    next!();
+            //                    next_three_chars[0] = ch;
+            //                    next!();
+            //                    next_three_chars[1] = ch;
+            //                    next!();
+            //                    next_three_chars[2] = ch;
+            //                    if next_three_chars == ['e', 'n', 'd'] {
+            //                        break;
+            //                    } else {
+            //                        content.push_str("#end");
+            //                        continue;
+            //                    }
+            //                }
+            //                content.push(ch);
+            //            }
+            //        }
+            //        tokens.push(Token {
+            //            content: TokenContent::RawASM(Rc::new(content.trim().to_string())),
+            //            position: word_start,
+            //            len,
+            //        });
+            //    }
+            //    id => {
+            //        if let Some(expanded_content) = macro_map.get(id) {
+            //            let mut expanded_tokens =
+            //                parse_into_tokens(expanded_content, source_file_path);
+            //            tokens.append(&mut expanded_tokens);
+            //        } else {
+            //            panic!("Cannot recogize macro keyword `{id}`");
+            //        }
+            //    }
+            //}
+            //word.clear();
+        } else {
+            // Operator
+            word.push(ch);
+            word_start = i;
+            let mut token = Token::from_operator(&word, word_start).unwrap(); // TODO: error prompt if invalid token
+            word.push(peek!());
+            while let Some(t) = Token::from_operator(&word, word_start) {
+                chars.next();
+                token = t;
+                word.push(peek!());
+            }
+            tokens.push(token);
+            word.clear();
         }
     }
 
-    TokenStream::from_prototypes(prototypes)
+    tokens
 }

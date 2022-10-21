@@ -1,11 +1,7 @@
 #[macro_use]
-pub mod ir;
-#[macro_use]
 pub mod ast;
-pub mod compiler;
-pub mod tokens;
-pub mod builtin_funcs;
-pub mod preprocess;
+pub mod shir;
 pub mod error;
-pub mod checks;
-pub mod typeinfer;
+pub mod tokens;
+pub mod compiler;
+pub mod preprocess;

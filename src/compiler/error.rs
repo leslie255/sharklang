@@ -1,3 +1,15 @@
+#![allow(unused)]
+
+use std::{
+    fmt::{write, Display},
+    rc::Rc,
+};
+
+use super::{
+    ast::{Expression, TypeExpr},
+    tokens::{Token, TokenContent},
+};
+
 #[derive(Debug, Clone)]
 pub enum ErrorType {
     Syntax,
@@ -5,53 +17,142 @@ pub enum ErrorType {
 }
 
 #[derive(Debug, Clone)]
+pub enum ErrorContent {
+    UnexpectedToken {
+        expected: Vec<TokenContent>,
+        found: TokenContent,
+    },
+    UnableToInferType {
+        var_name: Rc<String>,
+    },
+    MismatchedType {
+        expected: TypeExpr,
+        found: Option<TypeExpr>,
+    },
+    FuncNotExist(Rc<String>),
+    VarNotExist(Rc<String>),
+    TypeNameNotExist(Rc<String>),
+    InvalidNumberFormat(String),
+    IncorrectArgCount {
+        expected: usize,
+        found: usize,
+    },
+    IncorrectArgCountVariadic {
+        expected: usize,
+        found: usize,
+    },
+    Raw(String),
+}
+impl Display for ErrorContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnexpectedToken { expected, found } => {
+                if expected.is_empty() {
+                    write!(f, "Unexpected token {}", found.name());
+                } else {
+                    write!(f, "Expects ")?;
+                    let count = expected.len();
+                    if count == 1 {
+                        write!(f, "{}", expected[0].name())?;
+                    } else {
+                        for (i, token_content) in expected.iter().enumerate() {
+                            if i == count - 1 {
+                                // last one
+                                write!(f, "{}", token_content.name())?;
+                            } else if i == count - 2 {
+                                // second last one
+                                write!(f, "or {}", token_content.name())?;
+                            } else {
+                                write!(f, "{}, ", token_content.name())?;
+                            }
+                        }
+                    }
+                    write!(f, "; but found {}", found.name())?;
+                }
+            }
+            Self::UnableToInferType { var_name } => {
+                write!(
+                    f,
+                    "Enable to infer a type for variable `{}`, try manually specify a type",
+                    var_name
+                )?;
+            }
+            Self::MismatchedType { expected, found } => {
+                write!(
+                    f,
+                    "Expects expression of type {expected}{}",
+                    if let Some(t) = found {
+                        format!(", found {t}")
+                    } else {
+                        "".to_string()
+                    }
+                )?;
+            }
+            Self::FuncNotExist(name) => {
+                write!(f, "`{name}` either don't exist or is not callable")?;
+            }
+            Self::VarNotExist(name) => write!(f, "`{name}` does not exist")?,
+            Self::TypeNameNotExist(name) => write!(f, "`{name}` is not a type name")?,
+            Self::InvalidNumberFormat(s) => write!(f, "`{s}` is not a valid number format")?,
+            Self::IncorrectArgCount { expected, found } => {
+                write!(f, "Expects {expected} arguments, found {found}")?
+            }
+            Self::IncorrectArgCountVariadic { expected, found } => {
+                write!(f, "Expects at least {expected} arguments, found {found}")?
+            }
+            Self::Raw(message) => message.fmt(f)?,
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct CompileError {
-    pub err_type: ErrorType,
-    pub message: String,
+    pub content: ErrorContent,
     pub position: usize,
     pub length: usize, // use usize::MAX for just displaying one line
 }
-
 impl CompileError {
-    pub fn new(
-        err_type: ErrorType,
-        message: String,
-        position: usize,
-        length: usize,
-    ) -> CompileError {
-        CompileError {
-            err_type,
-            message,
-            position,
-            length,
+    pub fn unexpected_token_multiple(expected: Vec<TokenContent>, found: &Token) -> Self {
+        Self {
+            content: ErrorContent::UnexpectedToken {
+                expected,
+                found: found.content.clone(),
+            },
+            position: found.position,
+            length: found.len,
+        }
+    }
+    pub fn unexpected_token(expected: TokenContent, found: &Token) -> Self {
+        Self {
+            content: ErrorContent::UnexpectedToken {
+                expected: vec![expected],
+                found: found.content.clone(),
+            },
+            position: found.position,
+            length: found.len,
+        }
+    }
+    pub fn unexpected_token0(found: &Token) -> Self {
+        Self {
+            content: ErrorContent::UnexpectedToken {
+                expected: Vec::new(),
+                found: found.content.clone(),
+            },
+            position: found.position,
+            length: found.len,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ErrorCollector<'a> {
+pub struct ErrorCollector {
     pub file_name: String,
-    pub source: &'a String,
     pub errors: Vec<CompileError>,
 }
 
-impl<'a> ErrorCollector<'a> {
-    pub fn new(file_name: String, source: &'a String) -> ErrorCollector<'a> {
-        ErrorCollector {
-            file_name,
-            source: &source,
-            errors: Vec::new(),
-        }
-    }
-    #[allow(unused)]
-    pub fn add_err(&mut self, err_type: ErrorType, position: usize, len: usize, message: String) {
-        self.errors
-            .push(CompileError::new(err_type, message, position, len));
-    }
-}
-
-impl<'a> ErrorCollector<'a> {
-    pub fn print_errs(&mut self) {
+impl ErrorCollector {
+    pub fn print_errs(&mut self, source: &String) {
         self.errors
             .sort_by(|a, b| a.position.partial_cmp(&b.position).unwrap());
 
@@ -60,7 +161,7 @@ impl<'a> ErrorCollector<'a> {
             let mut line: usize = 0;
             let mut column: usize = 0;
             let mut should_break_next_line = false;
-            for (j, ch) in self.source.char_indices() {
+            for (j, ch) in source.char_indices() {
                 if !should_break_next_line {
                     column += 1;
                 }
@@ -78,14 +179,7 @@ impl<'a> ErrorCollector<'a> {
                 }
             }
 
-            println!(
-                "{:?} error at {}:{}:{}\n{}",
-                err.err_type,
-                self.file_name,
-                line,
-                column,
-                err.message,
-            );
+            println!("{}:{}:{}\n{}", self.file_name, line, column, err.content);
             for ch in line_str.chars() {
                 if ch == '\t' {
                     print!("    ");
@@ -118,7 +212,7 @@ impl<'a> ErrorCollector<'a> {
                     format!("{} errors listed above", err_count)
                 }
             );
-            std::process::exit(1);
+            std::process::exit(101);
         }
     }
 }

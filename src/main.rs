@@ -1,76 +1,24 @@
-use std::env;
+pub(crate) use std::env;
 use std::fs;
-use std::io;
-use std::io::Write;
-use std::path::Path;
+
+use compiler::compiler::compile_shir_into_mir;
+use compiler::error::ErrorCollector;
+use compiler::preprocess::PreProcessor;
+use compiler::shir::ast_into_shir;
+use compiler::shir::SHIRProgram;
+use compiler::tokens::*;
+use mir::fileformat::FileFormat;
+use mir::ir::Program;
+
+use crate::compiler::ast::*;
 
 mod compiler;
-
-fn _input() -> String {
-    let mut input_str = String::new();
-    io::stdin()
-        .read_line(&mut input_str)
-        .expect("failed to read line");
-    input_str
-}
-
-fn compile(src_path: String, output_path: String, file_format: compiler::ir::FileFormat) {
-    let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
-    let output = compiler::compiler::compile(source, src_path, file_format);
-
-    if Path::new(&output_path).exists() {
-        fs::remove_file(output_path.clone()).unwrap_or_else(|_| {
-            panic!(
-                "Output file {} already exists and cannot be deleted",
-                output_path
-            )
-        });
-    }
-
-    let mut output_file = fs::File::create(output_path.clone())
-        .unwrap_or_else(|_| panic!("cannot write to file (0) {}", output_path));
-    write!(output_file, "{}", output)
-        .unwrap_or_else(|_| panic!("cannot write to file (1) {}", output_path));
-}
-
-fn print_tree(src_path: String) {
-    let source = fs::read_to_string(src_path.clone()).expect("cannot read file");
-    let tokens = compiler::preprocess::preprocess(compiler::tokens::parse_tokens(&source));
-    let mut err_collector = compiler::error::ErrorCollector::new(src_path, &source);
-    let mut ast = compiler::ast::construct_ast(tokens, &mut err_collector);
-    compiler::typeinfer::infer_type(&mut ast, &mut err_collector);
-    print_ast!(ast.nodes);
-    if !err_collector.errors.is_empty() {
-        err_collector.print_errs();
-    }
-}
-
-fn print_tokens(src_path: String) {
-    let source = fs::read_to_string(src_path).expect("cannot read file");
-    let tokens = compiler::tokens::parse_tokens(&source).tokens;
-    for token in tokens {
-        println!("{}\t{:?}", token.position, token.content);
-    }
-}
-
-fn print_help(arg0: String) {
-    println!("SHARK COMPILER v0.0.1");
-    println!("\nTo compile a file:");
-    println!("{} source_file.shark \\", arg0);
-    println!("\t-o / --output: output_file.asm");
-    println!("\t-f / --format: elf64 for GNU/Linux, macho64 for macOS");
-    println!("\nDebug:");
-    println!("-t / --tokens: print tokens");
-    println!("-a / --ast: print AST");
-    println!("\n-h / --help: print this message");
-}
-
 fn main() {
     let mut args = env::args();
     let arg0 = args.next().expect("what the fuck?");
     let mut src_path = String::new();
     let mut output_path = String::from("output.asm");
-    let mut file_format = compiler::ir::FileFormat::Elf64;
+    let mut file_format = FileFormat::Elf64;
 
     loop {
         let arg = match args.next() {
@@ -106,7 +54,29 @@ fn main() {
             }
             "-a" | "--ast" => {
                 if !src_path.is_empty() {
-                    print_tree(src_path);
+                    print_ast(src_path);
+                    return;
+                } else {
+                    print_help(arg0);
+                    println!();
+                    println!("expects a source file");
+                    panic!();
+                }
+            }
+            "-i" | "--ir" => {
+                if !src_path.is_empty() {
+                    print_ir(src_path);
+                    return;
+                } else {
+                    print_help(arg0);
+                    println!();
+                    println!("expects a source file");
+                    panic!();
+                }
+            }
+            "-m" | "--mir" => {
+                if !src_path.is_empty() {
+                    print_mir(src_path);
                     return;
                 } else {
                     print_help(arg0);
@@ -118,8 +88,8 @@ fn main() {
             "-f" | "--format" => {
                 file_format = match args.next() {
                     Some(f) => match f.to_lowercase().as_str() {
-                        "elf64" => compiler::ir::FileFormat::Elf64,
-                        "macho64" => compiler::ir::FileFormat::Macho64,
+                        "elf64" => FileFormat::Elf64,
+                        "macho64" => FileFormat::Macho64,
                         _ => {
                             print_help(arg0);
                             println!();
@@ -147,4 +117,144 @@ fn main() {
     }
 
     compile(src_path, output_path, file_format);
+}
+
+struct Compiler {
+    error_collector: ErrorCollector,
+    preprocessor: PreProcessor,
+    content: Box<String>,
+    tokens: Option<Vec<Token>>,
+    ast: Option<AST>,
+    shir: Option<SHIRProgram>,
+    mir: Option<Program>,
+}
+
+impl Compiler {
+    fn new(src_path: String) -> Compiler {
+        Compiler {
+            error_collector: ErrorCollector {
+                file_name: src_path.clone(),
+                errors: Vec::new(),
+            },
+            preprocessor: PreProcessor::new(src_path.clone()),
+            content: Box::new(fs::read_to_string(src_path.clone()).unwrap()),
+            tokens: None,
+            ast: None,
+            shir: None,
+            mir: None,
+        }
+    }
+    fn generate_tokens(mut self) -> Compiler {
+        if !self.error_collector.errors.is_empty() {
+            return self;
+        }
+        self.tokens = Some(parse_into_tokens(&self.content, &mut self.preprocessor));
+        self
+    }
+    fn generate_ast(mut self) -> Compiler {
+        if !self.error_collector.errors.is_empty() {
+            return self;
+        }
+        self.ast = Some(parse_tokens_into_ast(
+            &mut TokenStream::from(&self.tokens.as_ref().unwrap()),
+            &mut self.error_collector,
+        ));
+        self.tokens = None;
+        self
+    }
+    fn generate_shir(mut self) -> Compiler {
+        if !self.error_collector.errors.is_empty() {
+            return self;
+        }
+        self.shir = Some(ast_into_shir(self.ast.unwrap(), &mut self.error_collector));
+        self.ast = None;
+        self
+    }
+    fn generate_mir(mut self) -> Compiler {
+        if !self.error_collector.errors.is_empty() {
+            return self;
+        }
+        self.mir = Some(compile_shir_into_mir(self.shir.unwrap()));
+        self.shir = None;
+        self
+    }
+    fn dump_errs(mut self) -> Compiler {
+        if !self.error_collector.errors.is_empty() {
+            self.error_collector.print_errs(&self.content);
+            std::process::exit(1);
+        } else {
+            self
+        }
+    }
+    fn finish(self, file_format: FileFormat) -> String {
+        mir::generation::x86_64::generate_asm(self.mir.unwrap(), file_format)
+    }
+}
+
+#[allow(unused_variables)]
+fn print_help(src_path: String) {
+    todo!()
+}
+
+fn compile(src_path: String, output_path: String, file_format: FileFormat) {
+    let compiled_asm = Compiler::new(src_path)
+        .generate_tokens()
+        .generate_ast()
+        .generate_shir()
+        .generate_mir()
+        .dump_errs()
+        .finish(file_format);
+    if fs::write(output_path, compiled_asm).is_err() {
+        println!("unable to write to output file path");
+        std::process::exit(1);
+    }
+}
+
+fn print_mir(src_path: String) {
+    let mir = Compiler::new(src_path)
+        .generate_tokens()
+        .generate_ast()
+        .generate_shir()
+        .generate_mir()
+        .dump_errs()
+        .mir
+        .unwrap();
+    for top_lvl in mir.content {
+        println!("{top_lvl}")
+    }
+}
+
+fn print_ir(src_path: String) {
+    let ir = Compiler::new(src_path)
+        .generate_tokens()
+        .generate_ast()
+        .generate_shir()
+        .dump_errs()
+        .shir
+        .unwrap();
+    println!("{:#?}", ir);
+}
+
+fn print_ast(src_path: String) {
+    let ast = Compiler::new(src_path)
+        .generate_tokens()
+        .generate_ast()
+        .dump_errs()
+        .ast
+        .unwrap();
+    println!("String literals:");
+    for (i, str) in ast.strliteral_pool.iter().enumerate() {
+        println!("{}\t{:?}", i, str);
+    }
+    println!("-------------");
+    for root_node in ast.root_nodes.iter().filter_map(|n| n.upgrade()) {
+        println!("{:#?}\t{}", root_node.expr, root_node.pos);
+    }
+}
+
+fn print_tokens(src_path: String) {
+    let tokens = Compiler::new(src_path).generate_tokens().tokens.unwrap();
+    for token in &tokens {
+        println!("{:?}\t{}\t{}", token.content, token.position, token.len);
+    }
 }
