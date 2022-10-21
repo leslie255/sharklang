@@ -8,7 +8,8 @@
 
 ### Quick Showcase
 
-<img src="https://i.imgur.com/tOG69jN.png" width="40%">
+
+<img src="https://i.imgur.com/KsSHGM7.png" width="50%">
 
 ```
 #include cstd.hhh
