@@ -1,8 +1,10 @@
-typedef str = *u8;
+#include cstd.hhh
+#macro RET_ZERO return 0
+#macro EXIT_WITH_PROMPT
+    printf("exit\n");
+    #RET_ZERO
+#end
 
 main: () -> u32 = {
-    #asm
-    mov     rax, 100
-    #end
-    return _;
+    #EXIT_WITH_PROMPT;
 }

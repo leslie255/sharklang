@@ -3,6 +3,7 @@ use std::fs;
 
 use compiler::compiler::compile_shir_into_mir;
 use compiler::error::ErrorCollector;
+use compiler::preprocess::PreProcessor;
 use compiler::shir::ast_into_shir;
 use compiler::shir::SHIRProgram;
 use compiler::tokens::*;
@@ -120,7 +121,7 @@ fn main() {
 
 struct Compiler {
     error_collector: ErrorCollector,
-    src_path: String,
+    preprocessor: PreProcessor,
     content: Box<String>,
     tokens: Option<Vec<Token>>,
     ast: Option<AST>,
@@ -130,14 +131,13 @@ struct Compiler {
 
 impl Compiler {
     fn new(src_path: String) -> Compiler {
-        let content = fs::read_to_string(src_path.clone()).unwrap();
         Compiler {
             error_collector: ErrorCollector {
                 file_name: src_path.clone(),
                 errors: Vec::new(),
             },
-            src_path: src_path.clone(),
-            content: Box::new(content),
+            preprocessor: PreProcessor::new(src_path.clone()),
+            content: Box::new(fs::read_to_string(src_path.clone()).unwrap()),
             tokens: None,
             ast: None,
             shir: None,
@@ -148,7 +148,7 @@ impl Compiler {
         if !self.error_collector.errors.is_empty() {
             return self;
         }
-        self.tokens = Some(parse_into_tokens(&self.content, &self.src_path));
+        self.tokens = Some(parse_into_tokens(&self.content, &mut self.preprocessor));
         self
     }
     fn generate_ast(mut self) -> Compiler {

@@ -1,4 +1,6 @@
-use std::{collections::HashMap, fs, path::Path, rc::Rc};
+use std::rc::Rc;
+
+use crate::compiler::preprocess::PreProcessor;
 
 use super::error::CompileError;
 
@@ -120,7 +122,7 @@ impl Default for TokenContent {
     }
 }
 
-trait CharCustomFuncs {
+pub trait CharCustomFuncs {
     fn is_alphanumeric_or_underscore(&self) -> bool;
     fn is_alphanumeric_or_underscore_or_dot(&self) -> bool;
     fn is_alphabetic_or_underscore(&self) -> bool;
@@ -319,17 +321,14 @@ impl Token {
     }
 }
 
-pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Token> {
-    let source_file_parent_path = Path::new(source_file_path).parent().unwrap();
+pub fn parse_into_tokens(source: &String, preprocessor: &mut PreProcessor) -> Vec<Token> {
     let mut tokens = Vec::<Token>::new();
 
     let mut word_start: usize;
     let mut chars = source.char_indices().peekable();
     let mut i = 0usize;
     let mut ch: char;
-    let mut word = String::new();
-    let mut macro_map = HashMap::<String, String>::new();
-    word.reserve(64);
+    let mut word = String::with_capacity(64);
     macro_rules! next {
         () => {
             match &chars.next() {
@@ -473,92 +472,92 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
             });
             word.clear();
         } else if ch == '#' {
-            word_start = i;
+            tokens.append(&mut preprocessor.expand_macro(&mut chars, i));
             // Macro
-            while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore()) {
-                word.push(ch);
-            }
-            match word.as_str() {
-                "include" => {
-                    // go to the next non-whitespace character
-                    while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
-                    // get file name
-                    word.clear();
-                    while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
-                        word.push(ch);
-                    }
-                    let joined_path = cat_path(&source_file_parent_path, &word);
-                    let included_content = fs::read_to_string(joined_path.clone()).unwrap();
-                    tokens.append(&mut parse_into_tokens(&included_content, &joined_path));
-                }
-                "macro" => {
-                    // go to the next non-whitespace character
-                    while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
-                    // get macro name
-                    let mut name = String::new();
-                    while let Some((_, ch)) = chars.next_if(|(_, c)| !c.is_whitespace()) {
-                        name.push(ch);
-                    }
-                    let mut content = String::new();
-                    while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
-                        content.push(ch);
-                    }
-                    macro_map.insert(name, content);
-                }
-                "asm" => {
-                    let mut len = 4usize;
-                    let mut is_multiline = false;
-                    // go to the next non-whitespace character
-                    while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_whitespace()) {
-                        if ch == '\n' {
-                            is_multiline = true;
-                        }
-                        len += 1;
-                    }
-                    let mut content = String::new();
-                    if !is_multiline {
-                        while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
-                            content.push(ch);
-                            len += 1;
-                        }
-                    } else {
-                        loop {
-                            next!();
-                            if ch == '#' {
-                                let mut next_three_chars: [char; 3] = ['\0', '\0', '\0'];
-                                next!();
-                                next_three_chars[0] = ch;
-                                next!();
-                                next_three_chars[1] = ch;
-                                next!();
-                                next_three_chars[2] = ch;
-                                if next_three_chars == ['e', 'n', 'd'] {
-                                    break;
-                                } else {
-                                    content.push_str("#end");
-                                    continue;
-                                }
-                            }
-                            content.push(ch);
-                        }
-                    }
-                    tokens.push(Token {
-                        content: TokenContent::RawASM(Rc::new(content.trim().to_string())),
-                        position: word_start,
-                        len,
-                    });
-                }
-                id => {
-                    if let Some(expanded_content) = macro_map.get(id) {
-                        let mut expanded_tokens =
-                            parse_into_tokens(expanded_content, source_file_path);
-                        tokens.append(&mut expanded_tokens);
-                    } else {
-                        panic!("Cannot recogize macro keyword `{id}`");
-                    }
-                }
-            }
-            word.clear();
+            //while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore()) {
+            //    word.push(ch);
+            //}
+            //match word.as_str() {
+            //    "include" => {
+            //        // go to the next non-whitespace character
+            //        while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
+            //        // get file name
+            //        word.clear();
+            //        while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+            //            word.push(ch);
+            //        }
+            //        let joined_path = cat_path(&source_file_parent_path, &word);
+            //        let included_content = fs::read_to_string(joined_path.clone()).unwrap();
+            //        tokens.append(&mut parse_into_tokens(&included_content, &joined_path));
+            //    }
+            //    "macro" => {
+            //        // go to the next non-whitespace character
+            //        while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
+            //        // get macro name
+            //        let mut name = String::new();
+            //        while let Some((_, ch)) = chars.next_if(|(_, c)| !c.is_whitespace()) {
+            //            name.push(ch);
+            //        }
+            //        let mut content = String::new();
+            //        while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+            //            content.push(ch);
+            //        }
+            //        macro_map.insert(name, content);
+            //    }
+            //    "asm" => {
+            //        let mut len = 4usize;
+            //        let mut is_multiline = false;
+            //        // go to the next non-whitespace character
+            //        while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_whitespace()) {
+            //            if ch == '\n' {
+            //                is_multiline = true;
+            //            }
+            //            len += 1;
+            //        }
+            //        let mut content = String::new();
+            //        if !is_multiline {
+            //            while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+            //                content.push(ch);
+            //                len += 1;
+            //            }
+            //        } else {
+            //            loop {
+            //                next!();
+            //                if ch == '#' {
+            //                    let mut next_three_chars: [char; 3] = ['\0', '\0', '\0'];
+            //                    next!();
+            //                    next_three_chars[0] = ch;
+            //                    next!();
+            //                    next_three_chars[1] = ch;
+            //                    next!();
+            //                    next_three_chars[2] = ch;
+            //                    if next_three_chars == ['e', 'n', 'd'] {
+            //                        break;
+            //                    } else {
+            //                        content.push_str("#end");
+            //                        continue;
+            //                    }
+            //                }
+            //                content.push(ch);
+            //            }
+            //        }
+            //        tokens.push(Token {
+            //            content: TokenContent::RawASM(Rc::new(content.trim().to_string())),
+            //            position: word_start,
+            //            len,
+            //        });
+            //    }
+            //    id => {
+            //        if let Some(expanded_content) = macro_map.get(id) {
+            //            let mut expanded_tokens =
+            //                parse_into_tokens(expanded_content, source_file_path);
+            //            tokens.append(&mut expanded_tokens);
+            //        } else {
+            //            panic!("Cannot recogize macro keyword `{id}`");
+            //        }
+            //    }
+            //}
+            //word.clear();
         } else {
             // Operator
             word.push(ch);
@@ -576,8 +575,4 @@ pub fn parse_into_tokens(source: &String, source_file_path: &String) -> Vec<Toke
     }
 
     tokens
-}
-
-fn cat_path(original: &Path, tail: &String) -> String {
-    original.join(tail.clone()).to_str().unwrap().to_string()
 }

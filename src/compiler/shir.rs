@@ -218,20 +218,20 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
             // convert body
             for node in body.iter().filter_map(|w| unsafe { w.as_ptr().as_ref() }) {
                 let s = convert_body(node, &mut fn_body, &mut context, i, err_collector);
-                // implicit `println` calls
                 if let Some(s) = s {
-                    if let Some(str_id) = s.as_string() {
-                        fn_body.push(SHIR::FnCall {
+                    fn_body.push(if let Some(str_id) = s.as_string() {
+                        // implicit `println` calls
+                        SHIR::FnCall {
                             name: Rc::clone(&println_str),
                             args: vec![(
                                 SHIR::Const(SHIRConst::String(str_id)),
                                 BasicType::Unsigned64,
                             )],
                             ret_type: BasicType::Irrelavent,
-                        })
+                        }
                     } else {
-                        fn_body.push(s);
-                    }
+                        s
+                    });
                 }
             }
             context.symbols.local.clear();
@@ -478,9 +478,7 @@ fn convert_body(
                 Some(SHIR::ReturnVoid)
             }
         }
-        Expression::UnsafeReturn => {
-            Some(SHIR::ReturnVoid)
-        }
+        Expression::UnsafeReturn => Some(SHIR::ReturnVoid),
         Expression::Break => todo!(),
         Expression::Continue => todo!(),
         Expression::Extern(_, _) => panic!(),
