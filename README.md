@@ -4,34 +4,37 @@
 
 **A toy compiled programming language (WIP)**
 
-<img src="https://imgur.com/VBBeGtY.png" alt="Version 0.0.1" height="24px"> <img src="https://imgur.com/Mae21iF.png" alt="Language Rust" height="24px">
+<img src="https://i.imgur.com/VBBeGtY.png" alt="Version 0.0.1" height="24px"> <img src="https://i.imgur.com/Mae21iF.png" alt="Language Rust" height="24px">
 
 ### Quick Showcase
-``` Rust
-#include cstd.hhh
 
+<img src="https://i.imgur.com/tOG69jN.png" width="40%">
+
+```
+#include cstd.hhh
 #macro GREETING_MESSAGE "hello, world\n"
 
 // Multi-line macros
 #macro SAY_HELLO
     // Recursive macro expansion
-    printf(#GREETIG_MESSAGE)
+    printf(#GREETING_MESSAGE)
 #end
 
 main: () -> u32 = {
     #SAY_HELLO;
-    
+
     a: = 10; // type infer (but no forward-looking)
     p: *usize = &a; // can also specify a type
-    
+
     // Inline assembly
     #asm
         mov rax, [rbp - 8]
-        mul 4
+        mov rcx, 4
+        mul rcx
         add rax, 2
     #end
-    
-    printf("a = %lu", *p);
+
+    printf("a = %lu\n", *p);
     return 0;
 }
 ```
