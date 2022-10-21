@@ -42,6 +42,7 @@ pub enum ErrorContent {
         found: usize,
     },
     Raw(String),
+    MissingReturn(TypeExpr),
 }
 impl Display for ErrorContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -100,6 +101,7 @@ impl Display for ErrorContent {
             Self::IncorrectArgCountVariadic { expected, found } => {
                 write!(f, "Expects at least {expected} arguments, found {found}")?
             }
+            Self::MissingReturn(ret_type) => write!(f, "This function has a return value of type {ret_type}, but not all branches has a return statement")?,
             Self::Raw(message) => message.fmt(f)?,
         }
         Ok(())

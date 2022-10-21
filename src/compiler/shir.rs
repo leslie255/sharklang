@@ -36,14 +36,14 @@ pub enum SHIRTopLevel {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SHIRConst {
     Number(NumValue),
     String(usize),
     Char(u8),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SHIR {
     Var(u64, BasicType),
     Const(SHIRConst),
@@ -215,10 +215,16 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
                     rhs: Box::new(SHIR::Arg(i as u64, arg_t_basic)),
                 });
             }
+            let mut has_ret_statement = false;
             // convert body
             for node in body.iter().filter_map(|w| unsafe { w.as_ptr().as_ref() }) {
                 let s = convert_body(node, &mut fn_body, &mut context, i, err_collector);
                 if let Some(s) = s {
+                    if let SHIR::ReturnValue(_) = s {
+                        has_ret_statement = true;
+                    } else if SHIR::ReturnVoid == s {
+                        has_ret_statement = true;
+                    }
                     fn_body.push(if let Some(str_id) = s.as_string() {
                         // implicit `println` calls
                         SHIR::FnCall {
@@ -232,6 +238,19 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
                     } else {
                         s
                     });
+                }
+            }
+            // return check
+            if !has_ret_statement {
+                if ret_type.is_none() {
+                    // auto return
+                    fn_body.push(SHIR::ReturnVoid);
+                } else {
+                    err_collector.errors.push(CompileError {
+                        content: ErrorContent::MissingReturn(ret_type.clone()),
+                        position: root_node.pos,
+                        length: 1,
+                    })
                 }
             }
             context.symbols.local.clear();

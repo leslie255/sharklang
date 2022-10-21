@@ -11,7 +11,7 @@ use super::{
     tokens::*,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum NumValue {
     U(u64),
     I(i64),
@@ -326,6 +326,14 @@ impl TypeExpr {
         } else {
             None
         }
+    }
+
+    /// Returns `true` if the type expr is [`none`].
+    ///
+    /// [`none`]: TypeExpr::none
+    #[must_use]
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::none)
     }
 }
 
