@@ -1,20 +1,7 @@
 #include cstd.hhh
-#include math.hhh
 
-#macro RET_ZERO return 0
-#macro EXIT_WITH_PROMPT
-    printf("exit\n");
-    #RET_ZERO
-#end
-
-main: () -> u32 = {
-    a: = 10;
-    inc(&a);
-    add(&a, 10);
-    mul(&a, 2);
-    printf("%lu\n", a);
-    sub(&a, 2);
-    div(&a, 2);
-    printf("%lu\n", a);
-    #EXIT_WITH_PROMPT;
+main: -> u32 = {
+    printf("hello, world\n");
+    return 0;
 }
+

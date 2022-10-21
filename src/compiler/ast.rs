@@ -969,6 +969,15 @@ fn parse_type_expr(token_stream: &mut TokenStream) -> Result<TypeExpr, CompileEr
             "none" => TypeExpr::none,
             _ => TypeExpr::TypeName(Rc::clone(id)),
         }),
+        TokenContent::ReturnArrow => {
+            token_stream.next();
+            let ret_type = parse_type_expr(token_stream)?;
+            Ok(TypeExpr::Fn {
+                args: Vec::new(),
+                ret_type: Box::new(ret_type),
+                is_variadic: false,
+            })
+        }
         TokenContent::RoundParenOpen => {
             let mut is_variadic = false;
             let mut args = Vec::<(Rc<String>, TypeExpr)>::new();
