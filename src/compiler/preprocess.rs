@@ -1,11 +1,13 @@
-#![allow(unused)]
 use std::{
     collections::{HashMap, HashSet},
     fs,
     iter::Peekable,
     path::{Path, PathBuf},
+    rc::Rc,
     str::CharIndices,
 };
+
+use crate::compiler::tokens::TokenContent;
 
 use super::tokens::{parse_into_tokens, CharCustomFuncs, Token};
 
@@ -17,7 +19,6 @@ fn join_path(original: &Path, tail: &String) -> String {
 pub struct PreProcessor {
     pins: HashSet<String>,
     macros: HashMap<String, String>,
-    src_path: String,
     parent_path: PathBuf,
 }
 
@@ -27,7 +28,6 @@ impl PreProcessor {
         Self {
             pins: HashSet::new(),
             macros: HashMap::new(),
-            src_path,
             parent_path: path,
         }
     }
@@ -82,7 +82,7 @@ impl PreProcessor {
             }
             "macro" => {
                 // go to the next non-whitespace character
-                while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_whitespace()) {}
+                while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
                 // get macro name
                 let mut name = String::new();
                 while let Some((_, ch)) = chars.next_if(|(_, c)| !c.is_whitespace()) {
@@ -127,6 +127,66 @@ impl PreProcessor {
                 self.macros.insert(name, macro_body);
                 Vec::new()
             }
+            "asm" => {
+                let mut len = 4;
+                let mut is_multiline = false;
+                // go to the next non-whitespace character
+                while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_whitespace()) {
+                    if ch == '\n' {
+                        is_multiline = true;
+                    }
+                    len += 1;
+                }
+                let mut asm_code = String::new();
+                if !is_multiline {
+                    while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+                        asm_code.push(ch);
+                        len += 1;
+                    }
+                } else {
+                    loop {
+                        let ch = chars.next().expect("Unexpected EOF in multi-line #asm").1;
+                        if ch == '#' {
+                            // if it's #end, end macro
+                            let mut keyword = String::with_capacity(3);
+                            for _ in 0..3 {
+                                keyword.push(
+                                    chars.next().expect("Unexpected EOF in multi-line #asm").1,
+                                );
+                            }
+                            if keyword == "end" {
+                                break;
+                            } else {
+                                asm_code.push('#');
+                                asm_code.push_str(keyword.as_str());
+                                continue;
+                            }
+                        }
+                        asm_code.push(ch);
+                    }
+                }
+                vec![Token {
+                    content: TokenContent::RawASM(Rc::new(asm_code.trim().to_string())),
+                    position: word_start,
+                    len,
+                }]
+            }
+            "pin" => {
+                // go to the next non-whitespace character
+                while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
+                // get pin name
+                let mut name = String::new();
+                while let Some((_, ch)) = chars.next_if(|(_, c)| !c.is_whitespace()) {
+                    name.push(ch);
+                }
+                println!("Added pin `{name}`");
+                self.pins.insert(name);
+                Vec::new()
+            }
+            "ifpin" => todo!(),
+            "elifpin" => todo!(),
+            "else" => todo!(),
+            "end" => panic!("unexpected macro command `#end`"),
             id => {
                 let len = id.len() + 1; // +1 because of `#`
                 if let Some(expanded_content) = self.macros.get(id) {
@@ -141,7 +201,10 @@ impl PreProcessor {
                         })
                         .collect()
                 } else {
-                    panic!("Cannot recognize preprocessor command `#{id}`\tmacro table: {:?}", self.macros)
+                    panic!(
+                        "Cannot recognize preprocessor command `#{id}`\tmacro table: {:?}",
+                        self.macros
+                    )
                 }
             }
         }

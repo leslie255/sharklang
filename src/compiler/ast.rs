@@ -174,15 +174,15 @@ impl TypeExpr {
                 self.is_equvalent(&Self::Ptr(Box::new(TypeExpr::u8)), symbols)
             }
             Expression::CharLiteral(_) => self.is_equvalent(&Self::u8, symbols),
-            Expression::Deref(child) => {
+            Expression::Deref(child) => Self::Ptr(Box::new(self.clone()))
+                .matches_expr(&if_none_return_false!(child.upgrade()).expr, symbols),
+            Expression::TakeAddr(child) => {
                 if let Self::Ptr(t) = self {
                     t.matches_expr(&if_none_return_false!(child.upgrade()).expr, symbols)
                 } else {
                     false
                 }
             }
-            Expression::TakeAddr(child) => Self::Ptr(Box::new(self.clone()))
-                .matches_expr(&if_none_return_false!(child.upgrade()).expr, symbols),
             Expression::FnCall { name, args: _ } => {
                 if_none_return_false!(if_none_return_false!(symbols.lookup(name)).1.as_function())
                     .1
