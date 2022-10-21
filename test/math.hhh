@@ -1,0 +1,171 @@
+inc: (x: *usize) = {
+    #asm
+    mov     rax, qword [rdi]
+    inc     rax
+    mov     qword [rdi], rax
+    #end
+    return;
+}
+
+succ: (x: usize) -> usize = {
+    #asm
+    mov     rax, rdi
+    inc     rax
+    #end
+    return _;
+}
+
+dec: (x: *usize) = {
+    #asm
+    mov     rax, qword [rdi]
+    dec     rax
+    mov     qword [rdi], rax
+    #end
+    return;
+}
+
+prev: (x: usize) -> usize = {
+    #asm
+    mov     rax, rdi
+    dec     rax
+    #end
+    return _;
+}
+
+add: (x: *usize, y: usize) = {
+    #asm
+    mov     rax, qword [rdi]
+    add     rax, rsi
+    mov     qword [rdi], rax
+    #end
+    return;
+}
+
+sum: (x: usize, y: usize) -> usize = {
+    #asm
+    mov     rax, rdi
+    add     rax, rsi
+    #end
+    return _;
+}
+
+sub: (x: *usize, y: usize) = {
+    #asm
+    mov     rax, qword [rdi]
+    sub     rax, rsi
+    mov     qword [rdi], rax
+    #end
+    return;
+}
+
+diff: (x: usize, y: usize) -> usize = {
+    #asm
+    mov     rax, rdi
+    sub     rax, rsi
+    #end
+    return _;
+}
+
+mul: (x: *usize, y: usize) = {
+    #asm
+    mov     rax, qword [rdi]
+    mul     rsi
+    mov     qword [rdi], rax
+    #end
+    return;
+}
+
+prod: (x: usize, y: usize) -> usize = {
+    #asm
+    mov     rax, rdi
+    mul     rsi
+    #end
+    return _;
+}
+
+div: (x: *usize, y: usize) = {
+    #asm
+    mov     rax, qword [rdi]
+    div     rsi
+    mov     qword [rdi], rax
+    #end
+    return;
+}
+
+quot: (x: usize, y: usize) -> usize = {
+    #asm
+    mov     rax, rdi
+    div     rsi
+    #end
+    return _;
+}
+
+iadd: (x: *isize, y: isize) = {
+    #asm
+    mov     rax, qword [rdi]
+    add    rax, rsi
+    mov     qword [rdi], rax
+    #end
+    return;
+}
+
+isum: (x: isize, y: isize) -> isize = {
+    #asm
+    mov     rax, rdi
+    add    rax, rsi
+    #end
+    return _;
+}
+
+isub: (x: *isize, y: isize) = {
+    #asm
+    mov     rax, qword [rdi]
+    sub    rax, rsi
+    mov     qword [rdi], rax
+    #end
+    return;
+}
+
+idiff: (x: isize, y: isize) -> isize = {
+    #asm
+    mov     rax, rdi
+    sub    rax, rsi
+    #end
+    return _;
+}
+
+imul: (x: *isize, y: isize) = {
+    #asm
+    mov     rax, qword [rdi]
+    imul     rsi
+    mov     qword [rdi], rax
+    #end
+    return;
+}
+
+iprod: (x: isize, y: isize) -> isize = {
+    #asm
+    mov     rax, rdi
+    imul    rsi
+    #end
+    return _;
+}
+
+idiv: (x: *isize, y: isize) = {
+    #asm
+    mov     rax, qword [rdi]
+    idiv    rsi
+    mov     qword [rdi], rax
+    #end
+    return;
+}
+
+iquot: (x: isize, y: isize) -> isize = {
+    #asm
+    mov     rax, rdi
+    idiv    rsi
+    #end
+    return _;
+}
+
+
