@@ -9,7 +9,7 @@
 ### Quick Showcase
 
 
-<img src="https://i.imgur.com/KsSHGM7.png" width="50%">
+<img src="https://i.imgur.com/KsSHGM7.png" width="65%">
 
 ```
 #include cstd.hhh
