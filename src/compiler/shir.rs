@@ -1,15 +1,14 @@
-use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::rc::Rc;
-
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+    rc::Rc,
+};
 use mir::ir::DataType as BasicType;
-
-use super::ast::*;
-use super::error::CompileError;
-use super::error::ErrorCollector;
-use super::error::ErrorContent;
+use super::{
+    ast::*,
+    error::{CompileError, ErrorCollector, ErrorContent},
+    typesystem::TypeExpr,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct SHIRProgram {

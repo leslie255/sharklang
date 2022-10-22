@@ -1,11 +1,6 @@
 #include cstd.hhh
 
-say_hello: () = {
-    printf("hello, world\n");
-}
-
 main: -> u32 = {
-    say_hello();
+    printf("hello, world\n");
     return 0;
 }
-

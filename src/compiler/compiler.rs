@@ -1,6 +1,5 @@
 use std::rc::Rc;
-
-use super::shir::*;
+use super::shir::{SHIRConst, SHIRProgram, SHIRTopLevel, SHIR};
 use mir::ir::{
     DataType, Instruction as MIRInstr, Operand, OperandContent, OperationType as MIROpcode,
     Program as MIRProgram, TopLevelElement as MIRTopLevel,

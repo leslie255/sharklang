@@ -1,21 +1,10 @@
-#![allow(unused)]
-
-use std::{
-    fmt::{write, Display},
-    rc::Rc,
-};
-
 use super::{
-    ast::{Expression, TypeExpr},
     tokens::{Token, TokenContent},
+    typesystem::TypeExpr,
 };
+use std::{fmt::Display, rc::Rc};
 
-#[derive(Debug, Clone)]
-pub enum ErrorType {
-    Syntax,
-    Type,
-}
-
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum ErrorContent {
     UnexpectedToken {
@@ -49,7 +38,7 @@ impl Display for ErrorContent {
         match self {
             Self::UnexpectedToken { expected, found } => {
                 if expected.is_empty() {
-                    write!(f, "Unexpected token {}", found.name());
+                    write!(f, "Unexpected token {}", found.name())?;
                 } else {
                     write!(f, "Expects ")?;
                     let count = expected.len();
@@ -101,7 +90,7 @@ impl Display for ErrorContent {
             Self::IncorrectArgCountVariadic { expected, found } => {
                 write!(f, "Expects at least {expected} arguments, found {found}")?
             }
-            Self::MissingReturn(ret_type) => write!(f, "This function has a return value of type {ret_type}, but not all branches has a return statement")?,
+            Self::MissingReturn(ret_type) => write!(f, "This function has a return value of type {ret_type}, but not all branches have a return statement")?,
             Self::Raw(message) => message.fmt(f)?,
         }
         Ok(())

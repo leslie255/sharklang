@@ -6,10 +6,7 @@ use std::{
     rc::Rc,
     str::CharIndices,
 };
-
-use crate::compiler::tokens::TokenContent;
-
-use super::tokens::{parse_into_tokens, CharCustomFuncs, Token};
+use super::tokens::{parse_into_tokens, CharCustomFuncs, Token, TokenContent};
 
 fn join_path(original: &Path, tail: &String) -> String {
     original.join(tail.clone()).to_str().unwrap().to_string()

@@ -1,16 +1,15 @@
 pub(crate) use std::env;
 use std::fs;
 
-use compiler::compiler::compile_shir_into_mir;
-use compiler::error::ErrorCollector;
-use compiler::preprocess::PreProcessor;
-use compiler::shir::ast_into_shir;
-use compiler::shir::SHIRProgram;
-use compiler::tokens::*;
-use mir::fileformat::FileFormat;
-use mir::ir::Program;
-
-use crate::compiler::ast::*;
+use compiler::{
+    ast::{parse_tokens_into_ast, AST},
+    compiler::compile_shir_into_mir,
+    error::ErrorCollector,
+    preprocess::PreProcessor,
+    shir::{ast_into_shir, SHIRProgram},
+    tokens::*,
+};
+use mir::{fileformat::FileFormat, ir::Program};
 
 mod compiler;
 fn main() {

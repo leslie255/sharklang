@@ -1,8 +1,6 @@
 use std::rc::Rc;
 
-use crate::compiler::preprocess::PreProcessor;
-
-use super::error::CompileError;
+use super::{error::CompileError, preprocess::PreProcessor};
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone)]
