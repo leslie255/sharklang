@@ -5,6 +5,8 @@ say_hello: () = {
 }
 
 main: -> u32 = {
-    say_hello();
+    say("hello");
+    a: = 0;
+    a();
     return 0;
 }

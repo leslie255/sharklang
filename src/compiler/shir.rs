@@ -1,6 +1,6 @@
 use super::{
     ast::{ASTNode, Expression, NumValue, AST},
-    error::{CompileError, ErrorCollector, ErrorContent},
+    error::{CollectError, CompileError, ErrorCollector, ErrorContent},
     typesystem::{check_type, suggest_typeexpr, TypeExpr},
 };
 use mir::ir::DataType as BasicType;
@@ -120,6 +120,23 @@ impl SymbolTable {
             Some(s)
         } else {
             None
+        }
+    }
+    pub fn lookup_expect(
+        &self,
+        id: &Rc<String>,
+        pos: usize,
+    ) -> Result<(&Rc<String>, &Symbol), CompileError> {
+        if let Some(s) = self.local.get_key_value(id) {
+            Ok(s)
+        } else if let Some(s) = self.global.get_key_value(id) {
+            Ok(s)
+        } else {
+            Err(CompileError {
+                content: ErrorContent::SymbolNotExist(Rc::clone(id)),
+                position: pos,
+                length: id.len(),
+            })
         }
     }
 }
@@ -288,7 +305,14 @@ fn convert_body(
 ) -> Option<SHIR> {
     match &node.expr {
         Expression::Identifier(id) => {
-            let (dtype, num_id) = context.symbols.lookup(id)?.1.as_variable()?;
+            let (dtype, num_id) = context
+                .symbols
+                .lookup_expect(id, node.pos)
+                .collect_error(err_collector)?
+                .1
+                .as_variable()
+                .ok_or(CompileError::not_a_var(id, node.pos))
+                .collect_error(err_collector)?;
             Some(SHIR::Var(num_id, dtype.into_basic_type(&context.symbols)?))
         }
         Expression::NumLiteral(val) => Some(SHIR::Const(SHIRConst::Number(*val))),
@@ -337,10 +361,18 @@ fn convert_body(
             }
         }
         Expression::Assign { lhs, rhs } => {
-            let lhs_expr = &lhs.upgrade()?.expr;
-            if let Some((_, symbol)) = context.symbols.lookup(lhs_expr.as_identifier()?) {
+            let lhs_node = &lhs.upgrade()?;
+            let lhs_expr = &lhs_node.expr;
+            if let Some(id) = lhs_expr.as_identifier() {
+                let (_, symbol) = context
+                    .symbols
+                    .lookup_expect(id, lhs_node.pos)
+                    .collect_error(err_collector)?;
                 let rhs_node = &rhs.upgrade()?;
-                let (var_type, var_id) = symbol.as_variable()?;
+                let (var_type, var_id) = symbol
+                    .as_variable()
+                    .ok_or(CompileError::not_a_var(id, lhs_node.pos))
+                    .collect_error(err_collector)?;
                 check_type(var_type, rhs_node, err_collector, &context.symbols);
                 Some(SHIR::VarAssign {
                     id: var_id,
@@ -355,10 +387,16 @@ fn convert_body(
         }
         Expression::FnCall { name, args } => {
             let mut args_shir = Vec::<(SHIR, BasicType)>::new();
-            let (name, symbol) = context.symbols.lookup(name)?;
+            let (name, symbol) = context
+                .symbols
+                .lookup_expect(name, node.pos)
+                .collect_error(err_collector)?;
             let name = Rc::clone(name);
             let symbol = symbol.clone();
-            let (arg_types, ret_type, is_variadic) = symbol.as_function()?;
+            let (arg_types, ret_type, is_variadic) = symbol
+                .as_function()
+                .ok_or(CompileError::not_a_func(&name, node.pos))
+                .collect_error(err_collector)?;
             // check argument count
             let expected_arg_count = arg_types.len();
             let actual_arg_count = args.len();

@@ -136,6 +136,20 @@ impl CompileError {
             length: found.len,
         }
     }
+    pub fn not_a_func(id: &Rc<String>, pos: usize) -> Self {
+        Self {
+            content: ErrorContent::NotAFunc(Rc::clone(id)),
+            position: pos,
+            length: id.len(),
+        }
+    }
+    pub fn not_a_var(id: &Rc<String>, pos: usize) -> Self {
+        Self {
+            content: ErrorContent::NotAVar(Rc::clone(id)),
+            position: pos,
+            length: id.len(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
