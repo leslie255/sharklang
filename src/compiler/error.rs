@@ -18,9 +18,10 @@ pub enum ErrorContent {
         expected: TypeExpr,
         found: Option<TypeExpr>,
     },
-    FuncNotExist(Rc<String>),
-    VarNotExist(Rc<String>),
-    TypeNameNotExist(Rc<String>),
+    SymbolNotExist(Rc<String>),
+    NotAFunc(Rc<String>),
+    NotAVar(Rc<String>),
+    NotATypeName(Rc<String>),
     InvalidNumberFormat(String),
     IncorrectArgCount {
         expected: usize,
@@ -78,11 +79,12 @@ impl Display for ErrorContent {
                     }
                 )?;
             }
-            Self::FuncNotExist(name) => {
-                write!(f, "`{name}` either don't exist or is not callable")?;
+            Self::SymbolNotExist(name) => write!(f, "`{name}` is not a defined symbol")?,
+            Self::NotAFunc(name) => {
+                write!(f, "`{name}` is not a function")?;
             }
-            Self::VarNotExist(name) => write!(f, "`{name}` does not exist")?,
-            Self::TypeNameNotExist(name) => write!(f, "`{name}` is not a type name")?,
+            Self::NotAVar(name) => write!(f, "`{name}` is not a variable")?,
+            Self::NotATypeName(name) => write!(f, "`{name}` is not a type name")?,
             Self::InvalidNumberFormat(s) => write!(f, "`{s}` is not a valid number format")?,
             Self::IncorrectArgCount { expected, found } => {
                 write!(f, "Expects {expected} arguments, found {found}")?
@@ -204,6 +206,22 @@ impl ErrorCollector {
                 }
             );
             std::process::exit(101);
+        }
+    }
+}
+
+pub trait CollectError<T> {
+    fn collect_error(self: Self, collector: &mut ErrorCollector) -> Option<T>;
+}
+
+impl<T> CollectError<T> for Result<T, CompileError> {
+    fn collect_error(self: Self, collector: &mut ErrorCollector) -> Option<T> {
+        match self {
+            Ok(thing) => Some(thing),
+            Err(e) => {
+                collector.errors.push(e);
+                None
+            },
         }
     }
 }

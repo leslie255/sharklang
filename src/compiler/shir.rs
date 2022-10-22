@@ -1,13 +1,13 @@
+use super::{
+    ast::{ASTNode, Expression, NumValue, AST},
+    error::{CompileError, ErrorCollector, ErrorContent},
+    typesystem::{check_type, suggest_typeexpr, TypeExpr},
+};
+use mir::ir::DataType as BasicType;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     hash::{Hash, Hasher},
-    rc::Rc,
-};
-use mir::ir::DataType as BasicType;
-use super::{
-    ast::*,
-    error::{CompileError, ErrorCollector, ErrorContent},
-    typesystem::TypeExpr,
+    rc::{Rc, Weak},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -161,6 +161,7 @@ struct Context {
     symbols: SymbolTable,
     parent_fn_ret_type: Option<TypeExpr>,
     // parent_loop: ...
+    has_ret_statement: bool,
 }
 
 pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgram {
@@ -168,10 +169,8 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
     let mut context = Context {
         symbols: SymbolTable::default(),
         parent_fn_ret_type: None,
+        has_ret_statement: false,
     };
-
-    // for the implicit function call syntax
-    let println_str = Rc::new("println".to_string());
 
     for (i, root_node) in ast
         .root_nodes
@@ -180,8 +179,9 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
         .enumerate()
     {
         if let Some((name, args, ret_type, body, is_variadic)) = root_node.expr.as_fn_def() {
-            context.parent_fn_ret_type = Some(ret_type.clone());
             // --- if it is a function definition
+
+            context.parent_fn_ret_type = Some(ret_type.clone());
             context.symbols.global.insert(
                 Rc::clone(name),
                 Symbol::Function(
@@ -214,44 +214,14 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
                     rhs: Box::new(SHIR::Arg(i as u64, arg_t_basic)),
                 });
             }
-            let mut has_ret_statement = false;
-            // convert body
-            for node in body.iter().filter_map(|w| unsafe { w.as_ptr().as_ref() }) {
-                let s = convert_body(node, &mut fn_body, &mut context, i, err_collector);
-                if let Some(s) = s {
-                    if let SHIR::ReturnValue(_) = s {
-                        has_ret_statement = true;
-                    } else if SHIR::ReturnVoid == s {
-                        has_ret_statement = true;
-                    }
-                    fn_body.push(if let Some(str_id) = s.as_string() {
-                        // implicit `println` calls
-                        SHIR::FnCall {
-                            name: Rc::clone(&println_str),
-                            args: vec![(
-                                SHIR::Const(SHIRConst::String(str_id)),
-                                BasicType::Unsigned64,
-                            )],
-                            ret_type: BasicType::Irrelavent,
-                        }
-                    } else {
-                        s
-                    });
-                }
-            }
-            // return check
-            if !has_ret_statement {
-                if ret_type.is_none() {
-                    // auto return
-                    fn_body.push(SHIR::ReturnVoid);
-                } else {
-                    err_collector.errors.push(CompileError {
-                        content: ErrorContent::MissingReturn(ret_type.clone()),
-                        position: root_node.pos,
-                        length: 1,
-                    })
-                }
-            }
+            convert_block(body, &mut context, i, err_collector, &mut fn_body);
+            check_return(
+                ret_type,
+                &mut fn_body,
+                &root_node,
+                &mut context,
+                err_collector,
+            );
             context.symbols.local.clear();
             program.body.push(SHIRTopLevel::Fn {
                 is_local: false,
@@ -282,6 +252,31 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
     }
     program.strliteral_pool = ast.strliteral_pool;
     program
+}
+
+fn convert_block(
+    body: &Vec<Weak<ASTNode>>,
+    context: &mut Context,
+    i: usize,
+    err_collector: &mut ErrorCollector,
+    target: &mut Vec<SHIR>,
+) {
+    context.has_ret_statement = false;
+    for node in body.iter().filter_map(|w| unsafe { w.as_ptr().as_ref() }) {
+        let s = convert_body(node, target, context, i, err_collector);
+        if let Some(s) = s {
+            if let SHIR::ReturnValue(_) = s {
+                context.has_ret_statement = true;
+            } else if SHIR::ReturnVoid == s {
+                context.has_ret_statement = true;
+            }
+            if let Some(str_id) = s.as_string() {
+                handle_implicit_printf(context, err_collector, node, target, str_id);
+            } else {
+                target.push(s);
+            }
+        }
+    }
 }
 
 fn convert_body(
@@ -504,53 +499,74 @@ fn convert_body(
     }
 }
 
-#[must_use]
-fn suggest_typeexpr(expr: &Expression, symbols: &SymbolTable) -> Option<TypeExpr> {
-    match expr {
-        Expression::Identifier(id) => Some(symbols.lookup(id)?.1.as_variable()?.0.clone()),
-        Expression::NumLiteral(num) => Some(match num {
-            NumValue::U(_) => TypeExpr::usize,
-            NumValue::I(_) => TypeExpr::isize,
-            NumValue::F(_) => TypeExpr::f64,
-        }),
-        Expression::StrLiteral(_) => Some(TypeExpr::Ptr(Box::new(TypeExpr::u8))),
-        Expression::CharLiteral(_) => Some(TypeExpr::u8),
-        Expression::FnCall { name, args: _ } => {
-            Some(symbols.lookup(name)?.1.as_function()?.1.clone())
+/// Check if the function has a return value, if not:
+///     - if the function has a return type of `none`, insert an implicit return at the exit
+///     - otherwise, generate an error
+fn check_return(
+    ret_type: &TypeExpr,
+    fn_body: &mut Vec<SHIR>,
+    fn_def_node: &ASTNode,
+    context: &mut Context,
+    err_collector: &mut ErrorCollector,
+) {
+    if !context.has_ret_statement {
+        if ret_type.is_none() {
+            // auto return
+            fn_body.push(SHIR::ReturnVoid);
+        } else {
+            err_collector.errors.push(CompileError {
+                content: ErrorContent::MissingReturn(ret_type.clone()),
+                position: fn_def_node.pos,
+                length: 1,
+            })
         }
-        Expression::Deref(child) => Some(
-            *suggest_typeexpr(&child.upgrade()?.expr, symbols)?
-                .as_ptr()?
-                .clone(),
-        ),
-        Expression::TakeAddr(child) => Some(TypeExpr::Ptr(Box::new(suggest_typeexpr(
-            &child.upgrade()?.expr,
-            symbols,
-        )?))),
-        Expression::TypeCast(_, t) => Some(t.clone()),
-        Expression::Block(_) => Some(TypeExpr::Fn {
-            args: Vec::new(),
-            ret_type: Box::new(TypeExpr::none),
-            is_variadic: false,
-        }),
-        _ => None,
     }
 }
 
-fn check_type(
-    expected_type: &TypeExpr,
-    node: &ASTNode,
+fn handle_implicit_printf(
+    context: &Context,
     err_collector: &mut ErrorCollector,
-    symbols: &SymbolTable,
+    node: &ASTNode,
+    target: &mut Vec<SHIR>,
+    str_id: usize,
 ) {
-    if !expected_type.matches_expr(&node.expr, symbols) {
-        err_collector.errors.push(CompileError {
-            content: ErrorContent::MismatchedType {
-                expected: expected_type.clone(),
-                found: suggest_typeexpr(&node.expr, symbols),
-            },
+    // check if the function `printf` exists and the first argument is a string
+    let try_find_symbol = || -> Result<(), CompileError> {
+        let (name, symbol) = context
+            .symbols
+            .global
+            .get_key_value(&"printf".to_string())
+            .ok_or(CompileError {
+                content: ErrorContent::SymbolNotExist(Rc::new("printf".to_string())),
+                position: node.pos,
+                length: 1,
+            })?;
+        let (args, _, _) = symbol.as_function().ok_or(CompileError {
+            content: ErrorContent::NotAFunc(Rc::clone(name)),
             position: node.pos,
             length: 1,
-        })
+        })?;
+        let first_arg_type = args.first().ok_or(CompileError {
+                            content: ErrorContent::Raw("The function `printf` doesn't have any arguments, and thus it cannot be implicitly called".to_string()),
+                            position: node.pos,
+                            length: 1,
+                        })?;
+        if !first_arg_type.is_equvalent(&TypeExpr::Ptr(Box::new(TypeExpr::u8)), &context.symbols) {
+            Err(CompileError {
+                                content: ErrorContent::Raw("The first argument of the function `printf` is not of type *u8, and thus it cannot be implicitly called".to_string()),
+                                position: node.pos,
+                                length: 1,
+                        })
+        } else {
+            target.push(SHIR::FnCall {
+                name: Rc::clone(name),
+                args: vec![(SHIR::Const(SHIRConst::String(str_id)), BasicType::Pointer)],
+                ret_type: BasicType::Irrelavent,
+            });
+            Ok(())
+        }
+    }();
+    if let Err(e) = try_find_symbol {
+        err_collector.errors.push(e);
     }
 }

@@ -1,6 +1,6 @@
 use std::{fmt::Display, rc::Rc};
 
-use super::{ast::Expression, ast::NumValue, shir::SymbolTable};
+use super::{ast::Expression, ast::{NumValue, ASTNode}, shir::SymbolTable, error::{ErrorCollector, CompileError, ErrorContent}};
 
 use mir::ir::DataType as BasicType;
 
@@ -340,5 +340,56 @@ impl Display for TypeExpr {
             Self::TypeName(name) => write!(f, "`{name}`")?,
         }
         Ok(())
+    }
+}
+
+#[must_use]
+pub fn suggest_typeexpr(expr: &Expression, symbols: &SymbolTable) -> Option<TypeExpr> {
+    match expr {
+        Expression::Identifier(id) => Some(symbols.lookup(id)?.1.as_variable()?.0.clone()),
+        Expression::NumLiteral(num) => Some(match num {
+            NumValue::U(_) => TypeExpr::usize,
+            NumValue::I(_) => TypeExpr::isize,
+            NumValue::F(_) => TypeExpr::f64,
+        }),
+        Expression::StrLiteral(_) => Some(TypeExpr::Ptr(Box::new(TypeExpr::u8))),
+        Expression::CharLiteral(_) => Some(TypeExpr::u8),
+        Expression::FnCall { name, args: _ } => {
+            Some(symbols.lookup(name)?.1.as_function()?.1.clone())
+        }
+        Expression::Deref(child) => Some(
+            *suggest_typeexpr(&child.upgrade()?.expr, symbols)?
+                .as_ptr()?
+                .clone(),
+        ),
+        Expression::TakeAddr(child) => Some(TypeExpr::Ptr(Box::new(suggest_typeexpr(
+            &child.upgrade()?.expr,
+            symbols,
+        )?))),
+        Expression::TypeCast(_, t) => Some(t.clone()),
+        Expression::Block(_) => Some(TypeExpr::Fn {
+            args: Vec::new(),
+            ret_type: Box::new(TypeExpr::none),
+            is_variadic: false,
+        }),
+        _ => None,
+    }
+}
+
+pub fn check_type(
+    expected_type: &TypeExpr,
+    node: &ASTNode,
+    err_collector: &mut ErrorCollector,
+    symbols: &SymbolTable,
+) {
+    if !expected_type.matches_expr(&node.expr, symbols) {
+        err_collector.errors.push(CompileError {
+            content: ErrorContent::MismatchedType {
+                expected: expected_type.clone(),
+                found: suggest_typeexpr(&node.expr, symbols),
+            },
+            position: node.pos,
+            length: 1,
+        })
     }
 }

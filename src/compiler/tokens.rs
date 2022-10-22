@@ -257,6 +257,7 @@ impl Token {
             | TokenContent::BigParenClose
             | TokenContent::RoundParenClose
             | TokenContent::RectParenClose
+            | TokenContent::Equal
             | TokenContent::Semicolon => true,
             _ => false,
         }
