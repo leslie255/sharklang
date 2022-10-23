@@ -1,3 +1,4 @@
+use super::tokens::{parse_into_tokens, CharCustomFuncs, Token, TokenContent};
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -6,27 +7,61 @@ use std::{
     rc::Rc,
     str::CharIndices,
 };
-use super::tokens::{parse_into_tokens, CharCustomFuncs, Token, TokenContent};
 
-fn join_path(original: &Path, tail: &String) -> String {
-    original.join(tail.clone()).to_str().unwrap().to_string()
+fn join_path(original: &Path, tail: &String) -> PathBuf {
+    original.join(tail.clone())
 }
 
-#[derive(Debug, Clone)]
 pub struct PreProcessor {
-    pins: HashSet<String>,
-    macros: HashMap<String, String>,
-    parent_path: PathBuf,
+    pub pins: HashSet<String>,
+    pub macros: HashMap<String, String>,
+    pub parent_path: PathBuf,
+    pub import_dirs: Vec<PathBuf>,
 }
 
 impl PreProcessor {
-    pub fn new(src_path: String) -> Self {
+    pub fn new(src_path: String, import_dirs: Vec<String>) -> Self {
         let path = Path::new(&src_path).parent().unwrap().to_path_buf();
+        let import_paths = import_dirs
+            .into_iter()
+            .filter_map(|s| {
+                let path = Path::new(&s).to_path_buf();
+                if path.is_dir() {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .collect();
         Self {
             pins: HashSet::new(),
             macros: HashMap::new(),
             parent_path: path,
+            import_dirs: import_paths,
         }
+    }
+
+    fn find_import_path(&self, file_name: String) -> Option<PathBuf> {
+        let file_path = Path::new(&file_name);
+        for import_dir in &self.import_dirs {
+            let joined_path = import_dir.join(file_path);
+            if joined_path.is_file() {
+                return Some(joined_path);
+            }
+        }
+        None
+    }
+
+    fn expand_external_file(&mut self, file_path: PathBuf, pos: usize, len: usize) -> Vec<Token> {
+        let file_content = fs::read_to_string(file_path).unwrap();
+        parse_into_tokens(&file_content, self)
+            .into_iter()
+            .map(|mut t| {
+                t.position = pos;
+                t.len = len;
+                t
+            })
+            .collect()
     }
 
     /// Called after encountering the `#` character,
@@ -65,17 +100,24 @@ impl PreProcessor {
                     len += 1;
                 }
                 let joined_path = join_path(&self.parent_path, &file_name);
-                let included_content = fs::read_to_string(joined_path.clone()).unwrap();
-                // TODO: CompileError if unable to read file
-                parse_into_tokens(&included_content, self)
-                    .iter()
-                    .map(|t| {
-                        let mut t = t.clone();
-                        t.position = word_start;
-                        t.len = len;
-                        t
-                    })
-                    .collect()
+                self.expand_external_file(joined_path, word_start, len)
+            }
+            "import" => {
+                // go to the next non-whitespace character
+                let mut len = 8; // 8: the length of "#include"
+                while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {
+                    len += 1;
+                }
+                // get file name
+                let mut file_name = String::new();
+                while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
+                    file_name.push(ch);
+                    len += 1;
+                }
+                let file_path = self
+                    .find_import_path(file_name)
+                    .expect("imported path does not exist");
+                self.expand_external_file(file_path, word_start, len)
             }
             "macro" => {
                 // go to the next non-whitespace character

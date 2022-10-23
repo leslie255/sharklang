@@ -1,12 +1,15 @@
-#include cstd.hhh
+#import cstd.hhh
+#import math.hhh
 
 say_hello: () = {
     "hello, world\n";
 }
 
 main: -> u32 = {
-    say("hello");
+    say_hello();
     a: = 0;
-    a();
+    inc(&a);
+    add(&a, 10);
+    printf("%lu\n", a);
     return 0;
 }

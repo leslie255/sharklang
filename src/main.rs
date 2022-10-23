@@ -1,5 +1,5 @@
 pub(crate) use std::env;
-use std::fs;
+use std::{fs, path::PathBuf};
 
 use compiler::{
     ast::{parse_tokens_into_ast, AST},
@@ -118,6 +118,10 @@ fn main() {
     compile(src_path, output_path, file_format);
 }
 
+fn get_home_dir() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var("HOME").ok()?.trim()))
+}
+
 struct Compiler {
     error_collector: ErrorCollector,
     preprocessor: PreProcessor,
@@ -130,12 +134,18 @@ struct Compiler {
 
 impl Compiler {
     fn new(src_path: String) -> Compiler {
+        let mut preprocessor = PreProcessor::new(src_path.clone(), Vec::new());
+        if let Some(home_dir) = get_home_dir() {
+            preprocessor
+                .import_dirs
+                .push(home_dir.join(".config/sharkc/import"))
+        }
         Compiler {
             error_collector: ErrorCollector {
                 file_name: src_path.clone(),
                 errors: Vec::new(),
             },
-            preprocessor: PreProcessor::new(src_path.clone()),
+            preprocessor,
             content: Box::new(fs::read_to_string(src_path.clone()).unwrap()),
             tokens: None,
             ast: None,
