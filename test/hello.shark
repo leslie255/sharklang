@@ -1,0 +1,7 @@
+#include cstd.hhh
+
+main: -> u32 = {
+    "hello, world\n";
+    return 0;
+}
+

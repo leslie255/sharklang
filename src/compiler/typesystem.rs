@@ -1,6 +1,12 @@
 use std::{fmt::Display, rc::Rc};
 
-use super::{ast::Expression, ast::{NumValue, ASTNode}, shir::SymbolTable, error::{ErrorCollector, CompileError, ErrorContent}};
+use super::{
+    ast::Expression,
+    ast::{ASTNode, NumValue},
+    error::{CompileError, ErrorCollector, ErrorContent},
+    shir::SymbolTable,
+    tokens::{TokenContent, TokenStream},
+};
 
 use mir::ir::DataType as BasicType;
 
@@ -282,6 +288,160 @@ impl TypeExpr {
     #[must_use]
     pub fn is_none(&self) -> bool {
         matches!(self, Self::none)
+    }
+
+    pub fn parse_from_tokens(token_stream: &mut TokenStream) -> Result<TypeExpr, CompileError> {
+        match &token_stream.current().content {
+            TokenContent::Star => {
+                token_stream.next();
+                let t = TypeExpr::parse_from_tokens(token_stream)?;
+                Ok(TypeExpr::Ptr(Box::new(t)))
+            }
+            TokenContent::RectParenOpen => {
+                token_stream.next();
+                let t = TypeExpr::parse_from_tokens(token_stream)?;
+                if token_stream.next().content != TokenContent::RectParenClose {
+                    return Err(CompileError::unexpected_token(
+                        TokenContent::RectParenClose,
+                        token_stream.current(),
+                    ));
+                }
+                Ok(TypeExpr::Slice(Box::new(t)))
+            }
+            TokenContent::Identifier(id) => Ok(match id.as_str() {
+                "u64" => TypeExpr::u64,
+                "u32" => TypeExpr::u32,
+                "u16" => TypeExpr::u16,
+                "u8" => TypeExpr::u8,
+                "i64" => TypeExpr::i64,
+                "i32" => TypeExpr::i32,
+                "i16" => TypeExpr::i16,
+                "i8" => TypeExpr::i8,
+                "f64" => TypeExpr::f64,
+                "f32" => TypeExpr::f32,
+                "usize" => TypeExpr::usize,
+                "isize" => TypeExpr::isize,
+                "none" => TypeExpr::none,
+                _ => TypeExpr::TypeName(Rc::clone(id)),
+            }),
+            TokenContent::ReturnArrow => {
+                token_stream.next();
+                let ret_type = TypeExpr::parse_from_tokens(token_stream)?;
+                Ok(TypeExpr::Fn {
+                    args: Vec::new(),
+                    ret_type: Box::new(ret_type),
+                    is_variadic: false,
+                })
+            }
+            TokenContent::RoundParenOpen => {
+                let mut is_variadic = false;
+                let mut args = Vec::<(Rc<String>, TypeExpr)>::new();
+                let ret_type: Box<TypeExpr>;
+                // parse arguments
+                if token_stream.peek(1).content != TokenContent::RoundParenClose {
+                    loop {
+                        let arg_name = if let Some(s) = token_stream.next().content.as_identifier()
+                        {
+                            Rc::clone(s)
+                        } else {
+                            return Err(CompileError::unexpected_token(
+                                TokenContent::Identifier(Rc::new(String::new())),
+                                token_stream.current(),
+                            ));
+                        };
+                        if token_stream.next().content != TokenContent::Colon {
+                            return Err(CompileError::unexpected_token(
+                                TokenContent::Colon,
+                                token_stream.current(),
+                            ));
+                        }
+                        token_stream.next();
+                        let type_expr = TypeExpr::parse_from_tokens(token_stream)?;
+                        args.push((arg_name.clone(), type_expr));
+                        let t = token_stream.next();
+                        if t.content == TokenContent::Comma {
+                            if token_stream.peek(1).content == TokenContent::RoundParenClose {
+                                token_stream.next();
+                                break;
+                            }
+                            continue;
+                        } else if t.content == TokenContent::RoundParenClose {
+                            break;
+                        } else if t.content == TokenContent::DotDot {
+                            is_variadic = true;
+                            if token_stream.next().content != TokenContent::RoundParenClose {
+                                return Err(CompileError::unexpected_token(
+                                    TokenContent::DotDot,
+                                    token_stream.current(),
+                                ));
+                            }
+                            break;
+                        } else {
+                            return Err(CompileError::unexpected_token_multiple(
+                                vec![
+                                    TokenContent::Comma,
+                                    TokenContent::RoundParenClose,
+                                    TokenContent::DotDot,
+                                ],
+                                token_stream.current(),
+                            ));
+                        }
+                    }
+                } else {
+                    token_stream.next();
+                }
+                // parse return type
+                let peek = token_stream.peek(1);
+                if peek.content == TokenContent::ReturnArrow {
+                    token_stream.next();
+                    token_stream.next();
+                    ret_type = Box::new(TypeExpr::parse_from_tokens(token_stream)?);
+                } else {
+                    ret_type = Box::new(TypeExpr::none);
+                }
+                Ok(TypeExpr::Fn {
+                    args,
+                    ret_type,
+                    is_variadic,
+                })
+            }
+            TokenContent::BigParenOpen => {
+                if token_stream.peek(1).content == TokenContent::BigParenClose {
+                    token_stream.next();
+                    return Ok(TypeExpr::Struct(Vec::new()));
+                }
+                let mut fields = Vec::<(Rc<String>, TypeExpr)>::new();
+                loop {
+                    let field_name = token_stream.next().expects_identifier()?;
+                    let field_name = Rc::clone(field_name);
+                    if token_stream.next().content != TokenContent::Colon {
+                        return Err(CompileError::unexpected_token(
+                            TokenContent::Colon,
+                            token_stream.current(),
+                        ));
+                    }
+                    token_stream.next();
+                    let field_type = TypeExpr::parse_from_tokens(token_stream)?;
+                    fields.push((field_name, field_type));
+                    let token = token_stream.next().content.clone();
+                    if token == TokenContent::BigParenClose {
+                        return Ok(TypeExpr::Struct(fields));
+                    } else if token == TokenContent::Comma {
+                        if token_stream.peek(1).content == TokenContent::BigParenClose {
+                            token_stream.next();
+                            return Ok(TypeExpr::Struct(fields));
+                        }
+                        continue;
+                    } else {
+                        return Err(CompileError::unexpected_token_multiple(
+                            vec![TokenContent::Comma, TokenContent::BigParenClose],
+                            token_stream.current(),
+                        ));
+                    }
+                }
+            }
+            _ => Err(CompileError::unexpected_token0(token_stream.current())),
+        }
     }
 }
 

@@ -49,10 +49,10 @@ impl Display for ErrorContent {
                         for (i, token_content) in expected.iter().enumerate() {
                             if i == count - 1 {
                                 // last one
-                                write!(f, "{}", token_content.name())?;
+                                write!(f, " or {}", token_content.name())?;
                             } else if i == count - 2 {
                                 // second last one
-                                write!(f, "or {}", token_content.name())?;
+                                write!(f, "{}", token_content.name())?;
                             } else {
                                 write!(f, "{}, ", token_content.name())?;
                             }
