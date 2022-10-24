@@ -112,6 +112,65 @@ fn compile_instr(shir: &SHIR, context: &mut Context, target: &mut Vec<MIRInstr>)
             operand1: Operand::default(),
         },
         SHIR::Loop(loop_body, loop_id) => compile_loop(*loop_id, loop_body, context, target),
+        SHIR::If {
+            if_blocks,
+            else_block,
+        } => {
+            if if_blocks.is_empty() {
+                // if and else blocks may not be all empty as ensured in shir.rs
+                let else_block = else_block.as_ref().unwrap();
+                let mut last: MIRInstr =
+                    compile_instr(else_block.first().unwrap(), context, target);
+                for shir in else_block.iter().skip(1) {
+                    target.push(last);
+                    last = compile_instr(shir, context, target);
+                }
+                return last;
+            }
+            todo!("Generalized if statements")
+        }
+        SHIR::IfThenBreak(condition) => {
+            let condition_mir = compile_oper(&condition, DataType::UnsignedSize, target);
+            target.push(MIRInstr {
+                operation: MIROpcode::Cmp,
+                operand0: condition_mir,
+                operand1: Operand {
+                    dtype: DataType::UnsignedSize,
+                    content: OperandContent::Data(0),
+                },
+            });
+            MIRInstr {
+                operation: MIROpcode::Jn,
+                operand0: Operand {
+                    dtype: DataType::Irrelavent,
+                    content: OperandContent::Label(Rc::clone(
+                        context.parent_loop_end_label.as_ref().unwrap(),
+                    )),
+                },
+                operand1: Operand::default(),
+            }
+        }
+        SHIR::IfThenContinue(condition) => {
+            let condition_mir = compile_oper(&condition, DataType::UnsignedSize, target);
+            target.push(MIRInstr {
+                operation: MIROpcode::Cmp,
+                operand0: condition_mir,
+                operand1: Operand {
+                    dtype: DataType::UnsignedSize,
+                    content: OperandContent::Data(0),
+                },
+            });
+            MIRInstr {
+                operation: MIROpcode::Jn,
+                operand0: Operand {
+                    dtype: DataType::Irrelavent,
+                    content: OperandContent::Label(Rc::clone(
+                        context.parent_loop_start_label.as_ref().unwrap(),
+                    )),
+                },
+                operand1: Operand::default(),
+            }
+        }
         SHIR::RawASM(code) => MIRInstr {
             operation: MIROpcode::RawASM,
             operand0: Operand {

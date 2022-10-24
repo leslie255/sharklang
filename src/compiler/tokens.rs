@@ -314,6 +314,7 @@ impl Token {
             "typedef" => return_token!(TokenContent::Typedef, 7),
             "loop" => return_token!(TokenContent::Loop, 4),
             "if" => return_token!(TokenContent::If, 2),
+            "else" => return_token!(TokenContent::Else, 4),
             "extern" => return_token!(TokenContent::Extern, 6),
             _ => None,
         }

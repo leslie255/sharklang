@@ -1,5 +1,7 @@
 use std::{fmt::Display, rc::Rc};
 
+use crate::compiler::ast::DerefToASTNode;
+
 use super::{
     ast::Expression,
     ast::{ASTNode, NumValue},
@@ -105,15 +107,6 @@ impl TypeExpr {
 
     #[must_use]
     pub fn matches_expr(&self, expr: &Expression, symbols: &SymbolTable) -> bool {
-        macro_rules! if_none_return_false {
-            ($opt: expr) => {
-                if let Some(o) = $opt {
-                    o
-                } else {
-                    return false;
-                }
-            };
-        }
         match expr {
             Expression::Identifier(id) => || -> Option<bool> {
                 Some(
@@ -136,10 +129,10 @@ impl TypeExpr {
             Expression::CharLiteral(_) => self.is_equvalent(&Self::u8, symbols),
             Expression::BoolLiteral(_) => self.is_equvalent(&Self::u8, symbols),
             Expression::Deref(child) => Self::Ptr(Box::new(self.clone()))
-                .matches_expr(&if_none_return_false!(child.upgrade()).expr, symbols),
+                .matches_expr(&child.deref().expr, symbols),
             Expression::TakeAddr(child) => {
                 if let Self::Ptr(t) = self {
-                    t.matches_expr(&if_none_return_false!(child.upgrade()).expr, symbols)
+                    t.matches_expr(&child.deref().expr, symbols)
                 } else {
                     false
                 }
@@ -162,6 +155,7 @@ impl TypeExpr {
             Expression::DataType(_) => false,
             Expression::Block(_) => false,
             Expression::Loop(_) => false,
+            Expression::If { .. } => false,
             Expression::Return(_) => false,
             Expression::UnsafeReturn => false,
             Expression::Break => false,
@@ -531,12 +525,12 @@ pub fn suggest_typeexpr(expr: &Expression, symbols: &SymbolTable) -> Option<Type
             Some(symbols.lookup(name)?.1.as_function()?.1.clone())
         }
         Expression::Deref(child) => Some(
-            *suggest_typeexpr(&child.upgrade()?.expr, symbols)?
+            *suggest_typeexpr(&child.deref().expr, symbols)?
                 .as_ptr()?
                 .clone(),
         ),
         Expression::TakeAddr(child) => Some(TypeExpr::Ptr(Box::new(suggest_typeexpr(
-            &child.upgrade()?.expr,
+            &child.deref().expr,
             symbols,
         )?))),
         Expression::TypeCast(_, t) => Some(t.clone()),

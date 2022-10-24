@@ -68,6 +68,12 @@ pub enum SHIR {
     Deref(Box<SHIR>, BasicType),
     TakeAddr(Box<SHIR>),
     Loop(Vec<SHIR>, usize),
+    If {
+        if_blocks: Vec<(SHIR, Vec<SHIR>)>,
+        else_block: Option<Vec<SHIR>>,
+    },
+    IfThenBreak(Box<SHIR>),
+    IfThenContinue(Box<SHIR>),
     RawASM(Rc<String>),
 }
 
@@ -95,7 +101,10 @@ impl SHIR {
             | Self::Continue
             | Self::TakeAddr(_)
             | Self::Loop(_, _)
-            | Self::RawASM(_) => (),
+            | Self::RawASM(_)
+            | Self::If { .. }
+            | Self::IfThenBreak(_)
+            | Self::IfThenContinue(_) => (),
         }
     }
     #[must_use]
@@ -293,12 +302,6 @@ fn convert_block(
             } else {
                 target.push(s);
             }
-        } else {
-            err_collector.errors.push(CompileError {
-                content: ErrorContent::IllegalExpression,
-                position: node.pos,
-                length: 1,
-            })
         }
     }
 }
@@ -509,6 +512,75 @@ fn convert_body(
             let mut converted_body = Vec::<SHIR>::new();
             convert_block(body, context, i, err_collector, &mut converted_body);
             Some(SHIR::Loop(converted_body, i))
+        }
+        Expression::If {
+            if_blocks,
+            else_block,
+        } => {
+            let mut converted_if_blocks = Vec::<(SHIR, Vec<SHIR>)>::new();
+            let mut converted_else_block = Option::<Vec<SHIR>>::None;
+            for (if_condition, if_block) in if_blocks {
+                let if_block = if let Some(b) = if_block
+                    .deref()
+                    .expr
+                    .as_block()
+                    .ok_or(CompileError {
+                        content: ErrorContent::IllegalExpression,
+                        position: if_block.deref().pos,
+                        length: 1,
+                    })
+                    .collect_error(err_collector)
+                {
+                    b
+                } else {
+                    continue;
+                };
+                if if_block.is_empty() {
+                    continue;
+                }
+                let _err_collector_inside_iter = (); // prevent using the borrow
+                let first_expr = &if_block.first().unwrap().deref().expr;
+                let condition_shir =
+                    convert_body(if_condition.deref(), parent, context, i, err_collector)?;
+                match first_expr {
+                    Expression::Break => {
+                        parent.push(SHIR::IfThenBreak(Box::new(condition_shir)));
+                        continue;
+                    }
+                    Expression::Continue => {
+                        parent.push(SHIR::IfThenContinue(Box::new(condition_shir)));
+                        continue;
+                    }
+                    _ => {
+                        let mut body = Vec::<SHIR>::new();
+                        convert_block(if_block, context, i, err_collector, &mut body);
+                        converted_if_blocks.push((condition_shir, body));
+                    }
+                }
+            }
+            if let Some(else_block) = else_block.as_ref() {
+                let else_block = else_block
+                    .deref()
+                    .expr
+                    .as_block()
+                    .ok_or(CompileError {
+                        content: ErrorContent::IllegalExpression,
+                        position: else_block.deref().pos,
+                        length: 1,
+                    })
+                    .collect_error(err_collector)?;
+                let mut else_block_shir = Vec::<SHIR>::new();
+                convert_block(else_block, context, i, err_collector, &mut else_block_shir);
+                converted_else_block = Some(else_block_shir);
+            }
+            if converted_if_blocks.is_empty() && converted_else_block.is_none() {
+                None
+            } else {
+                Some(SHIR::If {
+                    if_blocks: converted_if_blocks,
+                    else_block: converted_else_block,
+                })
+            }
         }
         Expression::Return(child_node) => {
             if let Some(node) = child_node {

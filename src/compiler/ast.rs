@@ -86,6 +86,10 @@ pub enum Expression {
 
     Block(Vec<Weak<ASTNode>>),
     Loop(Weak<ASTNode>),
+    If {
+        if_blocks: Vec<(Weak<ASTNode>, Weak<ASTNode>)>,
+        else_block: Option<Weak<ASTNode>>,
+    },
 
     Return(Option<Weak<ASTNode>>),
     UnsafeReturn,
@@ -120,9 +124,7 @@ impl Expression {
                     name,
                     args,
                     ret_type,
-                    unsafe { rhs.as_ref()?.as_ptr().as_ref()? }
-                        .expr
-                        .as_block()?,
+                    rhs.as_ref()?.deref().expr.as_block()?,
                     is_variadic,
                 ));
             }
@@ -162,14 +164,17 @@ impl Debug for Expression {
             Self::NumLiteral(arg0) => formatter.debug_tuple("NumLiteral").field(arg0).finish(),
             Self::StrLiteral(arg0) => formatter.debug_tuple("StrLiteral").field(arg0).finish(),
             Self::CharLiteral(arg0) => formatter.debug_tuple("CharLiteral").field(arg0).finish(),
-            Self::BoolLiteral(arg0) => formatter.debug_tuple("BoolLiteral").field(&arg0.to_string()).finish(),
+            Self::BoolLiteral(arg0) => formatter
+                .debug_tuple("BoolLiteral")
+                .field(&arg0.to_string())
+                .finish(),
             Self::Def { name, dtype, rhs } => {
                 if let Some(x) = rhs {
                     formatter
                         .debug_tuple("Def")
                         .field(name)
                         .field(dtype)
-                        .field(&x.upgrade().unwrap().expr)
+                        .field(&x.deref().expr)
                         .finish()
                 } else {
                     formatter
@@ -184,8 +189,8 @@ impl Debug for Expression {
                 rhs: arg1,
             } => formatter
                 .debug_struct("Assign")
-                .field("lhs", &arg0.upgrade().unwrap().expr)
-                .field("rhs", &arg1.upgrade().unwrap().expr)
+                .field("lhs", &arg0.deref().expr)
+                .field("rhs", &arg1.deref().expr)
                 .finish(),
             Self::FnCall {
                 name: arg0,
@@ -196,7 +201,7 @@ impl Debug for Expression {
                 .field(
                     &arg1
                         .iter()
-                        .filter_map(|w| w.upgrade())
+                        .map(|w| w.deref())
                         .map(|n| n.expr.clone())
                         .collect::<Vec<Expression>>(),
                 )
@@ -226,13 +231,40 @@ impl Debug for Expression {
                 .finish(),
             Self::Loop(arg0) => formatter
                 .debug_tuple("Loop")
-                .field(&arg0.upgrade().unwrap().expr)
+                .field(&arg0.deref().expr)
+                .finish(),
+            Self::If {
+                if_blocks,
+                else_block: Some(else_block),
+            } => formatter
+                .debug_struct("If")
+                .field(
+                    "if/elif",
+                    &if_blocks
+                        .iter()
+                        .map(|(condition, block)| (&condition.deref().expr, &block.deref().expr))
+                        .collect::<Vec<(&Expression, &Expression)>>(),
+                )
+                .field("else", &else_block.deref().expr)
+                .finish(),
+            Self::If {
+                if_blocks,
+                else_block: None,
+            } => formatter
+                .debug_struct("If")
+                .field(
+                    "if/elif",
+                    &if_blocks
+                        .iter()
+                        .map(|(condition, block)| (&condition.deref().expr, &block.deref().expr))
+                        .collect::<Vec<(&Expression, &Expression)>>(),
+                )
                 .finish(),
             Self::Return(arg0) => {
                 if let Some(arg0) = arg0 {
                     formatter
                         .debug_tuple("Return")
-                        .field(&arg0.upgrade().unwrap().expr)
+                        .field(&arg0.deref().expr)
                         .finish()
                 } else {
                     formatter.debug_tuple("Return").field(arg0).finish()
@@ -357,13 +389,13 @@ fn parse_expressions(
                 expr: Expression::CharLiteral(*val),
             };
         }
-        TokenContent::True =>{
+        TokenContent::True => {
             node = ASTNode {
                 pos: current_token.position,
                 expr: Expression::BoolLiteral(true),
             };
         }
-        TokenContent::False =>{
+        TokenContent::False => {
             node = ASTNode {
                 pos: current_token.position,
                 expr: Expression::BoolLiteral(false),
@@ -457,7 +489,7 @@ fn parse_expressions(
                 expr: Expression::Loop(ast.add_to_node_pool(n)),
             };
         }
-        TokenContent::If => todo!(),
+        TokenContent::If => node = parse_if_block(ast, token_stream)?,
         TokenContent::RawASM(asm_code) => {
             node = ASTNode {
                 pos: current_token.position,
@@ -617,6 +649,59 @@ fn parse_identifier(
             expr: Expression::Identifier(Rc::clone(current_token.expects_identifier()?)),
         }),
     }
+}
+
+fn parse_if_block(ast: &mut AST, token_stream: &mut TokenStream) -> Result<ASTNode, CompileError> {
+    let position = token_stream.current().position;
+    token_stream.next();
+    let mut if_blocks = Vec::<(Weak<ASTNode>, Weak<ASTNode>)>::new();
+    let mut else_block = Option::<Weak<ASTNode>>::None;
+    let if_condition = parse_expressions(ast, token_stream, false)?;
+    token_stream.next();
+    let if_block = parse_expressions(ast, token_stream, false)?;
+    if_blocks.push((
+        ast.add_to_node_pool(if_condition),
+        ast.add_to_node_pool(if_block),
+    ));
+    loop {
+        if token_stream.peek(1).content != TokenContent::Else {
+            break;
+        }
+        token_stream.next();
+        let token = token_stream.next();
+        match token.content {
+            // else if
+            TokenContent::If => {
+                token_stream.next();
+                let elif_condition = parse_expressions(ast, token_stream, false)?;
+                token_stream.next();
+                let elif_block = parse_expressions(ast, token_stream, false)?;
+                if_blocks.push((
+                    ast.add_to_node_pool(elif_condition),
+                    ast.add_to_node_pool(elif_block),
+                ));
+            }
+            // else
+            TokenContent::BigParenOpen => {
+                let node = parse_expressions(ast, token_stream, false)?;
+                else_block = Some(ast.add_to_node_pool(node));
+                break;
+            }
+            _ => {
+                return Err(CompileError::unexpected_token_multiple(
+                    vec![TokenContent::If, TokenContent::BigParenOpen],
+                    token,
+                ))
+            }
+        }
+    }
+    Ok(ASTNode {
+        pos: position,
+        expr: Expression::If {
+            if_blocks,
+            else_block,
+        },
+    })
 }
 
 fn parse_str_content(src: &String) -> String {
