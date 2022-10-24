@@ -61,6 +61,7 @@ pub enum Expression {
     NumLiteral(NumValue),
     StrLiteral(usize),
     CharLiteral(u8),
+    BoolLiteral(bool),
 
     Def {
         name: Rc<String>,
@@ -161,6 +162,7 @@ impl Debug for Expression {
             Self::NumLiteral(arg0) => formatter.debug_tuple("NumLiteral").field(arg0).finish(),
             Self::StrLiteral(arg0) => formatter.debug_tuple("StrLiteral").field(arg0).finish(),
             Self::CharLiteral(arg0) => formatter.debug_tuple("CharLiteral").field(arg0).finish(),
+            Self::BoolLiteral(arg0) => formatter.debug_tuple("BoolLiteral").field(&arg0.to_string()).finish(),
             Self::Def { name, dtype, rhs } => {
                 if let Some(x) = rhs {
                     formatter
@@ -353,6 +355,18 @@ fn parse_expressions(
             node = ASTNode {
                 pos: current_token.position,
                 expr: Expression::CharLiteral(*val),
+            };
+        }
+        TokenContent::True =>{
+            node = ASTNode {
+                pos: current_token.position,
+                expr: Expression::BoolLiteral(true),
+            };
+        }
+        TokenContent::False =>{
+            node = ASTNode {
+                pos: current_token.position,
+                expr: Expression::BoolLiteral(false),
             };
         }
         TokenContent::Identifier(_) => {

@@ -32,6 +32,7 @@ pub enum ErrorContent {
         found: usize,
     },
     MissingReturn(TypeExpr),
+    IllegalExpression,
     Raw(String),
 }
 impl Display for ErrorContent {
@@ -93,6 +94,7 @@ impl Display for ErrorContent {
                 write!(f, "Expects at least {expected} arguments, found {found}")?
             }
             Self::MissingReturn(ret_type) => write!(f, "This function has a return value of type {ret_type}, but not all branches have a return statement")?,
+            Self::IllegalExpression => write!(f, "This expression contains is not legal in its context")?,
             Self::Raw(message) => message.fmt(f)?,
         }
         Ok(())

@@ -115,11 +115,17 @@ impl TypeExpr {
             };
         }
         match expr {
-            Expression::Identifier(id) => {
-                if_none_return_false!(if_none_return_false!(symbols.lookup(id)).1.as_variable())
-                    .0
-                    .is_equvalent(self, symbols)
-            }
+            Expression::Identifier(id) => || -> Option<bool> {
+                Some(
+                    symbols
+                        .lookup(id)?
+                        .1
+                        .as_variable()?
+                        .0
+                        .is_equvalent(self, symbols),
+                )
+            }()
+            .unwrap_or(false),
             Expression::NumLiteral(numval) => match numval {
                 NumValue::U(_) | NumValue::I(_) => self.is_int(symbols),
                 NumValue::F(_) => self.is_float(symbols),
@@ -128,6 +134,7 @@ impl TypeExpr {
                 self.is_equvalent(&Self::Ptr(Box::new(TypeExpr::u8)), symbols)
             }
             Expression::CharLiteral(_) => self.is_equvalent(&Self::u8, symbols),
+            Expression::BoolLiteral(_) => self.is_equvalent(&Self::u8, symbols),
             Expression::Deref(child) => Self::Ptr(Box::new(self.clone()))
                 .matches_expr(&if_none_return_false!(child.upgrade()).expr, symbols),
             Expression::TakeAddr(child) => {
@@ -137,13 +144,18 @@ impl TypeExpr {
                     false
                 }
             }
-            Expression::FnCall { name, args: _ } => {
-                if_none_return_false!(if_none_return_false!(symbols.lookup(name)).1.as_function())
-                    .1
-                    .is_equvalent(self, symbols)
-            }
+            Expression::FnCall { name, args: _ } => || -> Option<bool> {
+                Some(
+                    symbols
+                        .lookup(name)?
+                        .1
+                        .as_function()?
+                        .1
+                        .is_equvalent(self, symbols),
+                )
+            }()
+            .unwrap_or(false),
             Expression::TypeCast(_, casted_type) => casted_type.is_equvalent(self, symbols),
-
             Expression::TypeDef(_, _) => false,
             Expression::Def { .. } => false,
             Expression::Assign { .. } => false,
@@ -514,6 +526,7 @@ pub fn suggest_typeexpr(expr: &Expression, symbols: &SymbolTable) -> Option<Type
         }),
         Expression::StrLiteral(_) => Some(TypeExpr::Ptr(Box::new(TypeExpr::u8))),
         Expression::CharLiteral(_) => Some(TypeExpr::u8),
+        Expression::BoolLiteral(_) => Some(TypeExpr::u8),
         Expression::FnCall { name, args: _ } => {
             Some(symbols.lookup(name)?.1.as_function()?.1.clone())
         }

@@ -138,7 +138,10 @@ fn compile_oper(shir: &SHIR, expected_type: DataType, target: &mut Vec<MIRInstr>
                 dtype: expected_type,
                 content: OperandContent::Label(Rc::new(format!("strliteral_{str_id}"))),
             },
-            SHIRConst::Char(_) => todo!(),
+            SHIRConst::Char(ch) => Operand {
+                dtype: expected_type,
+                content: OperandContent::Data(*ch as u64),
+            },
         },
         SHIR::Arg(id, dtype) => Operand {
             dtype: *dtype,

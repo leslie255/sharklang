@@ -195,12 +195,7 @@ pub fn ast_into_shir(ast: AST, err_collector: &mut ErrorCollector) -> SHIRProgra
         has_ret_statement: false,
     };
 
-    for (i, root_node) in ast
-        .root_nodes
-        .iter()
-        .filter_map(|w| w.upgrade())
-        .enumerate()
-    {
+    for (i, root_node) in ast.root_nodes.iter().map(|w| w.deref()).enumerate() {
         if let Some((name, args, ret_type, body, is_variadic)) = root_node.expr.as_fn_def() {
             // --- if it is a function definition
 
@@ -285,7 +280,7 @@ fn convert_block(
     target: &mut Vec<SHIR>,
 ) {
     context.has_ret_statement = false;
-    for node in body.iter().filter_map(|w| unsafe { w.as_ptr().as_ref() }) {
+    for node in body.iter().map(|w| w.deref()) {
         let s = convert_body(node, target, context, i, err_collector);
         if let Some(s) = s {
             if let SHIR::ReturnValue(_) = s {
@@ -298,6 +293,12 @@ fn convert_block(
             } else {
                 target.push(s);
             }
+        } else {
+            err_collector.errors.push(CompileError {
+                content: ErrorContent::IllegalExpression,
+                position: node.pos,
+                length: 1,
+            })
         }
     }
 }
@@ -324,16 +325,17 @@ fn convert_body(
         Expression::NumLiteral(val) => Some(SHIR::Const(SHIRConst::Number(*val))),
         Expression::StrLiteral(str) => Some(SHIR::Const(SHIRConst::String(*str))),
         Expression::CharLiteral(ch) => Some(SHIR::Const(SHIRConst::Char(*ch))),
+        Expression::BoolLiteral(b) => Some(SHIR::Const(SHIRConst::Char(if *b { 1 } else { 0 }))),
         Expression::Def { name, dtype, rhs } => {
             let dtype = if let Some(t) = dtype {
                 // check if rhs matches type
                 if let Some(rhs) = rhs {
-                    let rhs_node = &rhs.upgrade()?;
+                    let rhs_node = rhs.deref();
                     check_type(t, rhs_node, err_collector, &context.symbols);
                 }
                 t.clone()
             } else {
-                suggest_typeexpr(&rhs.as_ref()?.upgrade()?.expr, &context.symbols)?
+                suggest_typeexpr(&rhs.as_ref()?.deref().expr, &context.symbols)?
             };
             let var_id = {
                 let mut hasher = DefaultHasher::new();
@@ -350,13 +352,7 @@ fn convert_body(
             };
             if let Some(rhs) = rhs {
                 parent.push(var_def);
-                let rhs_shir = convert_body(
-                    unsafe { rhs.as_ptr().as_ref()? },
-                    parent,
-                    context,
-                    i,
-                    err_collector,
-                )?;
+                let rhs_shir = convert_body(rhs.deref(), parent, context, i, err_collector)?;
                 Some(SHIR::VarAssign {
                     id: var_id,
                     dtype: dtype.into_basic_type(&context.symbols)?,
@@ -367,14 +363,14 @@ fn convert_body(
             }
         }
         Expression::Assign { lhs, rhs } => {
-            let lhs_node = &lhs.upgrade()?;
+            let lhs_node = lhs.deref();
             let lhs_expr = &lhs_node.expr;
             if let Some(id) = lhs_expr.as_identifier() {
                 let (_, symbol) = context
                     .symbols
                     .lookup_expect(id, lhs_node.pos)
                     .collect_error(err_collector)?;
-                let rhs_node = &rhs.upgrade()?;
+                let rhs_node = rhs.deref();
                 let (var_type, var_id) = symbol
                     .as_variable()
                     .ok_or(CompileError::not_a_var(id, lhs_node.pos))
@@ -434,7 +430,7 @@ fn convert_body(
             }
             for (j, arg) in args.iter().enumerate() {
                 let arg_type = &arg_types.get(j).unwrap_or(arg_types.last().unwrap());
-                let arg_node = &arg.upgrade()?;
+                let arg_node = arg.deref();
                 check_type(arg_type, arg_node, err_collector, &context.symbols);
                 let mut arg_shir =
                     convert_body(&arg_node, parent, context, i + 1 + j, err_collector)?;
@@ -474,7 +470,7 @@ fn convert_body(
             })
         }
         Expression::Deref(child) => {
-            let child_node = &child.upgrade().unwrap();
+            let child_node = child.deref();
             let s = convert_body(&child_node, parent, context, i, err_collector)?;
             let dtype = if let Some(TypeExpr::Ptr(t)) =
                 suggest_typeexpr(&child_node.expr, &context.symbols)
@@ -489,13 +485,13 @@ fn convert_body(
             ))
         }
         Expression::TakeAddr(child) => {
-            let child_node = &child.upgrade().unwrap();
+            let child_node = child.deref();
             let s = convert_body(child_node, parent, context, i, err_collector)?;
             Some(SHIR::TakeAddr(Box::new(s)))
         }
         Expression::DataType(_) => None,
         Expression::TypeCast(n, t) => {
-            let child_node = &unsafe { n.as_ptr().as_ref()? };
+            let child_node = &n.deref();
             let mut s = convert_body(child_node, parent, context, i, err_collector)?;
             s.type_cast(t.into_basic_type(&context.symbols)?);
             Some(s)
@@ -580,7 +576,7 @@ fn handle_implicit_printf(
     str_id: usize,
 ) {
     // check if the function `printf` exists and the first argument is a string
-    let try_find_symbol = || -> Result<(), CompileError> {
+    || -> Result<(), CompileError> {
         let (name, symbol) = context
             .symbols
             .global
@@ -601,21 +597,17 @@ fn handle_implicit_printf(
                             length: 1,
                         })?;
         if !first_arg_type.is_equvalent(&TypeExpr::Ptr(Box::new(TypeExpr::u8)), &context.symbols) {
-            Err(CompileError {
+            return Err(CompileError {
                                 content: ErrorContent::Raw("The first argument of the function `printf` is not of type *u8, and thus it cannot be implicitly called".to_string()),
                                 position: node.pos,
                                 length: 1,
-                        })
-        } else {
-            target.push(SHIR::FnCall {
-                name: Rc::clone(name),
-                args: vec![(SHIR::Const(SHIRConst::String(str_id)), BasicType::Pointer)],
-                ret_type: BasicType::Irrelavent,
-            });
-            Ok(())
+                        });
         }
-    }();
-    if let Err(e) = try_find_symbol {
-        err_collector.errors.push(e);
-    }
+        target.push(SHIR::FnCall {
+            name: Rc::clone(name),
+            args: vec![(SHIR::Const(SHIRConst::String(str_id)), BasicType::Pointer)],
+            ret_type: BasicType::Irrelavent,
+        });
+        Ok(())
+    }().collect_error(err_collector);
 }
