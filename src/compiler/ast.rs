@@ -654,3 +654,17 @@ fn parse_numval(src: &String, current_token: &Token) -> Result<NumValue, Compile
         length: current_token.len,
     })
 }
+
+pub trait DerefToASTNode {
+    fn deref(&self) -> &ASTNode;
+}
+
+impl DerefToASTNode for Weak<ASTNode> {
+    fn deref(&self) -> &ASTNode {
+        unsafe {
+            self.as_ptr()
+                .as_ref()
+                .expect("Error dereferencing Weak<ASTNode>")
+        }
+    }
+}

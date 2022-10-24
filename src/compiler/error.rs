@@ -31,8 +31,8 @@ pub enum ErrorContent {
         expected: usize,
         found: usize,
     },
-    Raw(String),
     MissingReturn(TypeExpr),
+    Raw(String),
 }
 impl Display for ErrorContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -235,7 +235,7 @@ impl<T> CollectError<T> for Result<T, CompileError> {
             Err(e) => {
                 collector.errors.push(e);
                 None
-            },
+            }
         }
     }
 }

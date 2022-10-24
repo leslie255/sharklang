@@ -1,12 +1,14 @@
-use std::rc::Rc;
 use super::shir::{SHIRConst, SHIRProgram, SHIRTopLevel, SHIR};
 use mir::ir::{
     DataType, Instruction as MIRInstr, Operand, OperandContent, OperationType as MIROpcode,
     Program as MIRProgram, TopLevelElement as MIRTopLevel,
 };
+use std::rc::Rc;
 
 struct Context {
     fn_ret_type: DataType,
+    parent_loop_start_label: Option<Rc<String>>,
+    parent_loop_end_label: Option<Rc<String>>,
 }
 
 pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
@@ -26,11 +28,13 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
                 ret_type,
             } => {
                 let mut fn_body = Vec::<MIRInstr>::new();
-                let context = Context {
+                let mut context = Context {
                     fn_ret_type: *ret_type,
+                    parent_loop_start_label: None,
+                    parent_loop_end_label: None,
                 };
                 for shir in body {
-                    let instr = compile_instr(shir, &context, &mut fn_body);
+                    let instr = compile_instr(shir, &mut context, &mut fn_body);
                     fn_body.push(instr);
                 }
                 mir_program
@@ -48,7 +52,7 @@ pub fn compile_shir_into_mir(shir_program: SHIRProgram) -> MIRProgram {
     mir_program
 }
 
-fn compile_instr(shir: &SHIR, context: &Context, target: &mut Vec<MIRInstr>) -> MIRInstr {
+fn compile_instr(shir: &SHIR, context: &mut Context, target: &mut Vec<MIRInstr>) -> MIRInstr {
     // TODO: when an operand is a function
     match shir {
         SHIR::Var(_, _)
@@ -87,6 +91,27 @@ fn compile_instr(shir: &SHIR, context: &Context, target: &mut Vec<MIRInstr>) -> 
             operand0: compile_oper(val, context.fn_ret_type, target),
             operand1: Operand::default(),
         },
+        SHIR::Break => MIRInstr {
+            operation: MIROpcode::Jmp,
+            operand0: Operand {
+                dtype: DataType::Irrelavent,
+                content: OperandContent::Label(Rc::clone(
+                    context.parent_loop_end_label.as_ref().unwrap(),
+                )),
+            },
+            operand1: Operand::default(),
+        },
+        SHIR::Continue => MIRInstr {
+            operation: MIROpcode::Jmp,
+            operand0: Operand {
+                dtype: DataType::Irrelavent,
+                content: OperandContent::Label(Rc::clone(
+                    context.parent_loop_start_label.as_ref().unwrap(),
+                )),
+            },
+            operand1: Operand::default(),
+        },
+        SHIR::Loop(loop_body, loop_id) => compile_loop(*loop_id, loop_body, context, target),
         SHIR::RawASM(code) => MIRInstr {
             operation: MIROpcode::RawASM,
             operand0: Operand {
@@ -184,6 +209,47 @@ fn compile_fn_call(
         operand0: Operand {
             dtype: DataType::Irrelavent,
             content: OperandContent::Fn(Rc::clone(name)),
+        },
+        operand1: Operand::default(),
+    }
+}
+
+#[must_use]
+fn compile_loop(
+    id: usize,
+    body: &Vec<SHIR>,
+    context: &mut Context,
+    target: &mut Vec<MIRInstr>,
+) -> MIRInstr {
+    let loop_start_label = Rc::new(format!("___loop.start.{id}"));
+    let loop_end_label = Rc::new(format!("___loop.end.{id}"));
+    context.parent_loop_start_label = Some(Rc::clone(&loop_start_label));
+    context.parent_loop_end_label = Some(Rc::clone(&loop_end_label));
+    target.push(MIRInstr {
+        operation: MIROpcode::Label,
+        operand0: Operand {
+            dtype: DataType::Irrelavent,
+            content: OperandContent::Label(Rc::clone(&loop_start_label)),
+        },
+        operand1: Operand::default(),
+    });
+    for shir in body {
+        let instr = compile_instr(shir, context, target);
+        target.push(instr);
+    }
+    target.push(MIRInstr {
+        operation: MIROpcode::Jmp,
+        operand0: Operand {
+            dtype: DataType::Irrelavent,
+            content: OperandContent::Label(Rc::clone(&loop_start_label)),
+        },
+        operand1: Operand::default(),
+    });
+    MIRInstr {
+        operation: MIROpcode::Label,
+        operand0: Operand {
+            dtype: DataType::Irrelavent,
+            content: OperandContent::Label(Rc::clone(&loop_end_label)),
         },
         operand1: Operand::default(),
     }

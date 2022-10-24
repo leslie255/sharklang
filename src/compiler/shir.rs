@@ -1,5 +1,5 @@
 use super::{
-    ast::{ASTNode, Expression, NumValue, AST},
+    ast::{ASTNode, DerefToASTNode, Expression, NumValue, AST},
     error::{CollectError, CompileError, ErrorCollector, ErrorContent},
     typesystem::{check_type, suggest_typeexpr, TypeExpr},
 };
@@ -63,32 +63,38 @@ pub enum SHIR {
     },
     ReturnVoid,
     ReturnValue(Box<Self>),
+    Break,
+    Continue,
     Deref(Box<SHIR>, BasicType),
     TakeAddr(Box<SHIR>),
+    Loop(Vec<SHIR>, usize),
     RawASM(Rc<String>),
 }
 
 impl SHIR {
     fn type_cast(&mut self, t: BasicType) {
         match self {
-            SHIR::Var(_, dtype)
-            | SHIR::VarAssign {
+            Self::Var(_, dtype)
+            | Self::VarAssign {
                 id: _,
                 dtype,
                 rhs: _,
             }
-            | SHIR::Arg(_, dtype)
-            | SHIR::VarDef { id: _, dtype }
-            | SHIR::FnCall {
+            | Self::Arg(_, dtype)
+            | Self::VarDef { id: _, dtype }
+            | Self::FnCall {
                 name: _,
                 args: _,
                 ret_type: dtype,
             }
-            | SHIR::Deref(_, dtype) => *dtype = t,
-            SHIR::Const(_)
-            | SHIR::ReturnVoid
-            | SHIR::ReturnValue(_)
+            | Self::Deref(_, dtype) => *dtype = t,
+            Self::Const(_)
+            | Self::ReturnVoid
+            | Self::ReturnValue(_)
+            | Self::Break
+            | Self::Continue
             | Self::TakeAddr(_)
+            | Self::Loop(_, _)
             | Self::RawASM(_) => (),
         }
     }
@@ -502,10 +508,15 @@ fn convert_body(
             None
         }
         Expression::Block(_) => None,
-        Expression::Loop(_) => todo!(),
+        Expression::Loop(child_node) => {
+            let body = child_node.deref().expr.as_block()?;
+            let mut converted_body = Vec::<SHIR>::new();
+            convert_block(body, context, i, err_collector, &mut converted_body);
+            Some(SHIR::Loop(converted_body, i))
+        }
         Expression::Return(child_node) => {
             if let Some(node) = child_node {
-                let node = unsafe { node.as_ptr().as_ref()? };
+                let node = node.deref();
                 if let Some(expected_ret_type) = &context.parent_fn_ret_type {
                     check_type(expected_ret_type, node, err_collector, &context.symbols);
                 }
@@ -530,8 +541,8 @@ fn convert_body(
             }
         }
         Expression::UnsafeReturn => Some(SHIR::ReturnVoid),
-        Expression::Break => todo!(),
-        Expression::Continue => todo!(),
+        Expression::Break => Some(SHIR::Break),
+        Expression::Continue => Some(SHIR::Continue),
         Expression::Extern(_, _) => panic!(),
         Expression::RawASM(code) => Some(SHIR::RawASM(Rc::clone(code))),
     }

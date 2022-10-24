@@ -1,3 +1,11 @@
+#import cstd.hhh
+#import math.hhh
+
 main: () -> u32 = {
+    i: = 0;
+    loop {
+        printf("%lu\n", i);
+        inc(&i);
+    }
     return 0;
 }
