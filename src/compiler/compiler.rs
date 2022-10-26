@@ -114,21 +114,107 @@ fn compile_instr(shir: &SHIR, context: &mut Context, target: &mut Vec<MIRInstr>)
         },
         SHIR::Loop(loop_body, loop_id) => compile_loop(*loop_id, loop_body, context, target),
         SHIR::If {
+            id,
             if_blocks,
             else_block,
         } => {
             if if_blocks.is_empty() {
                 // if and else blocks may not be all empty as ensured in shir.rs
                 let else_block = else_block.as_ref().unwrap();
-                let mut last: MIRInstr =
-                    compile_instr(else_block.first().unwrap(), context, target);
-                for shir in else_block.iter().skip(1) {
+                let mut iter = else_block.iter();
+                let mut last = compile_instr(iter.next().unwrap(), context, target);
+                for shir in iter.into_iter() {
                     target.push(last);
                     last = compile_instr(shir, context, target);
                 }
                 return last;
             }
-            todo!("Generalized if statements")
+            let mut labels = Vec::<Rc<String>>::with_capacity(if_blocks.len() + 1);
+            for i in 0..if_blocks.len() {
+                labels.push(Rc::new(format!("___if.{id}.{i}")));
+            }
+            let has_else_block = if let Some(else_block) = else_block {
+                !else_block.is_empty()
+            } else {
+                false
+            };
+            let end_label = Rc::new(format!("___if.{id}.end"));
+            let else_label = Rc::new(format!("___if.{id}.else"));
+            labels.push(Rc::clone(if has_else_block {
+                &else_label
+            } else {
+                &end_label
+            }));
+            for (i, (condition, block)) in if_blocks.iter().enumerate() {
+                target.push(MIRInstr {
+                    operation: MIROpcode::Label,
+                    operand0: Operand {
+                        dtype: DataType::Irrelavent,
+                        content: OperandContent::Label(Rc::clone(unsafe {
+                            labels.get_unchecked(i)
+                        })),
+                    },
+                    operand1: Operand::default(),
+                });
+                let next_label = unsafe { labels.get_unchecked(i + 1) };
+                if let SHIR::Cmp(cmp_kind, lhs, rhs) = condition {
+                    let instr = compile_cmp(cmp_kind.inverse(), lhs, rhs, next_label, None, target);
+                    target.push(instr);
+                } else {
+                    let condition_mir = compile_oper(&condition, DataType::UnsignedSize, target);
+                    target.push(MIRInstr {
+                        operation: MIROpcode::Cmp,
+                        operand0: condition_mir,
+                        operand1: Operand {
+                            dtype: DataType::UnsignedSize,
+                            content: OperandContent::Data(0),
+                        },
+                    });
+                    target.push(MIRInstr {
+                        operation: MIROpcode::Jn,
+                        operand0: Operand {
+                            dtype: DataType::Irrelavent,
+                            content: OperandContent::Label(Rc::clone(next_label)),
+                        },
+                        operand1: Operand::default(),
+                    });
+                }
+                for shir in block {
+                    let instr = compile_instr(shir, context, target);
+                    target.push(instr);
+                }
+                target.push(MIRInstr {
+                    operation: MIROpcode::Jmp,
+                    operand0: Operand {
+                        dtype: DataType::Irrelavent,
+                        content: OperandContent::Label(Rc::clone(&end_label)),
+                    },
+                    operand1: Operand::default(),
+                });
+            }
+            if has_else_block {
+                target.push(MIRInstr {
+                    operation: MIROpcode::Label,
+                    operand0: Operand {
+                        dtype: DataType::Irrelavent,
+                        content: OperandContent::Label(Rc::clone(&else_label)),
+                    },
+                    operand1: Operand::default(),
+                });
+                let else_block = unsafe { else_block.as_ref().unwrap_unchecked() };
+                for shir in else_block {
+                    let mir = compile_instr(shir, context, target);
+                    target.push(mir);
+                }
+            }
+            MIRInstr {
+                operation: MIROpcode::Label,
+                operand0: Operand {
+                    dtype: DataType::Irrelavent,
+                    content: OperandContent::Label(Rc::clone(&end_label)),
+                },
+                operand1: Operand::default(),
+            }
         }
         SHIR::IfThenBreak(condition) => {
             let parent_loop_end_label = context.parent_loop_end_label.as_ref().unwrap();
@@ -155,24 +241,27 @@ fn compile_instr(shir: &SHIR, context: &mut Context, target: &mut Vec<MIRInstr>)
             }
         }
         SHIR::IfThenContinue(condition) => {
-            let condition_mir = compile_oper(&condition, DataType::UnsignedSize, target);
-            target.push(MIRInstr {
-                operation: MIROpcode::Cmp,
-                operand0: condition_mir,
-                operand1: Operand {
-                    dtype: DataType::UnsignedSize,
-                    content: OperandContent::Data(0),
-                },
-            });
-            MIRInstr {
-                operation: MIROpcode::Jn,
-                operand0: Operand {
-                    dtype: DataType::Irrelavent,
-                    content: OperandContent::Label(Rc::clone(
-                        context.parent_loop_start_label.as_ref().unwrap(),
-                    )),
-                },
-                operand1: Operand::default(),
+            let parent_loop_start_label = context.parent_loop_start_label.as_ref().unwrap();
+            if let SHIR::Cmp(cmp_kind, lhs, rhs) = condition.as_ref() {
+                compile_cmp(*cmp_kind, lhs, rhs, parent_loop_start_label, None, target)
+            } else {
+                let condition_mir = compile_oper(&condition, DataType::UnsignedSize, target);
+                target.push(MIRInstr {
+                    operation: MIROpcode::Cmp,
+                    operand0: condition_mir,
+                    operand1: Operand {
+                        dtype: DataType::UnsignedSize,
+                        content: OperandContent::Data(0),
+                    },
+                });
+                MIRInstr {
+                    operation: MIROpcode::Jn,
+                    operand0: Operand {
+                        dtype: DataType::Irrelavent,
+                        content: OperandContent::Label(Rc::clone(parent_loop_start_label)),
+                    },
+                    operand1: Operand::default(),
+                }
             }
         }
         SHIR::RawASM(code) => MIRInstr {
@@ -366,4 +455,3 @@ fn compile_cmp(
         jmp_instr
     }
 }
-

@@ -1,11 +1,13 @@
-#include cstd.hhh
+extern printf: (fmt: *u8, args: usize ..);
 
 main: () -> u32 = {
-    loop {
-        "hello, world\n";
-        if 1 <= 1 {
-            break;
-        }
+    i: = 2;
+    if i == 0 {
+        "zero\n";
+    } else if i == 1 {
+        "one\n";
+    } else {
+        printf("i = %lu\n", i);
     }
     return 0;
 }

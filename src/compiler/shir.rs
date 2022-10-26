@@ -69,6 +69,7 @@ pub enum SHIR {
     TakeAddr(Box<SHIR>),
     Loop(Vec<SHIR>, usize),
     If {
+        id: usize,
         if_blocks: Vec<(SHIR, Vec<SHIR>)>,
         else_block: Option<Vec<SHIR>>,
     },
@@ -121,6 +122,18 @@ pub enum CmpKind {
     Ls,
     GrOrEq,
     LsOrEq,
+}
+impl CmpKind {
+    pub fn inverse(self) -> Self {
+        match self {
+            Self::Eq => Self::NEq,
+            Self::NEq => Self::Eq,
+            Self::Gr => Self::LsOrEq,
+            Self::Ls => Self::GrOrEq,
+            Self::GrOrEq => Self::Ls,
+            Self::LsOrEq => Self::Gr,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -551,6 +564,7 @@ fn convert_body(
                 None
             } else {
                 Some(SHIR::If {
+                    id: i,
                     if_blocks: converted_if_blocks,
                     else_block: converted_else_block,
                 })
