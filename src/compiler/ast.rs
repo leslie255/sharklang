@@ -5,6 +5,7 @@ use std::{
 
 use super::{
     error::{CompileError, ErrorCollector, ErrorContent},
+    shir::CmpKind,
     tokens::*,
     typesystem::TypeExpr,
 };
@@ -97,6 +98,8 @@ pub enum Expression {
     Continue,
 
     Extern(Rc<String>, TypeExpr),
+
+    Cmp(CmpKind, Weak<ASTNode>, Weak<ASTNode>),
 
     RawASM(Rc<String>),
 }
@@ -277,6 +280,12 @@ impl Debug for Expression {
                 .debug_tuple("Extern")
                 .field(arg0)
                 .field(arg1)
+                .finish(),
+            Self::Cmp(arg0, arg1, arg2) => formatter
+                .debug_tuple("CmpEq")
+                .field(arg0)
+                .field(arg1.deref())
+                .field(arg2.deref())
                 .finish(),
             Self::TypeDef(arg0, arg1) => formatter
                 .debug_tuple("TypeDef")
@@ -507,16 +516,37 @@ fn parse_expressions(
     }
 
     // detect type casting
-    let node = if token_stream.peek(1).content == TokenContent::Squiggle {
-        let pos = token_stream.next().position;
-        let n = ast.add_to_node_pool(node);
-        token_stream.next();
-        ASTNode {
-            pos,
-            expr: Expression::TypeCast(n, TypeExpr::parse_from_tokens(token_stream)?),
+    let peek = token_stream.peek(1);
+    macro_rules! cmp {
+        ($kind: expr) => {{
+            let pos = token_stream.next().position;
+            token_stream.next();
+            let rhs = parse_expressions(ast, token_stream, false)?;
+            let lhs = ast.add_to_node_pool(node);
+            let rhs = ast.add_to_node_pool(rhs);
+            ASTNode {
+                pos,
+                expr: Expression::Cmp($kind, lhs, rhs),
+            }
+        }};
+    }
+    let node = match peek.content {
+        TokenContent::Squiggle => {
+            let pos = token_stream.next().position;
+            let n = ast.add_to_node_pool(node);
+            token_stream.next();
+            ASTNode {
+                pos,
+                expr: Expression::TypeCast(n, TypeExpr::parse_from_tokens(token_stream)?),
+            }
         }
-    } else {
-        node
+        TokenContent::DoubleEqual => cmp!(CmpKind::Eq),
+        TokenContent::NotEqual => cmp!(CmpKind::NEq),
+        TokenContent::GreaterThan => cmp!(CmpKind::Gr),
+        TokenContent::GreaterOrEq => cmp!(CmpKind::GrOrEq),
+        TokenContent::LessThan => cmp!(CmpKind::Ls),
+        TokenContent::LessOrEq => cmp!(CmpKind::LsOrEq),
+        _ => node,
     };
 
     if expects_semicolon {

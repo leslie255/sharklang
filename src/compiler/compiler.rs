@@ -1,4 +1,4 @@
-use super::shir::{SHIRConst, SHIRProgram, SHIRTopLevel, SHIR};
+use super::shir::{CmpKind, SHIRConst, SHIRProgram, SHIRTopLevel, SHIR};
 use mir::ir::{
     DataType, Instruction as MIRInstr, Operand, OperandContent, OperationType as MIROpcode,
     Program as MIRProgram, TopLevelElement as MIRTopLevel,
@@ -59,7 +59,8 @@ fn compile_instr(shir: &SHIR, context: &mut Context, target: &mut Vec<MIRInstr>)
         | SHIR::Const(_)
         | SHIR::Arg(_, _)
         | SHIR::Deref(_, _)
-        | SHIR::TakeAddr(_) => panic!("{shir:?}"),
+        | SHIR::TakeAddr(_)
+        | SHIR::Cmp(_, _, _) => panic!("SHIR -> MIR: {shir:?} on root level"),
         SHIR::VarAssign { id, dtype, rhs } => MIRInstr {
             operation: MIROpcode::SetVar,
             operand0: Operand {
@@ -130,24 +131,27 @@ fn compile_instr(shir: &SHIR, context: &mut Context, target: &mut Vec<MIRInstr>)
             todo!("Generalized if statements")
         }
         SHIR::IfThenBreak(condition) => {
-            let condition_mir = compile_oper(&condition, DataType::UnsignedSize, target);
-            target.push(MIRInstr {
-                operation: MIROpcode::Cmp,
-                operand0: condition_mir,
-                operand1: Operand {
-                    dtype: DataType::UnsignedSize,
-                    content: OperandContent::Data(0),
-                },
-            });
-            MIRInstr {
-                operation: MIROpcode::Jn,
-                operand0: Operand {
-                    dtype: DataType::Irrelavent,
-                    content: OperandContent::Label(Rc::clone(
-                        context.parent_loop_end_label.as_ref().unwrap(),
-                    )),
-                },
-                operand1: Operand::default(),
+            let parent_loop_end_label = context.parent_loop_end_label.as_ref().unwrap();
+            if let SHIR::Cmp(cmp_kind, lhs, rhs) = condition.as_ref() {
+                compile_cmp(*cmp_kind, lhs, rhs, parent_loop_end_label, None, target)
+            } else {
+                let condition_mir = compile_oper(&condition, DataType::UnsignedSize, target);
+                target.push(MIRInstr {
+                    operation: MIROpcode::Cmp,
+                    operand0: condition_mir,
+                    operand1: Operand {
+                        dtype: DataType::UnsignedSize,
+                        content: OperandContent::Data(0),
+                    },
+                });
+                MIRInstr {
+                    operation: MIROpcode::Jn,
+                    operand0: Operand {
+                        dtype: DataType::Irrelavent,
+                        content: OperandContent::Label(Rc::clone(parent_loop_end_label)),
+                    },
+                    operand1: Operand::default(),
+                }
             }
         }
         SHIR::IfThenContinue(condition) => {
@@ -316,3 +320,50 @@ fn compile_loop(
         operand1: Operand::default(),
     }
 }
+
+#[must_use]
+fn compile_cmp(
+    cmp_kind: CmpKind,
+    lhs: &SHIR,
+    rhs: &SHIR,
+    label0: &Rc<String>,
+    label1: Option<&Rc<String>>,
+    target: &mut Vec<MIRInstr>,
+) -> MIRInstr {
+    let lhs_mir = compile_oper(lhs, DataType::UnsignedSize, target);
+    let rhs_mir = compile_oper(rhs, DataType::UnsignedSize, target);
+    target.push(MIRInstr {
+        operation: MIROpcode::Cmp,
+        operand0: lhs_mir,
+        operand1: rhs_mir,
+    });
+    let jmp_instr = MIRInstr {
+        operation: match cmp_kind {
+            CmpKind::Eq => MIROpcode::Je,
+            CmpKind::NEq => MIROpcode::Jn,
+            CmpKind::Gr => MIROpcode::Jg,
+            CmpKind::Ls => MIROpcode::Jl,
+            CmpKind::GrOrEq => MIROpcode::Jge,
+            CmpKind::LsOrEq => MIROpcode::Jle,
+        },
+        operand0: Operand {
+            dtype: DataType::Irrelavent,
+            content: OperandContent::Label(Rc::clone(label0)),
+        },
+        operand1: Operand::default(),
+    };
+    if let Some(label1) = label1 {
+        target.push(jmp_instr);
+        MIRInstr {
+            operation: MIROpcode::Jmp,
+            operand0: Operand {
+                dtype: DataType::Irrelavent,
+                content: OperandContent::Label(Rc::clone(label1)),
+            },
+            operand1: Operand::default(),
+        }
+    } else {
+        jmp_instr
+    }
+}
+

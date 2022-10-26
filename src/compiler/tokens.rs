@@ -38,6 +38,14 @@ pub enum TokenContent {
     Dollar,
     Star,
     Minus,
+    Plus,
+    Exclamation,
+    DoubleEqual,
+    NotEqual,
+    GreaterThan,
+    LessThan,
+    GreaterOrEq,
+    LessOrEq,
 
     SingleLineCommentStart,
 
@@ -98,6 +106,14 @@ impl TokenContent {
             Self::And => "And".to_string(),
             Self::Dollar => "Dollar".to_string(),
             Self::Minus => "Minus".to_string(),
+            Self::Plus => "Plus".to_string(),
+            Self::Exclamation => "Exclamation".to_string(),
+            Self::DoubleEqual => "DoubleEqual".to_string(),
+            Self::NotEqual => "NotEqual".to_string(),
+            Self::GreaterThan => "GreaterThan".to_string(),
+            Self::LessThan => "LessThan".to_string(),
+            Self::GreaterOrEq => "GreaterOrEq".to_string(),
+            Self::LessOrEq => "LessOrEq".to_string(),
             Self::Star => "Star".to_string(),
             Self::SingleLineCommentStart => "SingleLineCommentStart".to_string(),
             Self::RawASM(_) => "RawASM".to_string(),
@@ -286,7 +302,15 @@ impl Token {
             ".." => return_token!(TokenContent::DotDot, 1),
             ":" => return_token!(TokenContent::Colon, 1),
             "_" => return_token!(TokenContent::Underscore, 1),
-            "-" => return_token!(TokenContent::Minus, 2),
+            "-" => return_token!(TokenContent::Minus, 1),
+            "+" => return_token!(TokenContent::Plus, 1),
+            "!" => return_token!(TokenContent::Exclamation, 1),
+            "==" => return_token!(TokenContent::DoubleEqual, 2),
+            "!=" => return_token!(TokenContent::NotEqual, 2),
+            ">" => return_token!(TokenContent::GreaterThan, 1),
+            "<" => return_token!(TokenContent::LessThan, 1),
+            ">=" => return_token!(TokenContent::GreaterOrEq, 2),
+            "<=" => return_token!(TokenContent::LessOrEq, 2),
             "->" => return_token!(TokenContent::ReturnArrow, 2),
             "~" => return_token!(TokenContent::Squiggle, 1),
             "&" => return_token!(TokenContent::And, 1),
@@ -473,96 +497,12 @@ pub fn parse_into_tokens(source: &String, preprocessor: &mut PreProcessor) -> Ve
             word.clear();
         } else if ch == '#' {
             tokens.append(&mut preprocessor.expand_macro(&mut chars, i));
-            // Macro
-            //while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_alphanumeric_or_underscore()) {
-            //    word.push(ch);
-            //}
-            //match word.as_str() {
-            //    "include" => {
-            //        // go to the next non-whitespace character
-            //        while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
-            //        // get file name
-            //        word.clear();
-            //        while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
-            //            word.push(ch);
-            //        }
-            //        let joined_path = cat_path(&source_file_parent_path, &word);
-            //        let included_content = fs::read_to_string(joined_path.clone()).unwrap();
-            //        tokens.append(&mut parse_into_tokens(&included_content, &joined_path));
-            //    }
-            //    "macro" => {
-            //        // go to the next non-whitespace character
-            //        while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
-            //        // get macro name
-            //        let mut name = String::new();
-            //        while let Some((_, ch)) = chars.next_if(|(_, c)| !c.is_whitespace()) {
-            //            name.push(ch);
-            //        }
-            //        let mut content = String::new();
-            //        while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
-            //            content.push(ch);
-            //        }
-            //        macro_map.insert(name, content);
-            //    }
-            //    "asm" => {
-            //        let mut len = 4usize;
-            //        let mut is_multiline = false;
-            //        // go to the next non-whitespace character
-            //        while let Some((_, ch)) = chars.next_if(|(_, c)| c.is_whitespace()) {
-            //            if ch == '\n' {
-            //                is_multiline = true;
-            //            }
-            //            len += 1;
-            //        }
-            //        let mut content = String::new();
-            //        if !is_multiline {
-            //            while let Some((_, ch)) = chars.next_if(|(_, c)| *c != '\n') {
-            //                content.push(ch);
-            //                len += 1;
-            //            }
-            //        } else {
-            //            loop {
-            //                next!();
-            //                if ch == '#' {
-            //                    let mut next_three_chars: [char; 3] = ['\0', '\0', '\0'];
-            //                    next!();
-            //                    next_three_chars[0] = ch;
-            //                    next!();
-            //                    next_three_chars[1] = ch;
-            //                    next!();
-            //                    next_three_chars[2] = ch;
-            //                    if next_three_chars == ['e', 'n', 'd'] {
-            //                        break;
-            //                    } else {
-            //                        content.push_str("#end");
-            //                        continue;
-            //                    }
-            //                }
-            //                content.push(ch);
-            //            }
-            //        }
-            //        tokens.push(Token {
-            //            content: TokenContent::RawASM(Rc::new(content.trim().to_string())),
-            //            position: word_start,
-            //            len,
-            //        });
-            //    }
-            //    id => {
-            //        if let Some(expanded_content) = macro_map.get(id) {
-            //            let mut expanded_tokens =
-            //                parse_into_tokens(expanded_content, source_file_path);
-            //            tokens.append(&mut expanded_tokens);
-            //        } else {
-            //            panic!("Cannot recogize macro keyword `{id}`");
-            //        }
-            //    }
-            //}
-            //word.clear();
         } else {
             // Operator
             word.push(ch);
             word_start = i;
-            let mut token = Token::from_operator(&word, word_start).unwrap(); // TODO: error prompt if invalid token
+            let mut token =
+                Token::from_operator(&word, word_start).unwrap_or_else(|| panic!("{word:?}")); // TODO: error prompt if invalid token
             word.push(peek!());
             while let Some(t) = Token::from_operator(&word, word_start) {
                 chars.next();

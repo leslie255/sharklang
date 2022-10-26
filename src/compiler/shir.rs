@@ -74,6 +74,7 @@ pub enum SHIR {
     },
     IfThenBreak(Box<SHIR>),
     IfThenContinue(Box<SHIR>),
+    Cmp(CmpKind, Box<SHIR>, Box<SHIR>),
     RawASM(Rc<String>),
 }
 
@@ -94,17 +95,7 @@ impl SHIR {
                 ret_type: dtype,
             }
             | Self::Deref(_, dtype) => *dtype = t,
-            Self::Const(_)
-            | Self::ReturnVoid
-            | Self::ReturnValue(_)
-            | Self::Break
-            | Self::Continue
-            | Self::TakeAddr(_)
-            | Self::Loop(_, _)
-            | Self::RawASM(_)
-            | Self::If { .. }
-            | Self::IfThenBreak(_)
-            | Self::IfThenContinue(_) => (),
+            _ => (),
         }
     }
     #[must_use]
@@ -119,6 +110,17 @@ impl SHIR {
             None
         }
     }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CmpKind {
+    Eq,
+    NEq,
+    Gr,
+    Ls,
+    GrOrEq,
+    LsOrEq,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -192,7 +194,6 @@ impl Symbol {
 struct Context {
     symbols: SymbolTable,
     parent_fn_ret_type: Option<TypeExpr>,
-    // parent_loop: ...
     has_ret_statement: bool,
 }
 
@@ -435,35 +436,8 @@ fn convert_body(
                 let arg_type = &arg_types.get(j).unwrap_or(arg_types.last().unwrap());
                 let arg_node = arg.deref();
                 check_type(arg_type, arg_node, err_collector, &context.symbols);
-                let mut arg_shir =
-                    convert_body(&arg_node, parent, context, i + 1 + j, err_collector)?;
-                if let SHIR::FnCall {
-                    name: _,
-                    args: _,
-                    ret_type,
-                } = &arg_shir
-                {
-                    // using the return value of a function as the argument of this function,
-                    // declare another variable before function call, assign it with the function
-                    // essentially expanding `f(g(x))` into...
-                    // temp: = g(x); f(temp);
-                    let temp_var_id = {
-                        let mut hasher = DefaultHasher::new();
-                        i.hash(&mut hasher);
-                        j.hash(&mut hasher);
-                        hasher.finish()
-                    };
-                    parent.push(SHIR::VarDef {
-                        id: temp_var_id,
-                        dtype: *ret_type,
-                    });
-                    parent.push(SHIR::VarAssign {
-                        id: temp_var_id,
-                        dtype: *ret_type,
-                        rhs: Box::new(arg_shir.clone()),
-                    });
-                    arg_shir = SHIR::Var(temp_var_id, *ret_type);
-                }
+                let arg_shir = convert_body(&arg_node, parent, context, i + j + 1, err_collector)?;
+                let arg_shir = flatten_fn_call(arg_shir, parent, i + j + 1);
                 args_shir.push((arg_shir, arg_type.into_basic_type(&context.symbols)?));
             }
             Some(SHIR::FnCall {
@@ -612,6 +586,19 @@ fn convert_body(
         Expression::Break => Some(SHIR::Break),
         Expression::Continue => Some(SHIR::Continue),
         Expression::Extern(_, _) => panic!(),
+        Expression::Cmp(kind, lhs, rhs) => {
+            let lhs = lhs.deref();
+            let rhs = rhs.deref();
+            let lhs_shir = convert_body(lhs, parent, context, i, err_collector)?;
+            let rhs_shir = convert_body(rhs, parent, context, i, err_collector)?;
+            let lhs_shir = flatten_fn_call(lhs_shir, parent, i);
+            let rhs_shir = flatten_fn_call(rhs_shir, parent, i);
+            Some(SHIR::Cmp(
+                *kind,
+                Box::new(lhs_shir),
+                Box::new(rhs_shir),
+            ))
+        }
         Expression::RawASM(code) => Some(SHIR::RawASM(Rc::clone(code))),
     }
 }
@@ -637,6 +624,38 @@ fn check_return(
                 length: 1,
             })
         }
+    }
+}
+
+/// If the input is an FnCall, flatten it into a VarDef, VarAssign and returns the Variable
+fn flatten_fn_call(shir: SHIR, parent: &mut Vec<SHIR>, i: usize) -> SHIR {
+    if let SHIR::FnCall {
+        name: _,
+        args: _,
+        ret_type,
+    } = shir
+    {
+        // using the return value of a function as the argument of this function,
+        // declare another variable before function call, assign it with the function
+        // essentially expanding `f(g(x))` into...
+        // temp: = g(x); f(temp);
+        let temp_var_id = {
+            let mut hasher = DefaultHasher::new();
+            i.hash(&mut hasher);
+            hasher.finish()
+        };
+        parent.push(SHIR::VarDef {
+            id: temp_var_id,
+            dtype: ret_type,
+        });
+        parent.push(SHIR::VarAssign {
+            id: temp_var_id,
+            dtype: ret_type,
+            rhs: Box::new(shir.clone()),
+        });
+        SHIR::Var(temp_var_id, ret_type)
+    } else {
+        shir
     }
 }
 

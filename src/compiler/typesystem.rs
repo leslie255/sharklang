@@ -128,8 +128,9 @@ impl TypeExpr {
             }
             Expression::CharLiteral(_) => self.is_equvalent(&Self::u8, symbols),
             Expression::BoolLiteral(_) => self.is_equvalent(&Self::u8, symbols),
-            Expression::Deref(child) => Self::Ptr(Box::new(self.clone()))
-                .matches_expr(&child.deref().expr, symbols),
+            Expression::Deref(child) => {
+                Self::Ptr(Box::new(self.clone())).matches_expr(&child.deref().expr, symbols)
+            }
             Expression::TakeAddr(child) => {
                 if let Self::Ptr(t) = self {
                     t.matches_expr(&child.deref().expr, symbols)
@@ -149,6 +150,7 @@ impl TypeExpr {
             }()
             .unwrap_or(false),
             Expression::TypeCast(_, casted_type) => casted_type.is_equvalent(self, symbols),
+            Expression::Cmp(_, _, _) => self.is_int(symbols),
             Expression::TypeDef(_, _) => false,
             Expression::Def { .. } => false,
             Expression::Assign { .. } => false,
