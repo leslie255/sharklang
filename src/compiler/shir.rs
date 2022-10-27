@@ -303,8 +303,8 @@ fn convert_block(
     target: &mut Vec<SHIR>,
 ) {
     context.has_ret_statement = false;
-    for node in body.iter().map(|w| w.deref()) {
-        let s = convert_body(node, target, context, i, err_collector);
+    for (j, node) in body.iter().map(|w| w.deref()).enumerate() {
+        let s = convert_body(node, target, context, i + j, err_collector);
         if let Some(s) = s {
             if let SHIR::ReturnValue(_) = s {
                 context.has_ret_statement = true;
@@ -607,11 +607,7 @@ fn convert_body(
             let rhs_shir = convert_body(rhs, parent, context, i, err_collector)?;
             let lhs_shir = flatten_fn_call(lhs_shir, parent, i);
             let rhs_shir = flatten_fn_call(rhs_shir, parent, i);
-            Some(SHIR::Cmp(
-                *kind,
-                Box::new(lhs_shir),
-                Box::new(rhs_shir),
-            ))
+            Some(SHIR::Cmp(*kind, Box::new(lhs_shir), Box::new(rhs_shir)))
         }
         Expression::RawASM(code) => Some(SHIR::RawASM(Rc::clone(code))),
     }

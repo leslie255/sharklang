@@ -9,5 +9,8 @@ main: () -> u32 = {
     } else {
         printf("i = %lu\n", i);
     }
+    if i == 2 {
+        "lol\n";
+    }
     return 0;
 }
