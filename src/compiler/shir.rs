@@ -80,25 +80,6 @@ pub enum SHIR {
 }
 
 impl SHIR {
-    fn type_cast(&mut self, t: BasicType) {
-        match self {
-            Self::Var(_, dtype)
-            | Self::VarAssign {
-                id: _,
-                dtype,
-                rhs: _,
-            }
-            | Self::Arg(_, dtype)
-            | Self::VarDef { id: _, dtype }
-            | Self::FnCall {
-                name: _,
-                args: _,
-                ret_type: dtype,
-            }
-            | Self::Deref(_, dtype) => *dtype = t,
-            _ => (),
-        }
-    }
     #[must_use]
     fn as_string(&self) -> Option<usize> {
         if let SHIR::Const(c) = self {
@@ -480,11 +461,8 @@ fn convert_body(
             Some(SHIR::TakeAddr(Box::new(s)))
         }
         Expression::DataType(_) => None,
-        Expression::TypeCast(n, t) => {
-            let child_node = &n.deref();
-            let mut s = convert_body(child_node, parent, context, i, err_collector)?;
-            s.type_cast(t.into_basic_type(&context.symbols)?);
-            Some(s)
+        Expression::TypeCast(n, _) => {
+            Some(convert_body(n.deref(), parent, context, i, err_collector)?)
         }
         Expression::TypeDef(name, rhs_type) => {
             context

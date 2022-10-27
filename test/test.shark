@@ -1,7 +1,8 @@
 extern printf: (fmt: *u8, args: usize ..);
 
 main: () -> u32 = {
-    i: = -42;
-    printf("%ld\n", i ~ usize);
+    i: u8 = 42;
+    j: usize = i ~ usize;
+    printf("%ld\n", j);
     return 0;
 }
