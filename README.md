@@ -6,51 +6,100 @@
 
 <img src="https://i.imgur.com/VBBeGtY.png" alt="Version 0.0.1" height="24px"> <img src="https://i.imgur.com/Mae21iF.png" alt="Language Rust" height="24px">
 
-### Quick Showcase
+### Showcase
 
+Hello, world:
 
-<img src="https://i.imgur.com/KsSHGM7.png" width="65%">
+<img src="https://i.imgur.com/zAjh2qP.png" alt="Version 0.0.1" width="30%">
 
 ```
-#include cstd.hhh
-#macro GREETING_MESSAGE "hello, world\n"
+#import cstd.hhh
 
-// Multi-line macros
-#macro SAY_HELLO
-    // Recursive macro expansion
-    printf(#GREETING_MESSAGE)
-#end
+main: -> u32 = {
+    "hello, world\n";
+    return 0;
+}
+```
+(Imported files need to be in `~/.config/sharkc/import/`, you can find `cstd.hhh` in `test/`)
 
-main: () -> u32 = {
-    #SAY_HELLO;
+Variables and functions
+```
+#import cstd.hhh
 
-    a: = 10; // type infer (but no forward-looking)
-    p: *usize = &a; // can also specify a type
+cow_say: (str: *u8) = {
+    printf("The cow says: %s\n", str);
+}
 
-    // Inline assembly
+main: -> u32 = {
+    cow_say("moo");
+    num: = 15;      // has type infer
+    printf("num = %lu", num);
+    return 0;
+}
+```
+
+If statements and loops:
+```
+#import cstd.hhh
+#import math.hhh
+
+main: -> u32 = {
+    // Fibonacci sequence
+    a: = 1;
+    b: = 1;
+    temp: usize;
+    i: = 0;
+    loop {
+        temp = a;
+        // Math operators haven't been implemented yet,
+        add(&a, b);
+        b = temp;
+        printf("%lu\n", a);
+
+        inc(&i);
+        if i == 20 {
+            break;
+        }
+    }
+    return 0;
+}
+```
+
+Inline assembly:
+```
+#import cstd.hhh
+
+square: (x: usize) -> usize = {
+
     #asm
-        mov rax, [rbp - 8]
-        mov rcx, 4
-        mul rcx
-        add rax, 2
+        mov     rax, rdi
+        mul     rdi
     #end
 
-    printf("a = %lu\n", *p);
+    return _;
+}
+
+main: -> u32 = {
+    printf("The square of 4 is ... %lu\n", square(4));
     return 0;
 }
 ```
 
 ### Current features
-- Functions, variables
-- Pointer dereference and take address of variables
+- Functions, variables, if statements (if, else if, else), loops
+- Pointers
 - Rich type expression (functions are also a type `(arg: T) -> T`)
+- Type checker
 - Inline assembly
 - Macros
-- Type checker
+- Good error prompt
 - ABI-compatible with C
 
+### Documentation
+> TODO
+
 ### Contributing
-Just open up a new PR and I'll review it as soon as possible. All issues and PR's should be in English.
+Issues and PR's are welcomed
 
 ### LICENSE
 This project is Licensed under **GPLv3**
