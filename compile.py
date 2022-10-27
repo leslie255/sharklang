@@ -43,9 +43,9 @@ if os.system("{} {} -f {} -o {}".format(exePath, srcPath, fileFormat, asmOutput)
 if os.system("nasm {} -f {} -o {}".format(asmOutput, fileFormat, objOutput)) != 0:
     os.system("rm -f {} {}".format(asmOutput, objOutput))
     exit(102)
-if os.system("gcc {} -o {} > /dev/null 2>&1".format(objOutput, output)) != 0:
+if os.system("gcc -no-pie {} -o {} > /dev/null 2>&1".format(objOutput, output)) != 0:
     print("linker exits with a non-zero exit code:")
-    os.system("gcc {} -o {}".format(objOutput, output))
+    os.system("gcc -no-pie {} -o {}".format(objOutput, output))
     os.system("rm -f {} {}".format(asmOutput, objOutput))
     exit(102)
 

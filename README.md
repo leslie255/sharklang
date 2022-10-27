@@ -129,7 +129,8 @@ To compile, assemble and link manually:
 # if you are on a Mac, replace `elf64` with `macho64`
 $ ./target/release/sharkc -f elf64 program.shark -o output.asm
 $ nasm -f elf64 output.asm -o output.o
-$ gcc output.o
+# for now you have to link with `-no-pie` on Linux
+$ gcc -no-pie output.o
 
 # run the program:
 $ ./a.out
