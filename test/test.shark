@@ -12,8 +12,7 @@ square: (x: usize) -> usize = {
 
 main: -> u32 = {
     a: = 16;
-    x: = square(a ~ usize);
-    printf("x = %lu\ta = %d\n", x, a ~ usize);
+    x: = 0;
     if a == 16 {
         "lol\n";
     } else {
