@@ -1,6 +1,6 @@
 use super::{
     ast::{ASTNode, DerefToASTNode, Expression, NumValue, AST},
-    error::{CollectError, CompileError, ErrorCollector, ErrorContent},
+    error::{CollectError, CompileError, ErrorCollector, ErrorContent, PackageAndCollectError},
     typesystem::{check_type, suggest_typeexpr, TypeExpr},
 };
 use mir::ir::DataType as BasicType;
@@ -399,40 +399,20 @@ fn convert_body(
                 .collect_error(err_collector)?;
             // check argument count
             let expected_arg_count = arg_types.len();
-            let actual_arg_count = args.len();
-            if !is_variadic {
-                if expected_arg_count != actual_arg_count {
-                    err_collector.errors.push(CompileError {
-                        content: ErrorContent::IncorrectArgCount {
-                            expected: expected_arg_count,
-                            found: actual_arg_count,
-                        },
-                        position: node.pos + name.len(),
-                        length: 1,
-                    });
-                    return None;
-                }
-            } else {
-                let expected_arg_count = expected_arg_count - 1;
-                if expected_arg_count > actual_arg_count {
-                    err_collector.errors.push(CompileError {
-                        content: ErrorContent::IncorrectArgCountVariadic {
-                            expected: expected_arg_count,
-                            found: actual_arg_count,
-                        },
-                        position: node.pos + name.len(),
-                        length: 1,
-                    });
-                    return None;
-                }
-            }
+            let received_arg_count = args.len();
+            check_fn_args_count(received_arg_count, expected_arg_count, is_variadic)
+                .package_and_collect(err_collector, node.pos, name.len());
             for (j, arg) in args.iter().enumerate() {
-                let arg_type = &arg_types.get(j).unwrap_or(arg_types.last().unwrap());
+                let arg_type = arg_types.get(j).unwrap_or(arg_types.last().unwrap());
                 let arg_node = arg.deref();
                 check_type(arg_type, arg_node, err_collector, &context.symbols);
                 let arg_shir = convert_body(&arg_node, parent, context, i + j + 1, err_collector)?;
                 let arg_shir = flatten_fn_call(arg_shir, parent, i + j + 1);
-                args_shir.push((arg_shir, arg_type.into_basic_type(&context.symbols)?));
+                let arg_type = match &arg_shir {
+                    SHIR::Var(_, t) => *t,
+                    _ => arg_type.into_basic_type(&context.symbols)?,
+                };
+                args_shir.push((arg_shir, arg_type));
             }
             Some(SHIR::FnCall {
                 name,
@@ -500,27 +480,28 @@ fn convert_body(
                 } else {
                     continue;
                 };
-                if if_block.is_empty() {
-                    continue;
-                }
                 let _err_collector_inside_iter = (); // prevent using the borrow
-                let first_expr = &if_block.first().unwrap().deref().expr;
                 let condition_shir =
                     convert_body(if_condition.deref(), parent, context, i, err_collector)?;
-                match first_expr {
-                    Expression::Break => {
-                        parent.push(SHIR::IfThenBreak(Box::new(condition_shir)));
-                        continue;
+                if let Some(first_expr) = if_block.first() {
+                    let first_expr = &first_expr.deref().expr;
+                    match first_expr {
+                        Expression::Break => {
+                            parent.push(SHIR::IfThenBreak(Box::new(condition_shir)));
+                            continue;
+                        }
+                        Expression::Continue => {
+                            parent.push(SHIR::IfThenContinue(Box::new(condition_shir)));
+                            continue;
+                        }
+                        _ => {
+                            let mut body = Vec::<SHIR>::new();
+                            convert_block(if_block, context, i, err_collector, &mut body);
+                            converted_if_blocks.push((condition_shir, body));
+                        }
                     }
-                    Expression::Continue => {
-                        parent.push(SHIR::IfThenContinue(Box::new(condition_shir)));
-                        continue;
-                    }
-                    _ => {
-                        let mut body = Vec::<SHIR>::new();
-                        convert_block(if_block, context, i, err_collector, &mut body);
-                        converted_if_blocks.push((condition_shir, body));
-                    }
+                } else {
+                    converted_if_blocks.push((condition_shir, Vec::new()));
                 }
             }
             if let Some(else_block) = else_block.as_ref() {
@@ -645,6 +626,30 @@ fn flatten_fn_call(shir: SHIR, parent: &mut Vec<SHIR>, i: usize) -> SHIR {
     } else {
         shir
     }
+}
+
+fn check_fn_args_count(
+    received_arg_count: usize,
+    expected_arg_count: usize,
+    is_variadic: bool,
+) -> Result<(), ErrorContent> {
+    if !is_variadic {
+        if expected_arg_count != received_arg_count {
+            return Err(ErrorContent::IncorrectArgCount {
+                expected: expected_arg_count,
+                found: received_arg_count,
+            });
+        }
+    } else {
+        let expected_arg_count = expected_arg_count - 1;
+        if expected_arg_count > received_arg_count {
+            return Err(ErrorContent::IncorrectArgCountVariadic {
+                expected: expected_arg_count,
+                found: received_arg_count,
+            });
+        }
+    }
+    Ok(())
 }
 
 fn handle_implicit_printf(

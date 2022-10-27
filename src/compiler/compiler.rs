@@ -320,6 +320,7 @@ fn compile_if(
     context: &mut Context,
     target: &mut Vec<MIRInstr>,
 ) -> MIRInstr {
+    // if there are no if/elif blocks, just compile the else block with nothing else
     if if_blocks.is_empty() {
         // if and else blocks may not be all empty as ensured in shir.rs
         let else_block = else_block.as_ref().unwrap();

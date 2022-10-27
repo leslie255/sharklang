@@ -35,6 +35,15 @@ pub enum ErrorContent {
     IllegalExpression,
     Raw(String),
 }
+impl ErrorContent {
+    pub fn package(self, pos: usize, len: usize) -> CompileError {
+        CompileError {
+            content: self,
+            position: pos,
+            length: len,
+        }
+    }
+}
 impl Display for ErrorContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -236,6 +245,32 @@ impl<T> CollectError<T> for Result<T, CompileError> {
             Ok(thing) => Some(thing),
             Err(e) => {
                 collector.errors.push(e);
+                None
+            }
+        }
+    }
+}
+
+pub trait PackageAndCollectError<T> {
+    fn package_and_collect(
+        self: Self,
+        collector: &mut ErrorCollector,
+        pos: usize,
+        len: usize,
+    ) -> Option<T>;
+}
+
+impl<T> PackageAndCollectError<T> for Result<T, ErrorContent> {
+    fn package_and_collect(
+        self: Self,
+        collector: &mut ErrorCollector,
+        pos: usize,
+        len: usize,
+    ) -> Option<T> {
+        match self {
+            Ok(thing) => Some(thing),
+            Err(e) => {
+                collector.errors.push(e.package(pos, len));
                 None
             }
         }

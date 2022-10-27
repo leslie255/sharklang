@@ -1,8 +1,23 @@
-extern printf: (fmt: *u8, args: usize ..);
+#import cstd.hhh
 
-main: () -> u32 = {
-    i: u8 = 42;
-    j: usize = i ~ usize;
-    printf("%ld\n", j);
+square: (x: usize) -> usize = {
+
+    #asm
+        mov     rax, rdi
+        mul     rdi
+    #end
+
+    return _;
+}
+
+main: -> u32 = {
+    a: = 16;
+    x: = square(a ~ usize);
+    printf("x = %lu\ta = %d\n", x, a ~ usize);
+    if a == 16 {
+        "lol\n";
+    } else {
+        "lmao\n";
+    }
     return 0;
 }
