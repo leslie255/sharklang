@@ -1,22 +1,17 @@
 #import cstd.hhh
-
-square: (x: usize) -> usize = {
-
-    #asm
-        mov     rax, rdi
-        mul     rdi
-    #end
-
-    return _;
-}
+#import math.hhh
 
 main: -> u32 = {
-    a: = 16;
-    x: = 0;
-    if a == 16 {
-        "lol\n";
-    } else {
-        "lmao\n";
+    i: = 0;
+    loop {
+        inc(&i);
+        if i <= 2 {
+            continue;
+        }
+        printf("%lu\n", i);
+        if i == 10 {
+            break;
+        }
     }
     return 0;
 }

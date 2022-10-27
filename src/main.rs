@@ -202,7 +202,23 @@ impl Compiler {
 
 #[allow(unused_variables)]
 fn print_help(src_path: String) {
-    todo!()
+    let mut args = env::args();
+    let exe_name = args.next().unwrap_or("sharkc".to_string());
+    let mut tabs = String::new();
+    for _ in 0..exe_name.len() / 8 {
+        tabs.push('\t');
+    }
+    println!("SHARKC 0.1");
+    println!("Usage:");
+    println!(" sharkc -h\t\tPrint this message");
+    println!(" sharkc <source.shark>\tSource file");
+    println!("  -f macho64/elf64\tOutput format");
+    println!("  -o <output.asm>\tOutput file");
+    println!("Debug options:");
+    println!(" -t / --token\tprint tokens");
+    println!(" -a / --ast\tprint AST");
+    println!(" -i / --ir\tprint SHIR");
+    println!(" -m / --mir\tprint MIR");
 }
 
 fn compile(src_path: String, output_path: String, file_format: FileFormat) {
