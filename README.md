@@ -100,6 +100,55 @@ main: -> u32 = {
 
 First of all, Shark currently does not have a standard library, everything is done with C's STD (since Shark and C are ABI-compatible), this includes the `main` function, and things like `printf`.
 
+### Using the compiler
+#### System requirements
+The binary compiled by `sharkc` can only run on 64-bit x86 CPU's, and it is only tested on Linux and macOS.
+`sharkc` itself might work on other systems, but it is not tested.
+
+#### Dependencies
+- `cargo` for building the `sharkc` binary
+- `nasm` and `gcc` (or `clang`) for assembling and linking the assembly code output by `sharkc`
+
+#### Install and use the compiler
+To build the `sharkc` binary, first clone the repository, and then fetch the submodule `madeline` (a compiler backend I wrote):
+
+```
+git submodule update --init --recursive --remote
+```
+
+And then build the binary using cargo:
+
+```
+cargo build --release
+```
+
+The compiler would output assembly code, you can either manually assemble and link the assembly output or use the `compile.py` script.
+
+To compile, assemble and link manually:
+``` Bash
+# if you are on a Mac, replace `elf64` with `macho64`
+$ ./target/release/sharkc -f elf64 program.shark -o output.asm
+$ nasm -f elf64 output.asm -o output.o
+$ gcc output.o
+
+# run the program:
+$ ./a.out
+```
+
+Using the `compile.py` script, first install the compiler:
+- Create the directory `~/.config/sharkc/`
+- Move `compile.py` and `target/release/sharkc` into `~/.config/sharkc/`
+- Add `alias sharkc="python3 ~/.config/sharkc/compile.py"` to your shell config files
+
+Using the installed compiler:
+``` Bash
+# If you are on a Mac, replace `elf64` with `macho64`
+$ sharkc program.shark -f elf64 -o a.out
+
+# run the program:
+./a.out
+```
+
 ### Functions and variables
 In Shark, variables and functions are declared using the same syntax:
 
