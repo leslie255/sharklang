@@ -1,16 +1,7 @@
 extern printf: (fmt: *u8, args: usize ..);
 
 main: () -> u32 = {
-    i: = 2;
-    if i == 0 {
-        "zero\n";
-    } else if i == 1 {
-        "one\n";
-    } else {
-        printf("i = %lu\n", i);
-    }
-    if i == 2 {
-        "lol\n";
-    }
+    i: = -42;
+    printf("%ld\n", i ~ usize);
     return 0;
 }

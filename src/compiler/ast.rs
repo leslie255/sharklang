@@ -377,6 +377,28 @@ fn parse_expressions(
                 expr: Expression::Extern(name, dtype),
             }
         }
+        TokenContent::Minus => {
+            if let TokenContent::Number(num_str) = &token_stream.peek(1).content {
+                let num_str = Rc::clone(num_str);
+                let current_token = token_stream.next();
+                let numval = parse_numval(&num_str, current_token)?;
+                let numval = match numval {
+                    NumValue::U(u) => NumValue::I(0 - u as i64),
+                    NumValue::I(i) => NumValue::I(0 - i),
+                    NumValue::F(f) => NumValue::F(0f64 - f),
+                };
+                node = ASTNode {
+                    pos: current_token.position,
+                    expr: Expression::NumLiteral(numval),
+                };
+            } else {
+                return Err(CompileError {
+                    content: ErrorContent::InvalidNumberFormat("".to_string()),
+                    position: current_token.position,
+                    length: 1,
+                });
+            }
+        }
         TokenContent::Number(num_str) => {
             node = ASTNode {
                 pos: current_token.position,
